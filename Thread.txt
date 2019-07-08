@@ -1,0 +1,41 @@
+1、 继承Thread类，并重写它的run()方法，然后创建它的对象，通过对象调用start()方法，这样就能启动一个子线程了
+
+2、实现Runnable接口，并重写它的run方法，创建一个实现类的实例，然后在创建Thread实例的时候把实现类的对象传入    
+   Thread实例的构造器中，使用Thread的实例调用start()方法就能启动子线程了
+
+3、创建一个实现类，实现Callable接口，并重写其call()方法，然后创建一个FutureTask的实例，并把实现类的对象传入
+   FutureTask构造器中，创建一个Thread的实例，把FutureTask的对象传入Thread构造器中，通过Thread的实例来调用
+   start()方法，就能启动一个子线程
+
+	
+
+第一个方法的优缺点：
+	优点：创建线程的方式比较简单，并且能通过this关键字来获取当前的线程对象
+	缺点：占用了唯一的一个继承位，如果要创建线程的话，就不能继承其它类了
+
+第二个方法的优缺点：
+	优点：是通过实现接口来重写的，不但拥有了创建线程的功能，还能继承其它类
+	缺点：创建较为繁琐
+
+第三种方法的优缺点：
+	优点：通过接口实现，不会占用继承位，并且run（）方法拥有了返回值和抛异常的功能
+	缺点：创建过程非常麻烦，并且只能通过Thread的类方法来获取线程对象，能中止线程
+
+
+
+	          需要Callable接口的实现类，并重写call（）方法，然后把实现类当做Callable对象
+              的构造器参数，获取一个Callable对象，然后创建FutureTask实例（把Callable对象传入
+	      构造器），然后再把FutureTask的对象传入Thread的构造器获取Thread对象，然后通过
+              Thread对象调用start()方法
+
+
+
+1、Thread子类对象.start()	子类能直接调用是因为继承了Thread类的start()方法
+2、Runnable实现类对象-->Thread对象.start()
+3、Callable实现类对象-->Callable对象-->FutureTask对象-->Thread对象.statu()
+   因为Callable实现类是Callable的子类，因此直接放入FutureTask对象里简化如下
+	
+	通过FutureTask对象可以有三个方法：get()获取返回值，并在得到返回值之前阻塞主线程
+					  get(long time,TimeUnit t):前面是数量后面是单位，设置时间，到了时间还没返回就抛异常
+					  isDone()：判断线程是否执行结束，返回boolean
+					  isCancelled();中止线程，返回boolean,在线程结束前终止了，则返回true

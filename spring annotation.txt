@@ -1,0 +1,50 @@
+protected Object initializeBean(final String beanName, final Object bean, RootBeanDefinition mbd) {
+	if (System.getSecurityManager() != null) {
+		AccessController.doPrivileged(new PrivilegedAction<Object>() {
+			@Override
+			public Object run() {
+				invokeAwareMethods(beanName, bean);
+				return null;
+			}
+		}, getAccessControlContext());
+	}
+	else {
+		invokeAwareMethods(beanName, bean);		先执行Aware接口的实现类,比如@Autowired注解就是在这时注入的
+	}
+
+	Object wrappedBean = bean;
+	if (mbd == null || !mbd.isSynthetic()) {
+		wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);	然后再到后置处理器的前置处理
+	}
+	try {
+		invokeInitMethods(beanName, wrappedBean, mbd);		再到初始化方法,比如@Bean指定的init方法,或者实现了InitializationBean接口的方法
+	}
+	catch (Throwable ex) {
+		throw new BeanCreationException(
+				(mbd != null ? mbd.getResourceDescription() : null),
+				beanName, "Invocation of init method failed", ex);
+	}
+	if (mbd == null || !mbd.isSynthetic()) {
+		wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);	最后到后置处理器的后置处理方法
+	}
+	return wrappedBean;
+}
+
+	通过上面的initializeBean方法可以看出来Bean初始化的顺序
+
+	BeanPostProcessors在注册完之后会进行排序,然后按照排序的顺序调用ConfigurableListableBeanFactory类的
+addBeanPostProcessor注册到BeanFactory
+
+	AOP的Bean用了一个后置处理器,这个后置处理器在创建任何Bean之前都会调用before方法,尝试返回一个对象,如果没返回,
+就继续用常规方法创建Bean,如果返回了,就使用返回的Bean,AOP就是用了这个InstantaitionBeanPostProcessor,在任何Bean创建的
+时候都尝试返回一个代理对象
+
+	每个bean都会进入AOP的后置处理器,获取所有的增强器(也就是所有的增强方法),然后用所有的增强器去匹配Bean,如果表
+达式能匹配上Bean的话,就会返回一个代理对象,然后把所有匹配上的增强器和代理对象放到代理工厂里ProxyFactory,代理对象有两
+种,分别是JdkDynamicAopProxy和ObjenesisCglibAopProxy,动态代理这里就用上了,创建的代理对象需要动态实现原来对象的接口和
+父类,如果代理对象有接口要实现就用Jdk的动态代理,没有就用Obj的代理,也可以设置强行用Jdk的动态代理
+
+	创建好所有的单实例Bean之后,再用后置处理器对匹配上的Bean增强,那么懒加载Bean和多实例Bean怎么增强的
+
+	拦截器链的执行顺序是倒序的,before在最后,调用方式是0调用1,1调2...,一直到前置处理器就开始执行增强器,一路执行
+知道index到了拦截器链的size-1,然后返回,返回的挨个执行剩下的非befor增强器
