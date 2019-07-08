@@ -1,0 +1,69 @@
+Bean定义的Bean定义方法
+
+Bean定义的Bean工厂方法
+
+Bean工厂的Bean工厂方法
+
+getBean:开始
+
+InstantiationAwareBeanPostProcessor的postProcessBeforeInstantiation(AOP动态代理就是实现了这个,然后直接返回代理对象)
+如果返回结果不等于null,就接着执行BeanPostProcessor的前置处理,如果等于null,就执行下一个
+InstantiationAwareBeanPostProcessor的postProcessBeforeInstantiation,BeanPostProcessor的前置处理如果返回不为null,下
+面的就继续执行,否则就不会继续执行,执行完BeanPostProcessor的前置处理之后,如果结果还是不为null,那么这个Bean后面就不会
+再继续处理,而是直接算创建完成了
+
+MergedBeanDefinitionPostProcessor的postProcessMergedBeanDefinition,这个时候Bean已经创建好了,并且在创建的过程中Bean
+定义信息有一些修改,这个应该就是想要修改后的信息
+
+InstantiationAwareBeanPostProcessor的postProcessAfterInstantiation,Bean创建完后第一个调用的后置处理器(上面那个自己
+创建的不算)
+
+InstantiationAwareBeanPostProcessor的postProcessPropertyValues,这里就是属性自动注入了
+
+Bean创建完并注入属性后调用初始化方法:
+initializeBean方法开始:
+
+invokeAwareMethods方法分别执行以下Aware
+
+	if (bean instanceof Aware) {
+		if (bean instanceof BeanNameAware) {
+			((BeanNameAware) bean).setBeanName(beanName);
+		}
+		if (bean instanceof BeanClassLoaderAware) {
+			((BeanClassLoaderAware) bean).setBeanClassLoader(getBeanClassLoader());
+		}
+		if (bean instanceof BeanFactoryAware) {
+			((BeanFactoryAware) bean).setBeanFactory(AbstractAutowireCapableBeanFactory.this);
+		}
+	}
+
+BeanPostProcessor的postProcessBeforeInitialization,BeanPostProcess中的前置处理器
+	在这里有一个BeanPostProcess的实现类ApplicationContextAwareProcessor的前置处理器中执行了Aware全家桶包括:EnvironmentAware
+\EmbeddedValueResolverAware\ResourceLoaderAware\ApplicationEventPublisherAware\MessageSourceAware\ApplicationContextAware
+这些Aware就是在这里执行的
+
+invokeInitMethods执行了初始化接口的afterPropertiesSet顾名思义(属性设置之后)方法,然后在同一方法中调用invokeCustomInitMethod
+方法执行自定义初始化方法,比如@Bean定义的init方法
+
+
+BeanPostProcessor的postProcessAfterInitialization,BeanPostProcess中的后置处理器
+
+initializeBean方法结束
+
+getBean:结束
+
+以上是创建Bean的流程
+
+所有的Bean创建好之后调用SmartInitializingSingleton的实现类的afterSingletonsInstantiated方法,是为了在全部初始化好之
+后进行回调
+
+剩下的finishRefresh()就是改变生命周期状态,发布容器刷新完成时事件
+
+然后finally中清空公共缓存,容器创建完成
+
+
+
+
+
+
+
