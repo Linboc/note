@@ -1,0 +1,103 @@
+面向切面：
+
+	横切关注点：	影响应用多处的功能（事务、日志等）
+
+	通知：		切面也需要完成工作，切面的工作被成为通知，描述了切面的任务和执行时间，
+			也就是拦截之后织入的时机和执行的代码	
+
+	连接点：	连接点可以定义连接哪些切点，只要连接了切点在匹配到织入点之后就会执行
+			匹配的连接点，每个连接点可以定义：对应的切点、执行的方法，通知类型
+
+	切点：		切点定义了匹配的织入点，也就是执行哪些操作的时候会捕获，并通知对应的
+			连接点
+	
+	切面：		切面就是通知和切点的集合，如果有了“何时”，“何处”，“何事”，就能
+			准确的执行要织入的程序了
+	
+	引入：		允许向现有的类中添加方法或属性（java中的属性和方法还能动态添加的？有技术支持这种操作）
+
+	织入：		织入是将切面应用到目标对象来创建的代理对象过程，一个目标对象在执行的过
+			程中会有多个切点，因此一个对象的声明周期中有多个点可以织入可以，织入
+			的时机可以是：调用方法、抛出异常、修改属性时，织入后可以把自定义的代码
+			插入执行的程序中（指在执行程序中用代理对象调用插入的函数，并不是真的插
+			入代码）
+
+优点：每个关注点都集中在一处管理，而不是分散到多处代码中
+
+spring的切面分为5种通知类型
+	Before		：	前置通知
+	After		：	后置通知，无论方法是否成功执行
+	After-returning	：	方法执行成功后才执行通知
+	After-throwing	：	方法抛出异常后才执行通知
+	Around		：	环绕通知，在方法调用前和调用后都会执行通知
+
+    aop的具体实现似乎涉及到字节码和jvm，只有足够底层才能足够详细的捕捉连接点，并确定织入时机，
+并不是并不是所有的aop框架都是一样的，它们在连接点模型上可能有强弱之分，有些可能仅能捕捉到方法
+执行那个级别的连接点，而有些能捕捉到字段修饰符级别的连接点。
+
+spring提供的4种各具特色的aop支持：
+	
+	1、基于代理的经典aop
+	2、基于@AspectJ注解驱动的切面
+	3、纯pojo切面
+	4、注入式AspectJ切面
+	AspectJ：一个aop框架，它扩张了java语言，有专门的编译器
+	
+    spring是在运行时创建代理对象的，也就是织入后才会创建代理对象。
+    spring只支持方法创建连接点，因为spring基于动态代理，因此只支持方法连接点，无法对字段和构
+造器的操作进行拦截。
+
+    spring aop中，需要使用AspectJ的切点表达式来定义切点
+
+arg ()		限制连接点的指定参数为指定类型的执行方法
+@args ()	限制连接点匹配参数由指定注解标注的执行方法
+execution ()	用于匹配连接点的执行方法
+this ()		限制连接点匹配 AOP 代理的 Bean 引用为指定类型的类
+target ()	限制连接点匹配特定的执行对象，这些对象对应的类要具备指定类型注解
+within ()	限制连接点匹配指定类型
+@within ()	限制连接点匹配指定注释所标注的类型（当使用 Spring AOP 时，方法定义在由指定的注解所标注的类里）
+@annotation ()	限制匹配带有指定注解的连接点
+bean()		spring2.5后加入的指示器，可以限定只匹配特定的bean
+
+具体要拦截哪些连接点在括号里面填写,如：
+	execution(* com.boc.dao.Person.getInfo(..))	就是在方法执行时触发，至于触发时机另外定义，返回值不限，参数不限
+	&& within(com.boc.service.*)			当service包下任意类方法被调用时都会触发
+	可以使用 &&，同样也可以使用 ||，!
+
+	execution(* com.boc.dao.Person.getInfo(..)) and bean(tsId)	只有bean的Id为tsId才会织入
+	execution(* com.boc.dao.Person.getInfo(..)) and !bean(tsId)	只有bean的Id不为tsId才会织入
+
+xml中的配置实例：
+	
+<bean id="xmlAopDemoUserLog" class="com.ganji.demo.service.aspect.XmlAopDemoUserLog"></bean>
+<aop:config>
+    <aop:aspect ref="xmlAopDemoUserLog"> <!--指定切面，ref指定了代理对象-->
+        <!--定义切点-->
+        <aop:pointcut id="logpoint" expression="execution(* com.ganji.demo.service.user.UserService.GetDemoUser(..))"></aop:pointcut>
+        <!--定义连接点-->
+        <aop:before pointcut-ref="logpoint" method="beforeLog"></aop:before>	//连接点定义的切点捕捉到后pointcut-ref决定了执行什么通知类型，method决定了执行什么方法
+        <aop:after pointcut-ref="logpoint" method="afterLog"></aop:after>
+        <aop:after-returning pointcut-ref="logpoint" method="afterReturningLog"></aop:after-returning>
+        <aop:after-throwing pointcut-ref="logpoint" method="afterThrowingLog"></aop:after-throwing>
+    </aop:aspect>
+</aop:config>
+
+spring在执行BeanPostProcessor的时候，会在某种BeanPostProcessor执行时机到了之后，调用容器中的
+getBeanPostProcessors,之前创建beanPostProcessor的时候，把所有的beanPostProcessor使用了setBeanPostProcessor
+保存起来,应该是放在了另外一个独立的集合中，也有可能是同时保存在总集合和专属于BeanPostProcessor的
+集合
+
+然后遍历所有的BeanPostProcessor是不是属于当前想要执行的那个beanPostProcessor，有想要的beanPostProcessor
+，就把当前的bean转成beanPostProcessor或其子类，然后调用后置处理器方法
+
+spring的bean是一个bean完全创建完后再到下一个，等这一个bean执行完了所有流程之后才会进行下一个
+
+实现了BeanPostProcessor的Bean会在一开始就创建，然后才是其它的Bean，创建其它Bean的时候会试图从缓
+存中取出该Bean，不为null的就说明前面再BeanPostProcessor就已经创建过了，返回null的就会创建
+
+
+
+
+
+
+

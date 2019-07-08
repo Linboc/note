@@ -1,0 +1,96 @@
+SpringBoot内置了一个tomcat服务器
+
+SpringBoot简化了配置和依赖
+	配置：SpringBoot里面有很多默认的事务，开发者不需要自己去设置那些配置，如果没有特殊需求，
+只要用默认的配置就行了
+
+	依赖：原本一个功能需要几个包，比如AOP，加好几个依赖，而使用了SpringBoot之后，只需要添加
+对应功能的依赖，那个功能包含了所有他所需要的依赖，因此能减少依赖的配置
+
+	使用工具创建了SpringBoot工程并选择web功能之后，这个项目是直接可用的web项目，依赖配置全
+部已经有了，可以直接在项目里写代码，比如直接在Main启动包的子路径创建一个controller类，然后给他
+加上注解，然后启动Main方法就能直接访问到控制器了
+
+自动配置的原理就是用以下注解来判断哪些功能打开哪些功能不打开：
+
+	@ConditionalOnBean(Class[])：如果当前环境加载了指定类数组里的所有Bean，那么被注解的方法
+就会生效，比如某个方法是配置Bean的，如果有了他需要的Bean，这个Bean才会生效
+	@ConditionalOnBean(Class[])：作用相反，如果指定的Bean[]全都没有，那么才会生效
+
+	@CondiyionalOnClass(Class[])：classpath中有指定类才会生效
+	@ConditionalOnMissingBean(Class[])：classpath中没有指定类才会生效
+
+	@CondiyionalOnproperty：如果包含指定的属性、值，那么代码将会生效
+		prefix：属性的前缀
+		name[]：属性名
+		havingValue[]：属性值
+
+	@ConditionalOnResourece：根据classpath有没有指定资源（比如某个xml文件），来决定某些Bean
+会不会生效
+
+	@ConditionalOnWebApplication：如果当前是一个web应用则生效
+
+	@ConditionalOnNotWebApplication：如果当前不是一个web应用则生效
+
+起步依赖：
+	
+	用一个依赖代替多个依赖，也就是需要某个功能，只要添加那个功能的依赖，SpringBoot会自动的
+找到那个功能所需要的依赖，并且不需要去关注依赖的版本，只需要关心SpringBoot的依赖版本就行了，那
+些SpringBoot的默认依赖不会产生版本冲突
+
+排除依赖：
+
+	把默认依赖版本改成自己需要的版本，通过<exclusion>标签来排除SpringBoot的默认版本，然后添
+加自己需要的依赖版本，当然自己需要注意版本会不会冲突
+
+Actuator监控：监控spring程序的健康状态，能看到SpringBoot配置了哪些Bean
+
+多数据源：
+
+	多数据源的功能和原理：
+		在执行不同的数据库操作的时候，根据自己的不同需求，连接不同的数据库
+
+	原理：
+		创建多个数据源对象，然后给每个需要加上DataSource注解，并且设置他们需要的数据源
+	name，然后在方法被访问时，通过AOP来在方法执行前获取方法DataSource注解所设置的name对应的
+	数据源，再把当前的数据源改成注解设置的数据源，执行完成后执行删除，也就是让下次再访问变
+	成默认数据源
+
+注意事项：
+
+	order：数据源切换和事务执行顺序因为两者都是通过AOP来完成的，因此数据源切换要在事务开始
+前才能生效，order就是设置AOP的执行顺序的
+
+需要注意的问题：
+
+	在同一个事务下不能使用不同的数据源，因为某条语句如果回滚了，另外一个数据源是无法回滚的，
+因为Spring的声明式事务执行失败后只会回滚当前的数据源事务
+
+	每个方法只能有一个数据源，如果想在一个方法中使用两个数据源完成任务，只能分别调用两个方
+法，两个方法分别声明不同数据源，然后再调用两个方法
+
+	springBoot会自动去Application类的路径下的config包里面找配置类，因此只要在Application包
+下的config包里面写配置类，就会被自动解析
+
+	application.yml下的server属性下的变量，配置的都是服务器的配置，比如tomcat的
+	
+@ConfigurationProperties：
+	如果用来给类配置，那个类也要交给spring托管，然后会把@ConfigurationProperties指定的application.yml
+里面的属性一一对应赋给该类，如果要用的话，获取那个Bean就行了，里面有它的属性
+	如果用来给方法配置，那个方法也要返回Bean，也就是用@Bean注解，然后会把@ConfigurationProperties
+指定的属性一一对应赋给该Bean，用法也一样
+
+profile:
+
+---：
+	分割不同的profile,第一个---之前是共用的参数，然后每一个---之间的都是各自指定的profile自
+己的私有参数，可以在共用参数那里指定spring:profile:active:dev
+
+也可以在同级目录下新建一个文件，如application-dev.yml、application-produce.yml，然后在共用参数
+那里指定spring:profile:active:dev或product(指定-后面那部分就行了)，也能用
+
+
+
+
+
+

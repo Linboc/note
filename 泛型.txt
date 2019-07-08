@@ -1,0 +1,101 @@
+public <T> S void t(){		//这样定义了一个泛型<T>方法后，就能在方法使用这个泛型了，作用域只有本方法,而<S>是类泛型
+	
+}
+
+public <T> void t(T t1){	//泛型方法可以在这里使用:形参列表、方法体中
+	T t2 = t1;
+}
+
+<Integer>t(1);				//泛型方法的类型由调用时指定的,这样就是<Integer>
+this.<String>t("1");			//这样就是<String>，泛型在方法名前指定
+
+关于类型通配符不能添加元素的缘由：
+	
+List<? extends Type>，在读取的时候要用到，比如要读取一个Type对象里面的属性，然后只能传Type对象的子类
+进来，这时候，Type对象有的子类肯定也有，为什么不直接用Type呢，因为List<TypeExtends>不是List<Type>
+的子类，因此只能传<Type>。如果用<? extends Type>就能传子类
+
+<? extends Number>，在get的时候能保证get到的都是Number类型，可是在add的时候不能保证能add的会是
+什么类型，因为可能是List<? extends Type> list = new ArrayList<Integer>();，这时候如果子类型都能
+add，那么add个Double类型进来，明显是不合理的，因此<? extends Number>适合读取
+
+<? super Integer>，在写入的时候使用，在写入的时候能写入Integer,Number，Object，但是Double那些都
+不行，就是加个下限，让写入通用，而get的时候，因为不能保证写入了什么类型，因此get的全都是Obejct,
+只能保证写入的是Integer或他的父类或者Object或他的子类
+
+
+因为List<? extends Number> list = new List<Integer|Double>;因此<? extends T>只能保证get到的值是
+T，不能进行add，因为不确定new的是什么。好处是List<? extends T>能接受new ArrayList<T与其子类>
+因为List<? super Number> list = new List<Number|Object>;<? super T>只能保证add的值是T，get只能
+是Object。好处是List<? super T>能接受new ArrayList<T与其父类>
+如果又要get又要add，就只能<T>了
+
+<? super T>，传进来的是T或它的父类，因此add的时候只能传T，因为不管?是什么，肯定是T的父类或者T，
+那么T给父类，肯定没错，可是get的时候，因为有可能是任意父类，因为不确定，因此只能get到object
+
+<? extends T>，传进来的是T或他的子类这时候get到的肯定是T的子类或者T，因此返回一个T肯定没错，因为
+如果传进来的是T，那么正好，如果是它的子类，那么也会有T的全部功能，也不会影响，而add的时候，因为
+不确定传进来的是T，还是它的子类，万一是它的子类，如果插入T的话就会报错，因此无法插入
+
+所有不是返回类型的参数类型加上? super，不是参数类型的返回类型加上? extends
+
+泛型在定义的时候是固定的，只有在使用的时候才能指定上下限
+在不指定泛型上下限的时候，泛型不能直接使用，在指定上限的时候，能够直接把泛型当做上限使用，在指定
+
+
+不是返回类型的参数类型加上? super是为了让其能接受更多种类的泛型
+不是参数类型的返回类型加上? extends是为了让其能够接受相同类型的子类泛型
+
+在打算把一个泛型加入一个传入的泛型的时候，为了通用，比如要传入一个Integer，这时候如果传入的泛型
+写着List<Integer>，那么当然也能传入，可是如果要把Integer传入Number里面，这时候List<Number>就传
+不进来，这时候就需要把参数改成List<? super Integer>，在add的时候，传入<? super>，这时候之所以只
+能add.Integer，是因为无论传入哪个父泛型，Integer都能正确传入，而在get的时候，因为不知道把Integer
+转成哪个泛型了，Number，还是Object，都是允许的，因为不确定，因此get只能得到Object
+
+在打算把一个泛型赋值给另外一个泛型的时候，比如需要一个List<Number>，这时候List<Integer>，List<Double>
+都不能传进来，因此要用List<? extends Number>，这时候子类也能传进来了，因为不确定传进来的是List<Integer>
+还是List<Double>，因为add是不能用的，因为如果add一个Number或者Integer，万一他是个Integer或者其它
+莫名其妙的子类，就会类型转换异常了，而在get的时候肯定能get到Number，因为传入的都是子类，都能向上
+转型成Number
+
+这时候可能会对<? super>有点疑惑，既然能add.T，那get出来全都是Object，那还有什么意义，因为在传参
+数的时候，调用者很确定传入的具体是T的哪个父类，因此调用者能直接get到传入的类型，不过对于工具类来
+说是不确定的而已，就算传进来的参数时不确定的，至少在new的时候是确定的，因此使用完全不会存在问题
+，所以感觉在new的时候，变量不应该使用通配符
+
+泛型的擦除，就是当在使用泛型时，比如说常见的K、T、Z等，任何具体的类型信息都被擦除了，只能使用Object
+的方法这时候几乎不能使用它们做什么具体的操作，除非自己转换类型，对于泛型基本都是用第三方的方法或
+者类型来操作它
+
+泛型只会在编译时存在，运行时会被擦除，例如
+	List l = new ArrayList<Integer>;
+	l.add(1);
+	List<String> l1 = l;
+	l1.add("ad");
+这种行为是可以的，泛型只要不在编译时报错，就不会受到影响，如果使用反射add也一样，就算类型不符合泛型也可以
+执行成功
+	至于在get之后如果get一个String，实际上是一个Integer，那么调用方法就会报转换异常，就算是Object方法
+也不例外，除非先把它们的类型转为Object，然后在调用，可见get之后类型转换发生在第一次调用方法的时候
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

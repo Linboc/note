@@ -1,0 +1,110 @@
+    打开eclipse提示jvm配置文件错误，在cmd命令打开java命令也是一样，可是环境变量没错，并且手动
+进入jdk/bin目录运行java命令也可行，可是在系统目录就是错误，最后使用where java命令发现有多处环
+境变量有这个命令，而预期的路径不是排在第一位，把其他路径下的java.exe文件删除了之后可以了
+
+    Tomcat启动错误要先看一下项目里的TomcatJar包是否跟启动的服务器同一版本，如果项目里是8，用7来
+启动是会报错的
+
+	spring mvc的数据验证无效，spring mvc本身没有数据校验，因此需要hibernate validate包的支
+持，虽然表面上没有使用到，可能底层可能有调用hibernate validate的机制，因此如果没有hibernate va
+lidate的包存在的话，验证就无法生效，这时候把hibernate validate包导入就可以生效了，如果报Ljava.
+lang.String之类的异常，可能是版本的原因导致
+
+	如果spring出现各种莫名其妙的错误、异常，那么需要注意与它交互的其它框架包与它的版本是否
+兼容，如果不兼容的话，Spring的初始化可能会出现各种Bean初始化、创建异常，这个不兼容有可能你把引
+用部分的代码删了，它还是会出错，需要在项目中把相关的包删了才会恢复，可能是Spring里有缓存文件，
+里面保存了对应的信息，只要有包就会一直保留，因此代码删了也没用
+
+	如果有时候方法明明存在，spring却报方法找不到异常，那么可能是在类路径下有多个相同类，并
+且jar包下的路径也相同，因此有可能找到的首选类不是预想中的类
+
+	有时项目莫名其妙的启动报错，因为开发过程中经常会下载新的项目，有可能是有些项目的版本不
+一致，导致相互不兼容
+
+	eclispe使用替换，可以查找，替换提示incompatible line delimit错误，因为编辑器只支持字节
+级别的操作，换行是/r/n，如果只替换/n就无法执行，因此要/r/n一起替换
+
+	dubbo获取远程服务失败、超时，因为本地没有启动这项服务，所以会自动从网上有这个服务的地方
+获取，可能是其他人开的服务，或者135，如果取得是别人自己开的服务，别人在用的话就会被阻塞，这时候
+可以在本地下载该项目，并依赖重启，从本地获取服务就不会出现超时了
+
+	D:\app\nginx-1.5.2\conf\domains\eheres.org\server.conf、system-run-bcs-web/src/main/
+webapp/configs/project.conf和启动参数的路径，静态文件都是通过nginx通过这三个地方的路径找的，如
+果报404可能是这三个路径与实际文件位置不匹配
+
+	有时候项目编译错误，是因为混合依赖了，被它依赖的项目如果找不到，并且远程也找不到，这个
+项目也就因为缺少需要的jar包无法编译，比如banyan的office依赖了banyan的client，这时候需要先编译
+client，office才能进行编译
+	也有可能是依赖包的版本不兼容(调用的方法更新了，因此找不到对应的方法啥的)，这时候update
+一下maven，找到报错的包，如果是jar包，就删了再重下，如果是本地的项目就去找最新版本，然后编译本
+地项目，如果本地项目不通过，一直重复上面的流程再找原因再解决，直到全部编译成功
+
+	发生load remote config fial zokeeperExption，这里可能是system-run-bcs-web\src\main\
+resources\project\props\conf.properties文件的System.lemonconfig.servers不等于192.168.1.135:2181
+
+	编译失败时，如果用eclipse编译无法提供有用的错误信息，那么可以尝试用dos命令编译，因为eclipse
+的版本问题，可能会导致一些信息不会出现，而使用dos就能出现详细信息
+
+	有时编译报jvm.cfg的版本异常，并且检查了环境变量等都没错，那么在run config那里还有个jre
+可以设置版本，要注意启动的jre版本是否和预期的一致
+
+	那些服务其实就是在spring.xml里面配置的bean，service服务就是由spring创建的对象
+
+	如果有时候改了代码，刷新数据没有改变，这时候应该换个浏览器试一下，再不行就清除所有的缓
+存文件
+
+	如果数据取出来和代码逻辑上不一致，并且不能deBug，这时候可能是从MongoDB里面取的数据，那
+个不能DeBug的方法会有@EhStreamCache注解，本机缓存对应的库可以再bcs-src-project-props-conf.properties
+里找到
+
+	装MySQL时，如果没有data这个文件夹(放数据的)，那么别自己创建一个，因为有一些数据库运行相
+关的信息放在这个文件夹里，比如mysql库，运行在MySQL/bin下运行mysqld --initialize-insecure --user=mysql
+，会自动创建该文件夹
+
+	要自己找个mysql的连接驱动包放进项目才能启动，一开始maven的依赖里面他并没有加
+
+	mysql的url中的zeroDateTimeBehavior属性guns里面为CONVERT_TO_NULL，实际要求为convertToNull,
+把guns\src\main\resources\application.yml中的CONVERT_TO_NULL全部修改为convertToNull就行了
+
+	maven＋eclipse非常坑，有时候加依赖下载了jar包，用的时候报错，包能找到，类也能点进去，可
+是一使用非空构造器就编译不通过，可是打开maven依赖包看，jar是存在的，类也存在，可是就是用不了，
+可能是某些信息有损坏，这时候就需要把该包的文件夹删掉，然后maven→update project更新jar包
+	这次就被坑了，依赖包明明下载成功了，没想到是jar包的问题，一直以为是配置问题，搞到半夜，
+后来把包删了再下就好了
+
+	捕获Throwable和Exception的区别，Exception只能捕获声明式异常，对于一些运行时异常是不会捕
+获的，比如/0，找不到方法等异常，这时候如果用Exception，那么就会抛到虚拟机，如果用Throwable，就
+会成功捕获，然后做自己想要的处理
+
+	ClassNoFountException，NoClassDefFoundError：
+	如果加的依赖报了莫名其妙的异常，类找不到，没有类定义啥的，可能是加载的jar包有问题，这
+时候就去仓库把包删了，重新下载可能就会好了
+
+	联动之所以不显示获取权限，是因为appid配置不正确，或者接口代理域名没绑定，url回调参数错
+误，是因为后台绑定的是m.ry600.xxx,平台跳转的是hydm.ry600.xxx
+
+https://open.weixin.qq.com/connect/oauth2/authorize接口有成功回调，不过平台这边不知道哪里处理出
+了问题，无法正确处理回调信息把request.getAuthContext().isSuccess()的返回值判定去掉，就能成功进入网关
+
+	如果ide能正常使用jdk，而使用maven编译的时候报jdr or jre?这个错误，可能是因为没有没有配
+置JAVA_HOME，经测试maven可能是把JAVA_HOME的值作为jdk根路径
+
+	关于INSERT时id回写：StockBill只有在id的type为AUTO的时候才会自动回写id，过程是：mysql返
+回id，mybatis获取到id，如果执行的时候那个对象有实现KeyGenerator，就会调用它的processorAfter方法
+去执行，传入key和相关属性，比如有个Jdbc3KeyGenerator(mybatis).populateKeys(最终注入的方法)就会
+反射注入id，这个实现类应该是mybatis plus去创建的，因为如果把TYPE改为INPUT，实现的就是NoKeyGenerator
+，TYPE是AUTO的话实现类就是Jdbc3KeyGenerator，根据mybatis plus的TableId变动
+
+	pigx打开很多菜单都是404，页面打开第一次后刷新一直都是在加载中，除非开新的标签，因为配置
+菜单的时候前端组件和前端地址没有填写，不能解析，页面会一直在加载中，并且打开菜单会404
+
+	pigx的菜单，父级节点的路径会拼在子级节点的前面，所以父级节点路径前面要加/，否则会一直404
+
+	js有时候打印的值看起来是整形，然后比较其他整形又不相等，这时候只要给转一下Number(value)
+就行了，js类型真的混乱
+
+	redis的conn对象，创建和使用最好在同一个线程，否则会出现奇怪的报错，比如超时，连接关闭等
+
+
+
+

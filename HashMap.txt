@@ -1,0 +1,157 @@
+构造器：
+	无：用默认的容量(1<<4=16)和默认的负载因子(0.75)
+	int：用给定的容量和默认的负载因子
+	int,folat：使用给定的容量和负载因子
+	map：先在(map.size/0.75+1)和16之间取最大值，然后用最大值和0.75调用int, folat构造器，再
+调用inflateTable进行扩容，再调用putAllForCreate(map)，把传入的map插入新表中
+
+属性：
+
+threshold：扩容的阈值，一旦size>=threshold，就进行扩容
+
+loadFactor：负载因子，决定了表扩容的时机，一旦size>=当前表.length*负载因子，就会扩容
+
+方法：
+
+get：内部调用了getEntry
+
+getEntry：根据给定的key计算hash，然后调用indexFor根据hash找到index，然后在该链表找到能对应的key
+，并返回值
+
+getForNullKey：获取key为null的数据，因为null是放在table[0]的位置，因此直接在table[0]的位置找null
+
+put：根据给定的key计算hash，然后调用indexFor根据hash找到index，然后在该链表找到能对应的key，如
+果能找到，就修改它的值，并返回旧值，找不到就增加新的Entry，并返回null
+
+putForNullKey：先在table[0]找有没有key为null的数据，有就改变成新值，并返回旧值，没有就插入
+table[0]的链表头,并返回null
+
+putAllForCreate(map)：把传入的map用putForCreate插入表里
+
+putForCreate(key, value)：判断key是否已经存在，存在就替换值，不存在就调用createEntry增加新值
+
+createEntry：新建一个Entry并插入它对应index的链表头
+
+putAll(map)：将给定的map添加到当前的map里，如果当前的map是空的，就调用inflateTable进行扩容，如
+果传入的map的size大于现表的阈值，就用给定表的size/loadFactor+1来取得目标容量，然后当前表的length
+值一直左移1(<<1)，直到当前表的length不再小于目标容量，然后根据该值调用resize函数进行扩容，扩容
+后再把给定表的数据都用put添加到新的表里
+
+remove(key)： 调用removeEntryForKey删除该值，并返回被删除key对应的value
+
+removeEntryForKey：就是找到对应的key，对于e来说，prev保存的是它的上一个，next保存的是它的下一个
+，只要确定删除的是这个e，那么直接把它的上一个的next指向下一个，达到在hashMap删除的目的，还有一
+种可能，prev==e，这时候数据在链表头，直接把table[index]=e.next，直接指向下一个就可以了
+
+removeMapping：根据给定的Entry删除HashMap中所有与指定Entry的key和value都相等的Entry，在EntrySet
+里面的remove调用
+
+clear：清空talble的所有数据，不过会保留容量，并且modCount++，因为只是给table的每个下标都置null
+
+clone：克隆了当前的map，并返回，克隆的代码调用了其它语言,不过后面的代码怎么看都像是创建一个新的
+map，然后把原来的map用putAllForCreate插入新的map
+
+containsValue(v)：判断是否有value的值为给定的value，有返回true，否则返回false
+
+containsNullValue：判断是否有value的值为null，有的话返回true，否则返回false
+
+addEntry：增加新的Entry，如果size到达阈值(size>=threshold)，并且该新Entry所在的下标已经有数据了
+，就会进行扩容(旧表长度的两倍)
+
+resize：根据给定的新容量对表扩容，并调用transfer转移数据，重新计算阈值，前提是旧表没有达到最大
+容量(MAXIMUM_CAPACITY),如果达到的话，就会把阈值(threshold)设为Integer.MAX
+
+modCount：记录表数据量改变的次数(比如增加新数据会++，删除也会++)，用来维持Iterator的一致性
+
+containsKey：判断一个key是否存在，直接看getEntry(key)能不能找到数据，返回不为null，则返回true，
+因为返回的是一个Entry对象，因此就算value为null，只要存在这个key就不会返回false
+
+hash：根据给定的key配合hashSeed返回一系列计算后的hash值
+
+loadFactor：负载因子的作用是，扩容后，如果某次增加新的元素，加了之后size的>=threshold大小，就会
+再次扩容,每次扩容的长度是上次的两倍
+
+threshold：扩容阈值，每次扩容后都把值更新为：扩容后长度*负载因子，如果表长度到了阈值，就会进行扩
+容(原长度*2)
+
+hashSeed：计算hash值的种子，就是计算中的某个系数
+
+initHashSeedAsNeeded(int)：尝试改变种子的值，修改成功返回true，未修改返回false
+
+indexFor(int, int)，通过hash&table.length的方式来计算桶的位置，也就是key的下标
+
+transfer：表数据转移，旧表转移到新表，数据从旧表到新表不一定会放到一样的下标，因为有可能经过扩
+容了，而index是受到表长度影响的，因此不能直接应用旧表的下标到新表，而rehash是initHashSeedAsNeeded
+的返回值，如果返回false，就说明种子(hashSeed)没有改，因此hash值就不用重新计算，大概流程：
+	1、把旧表中的一个数据取出来（先用for遍历数组，再用while遍历链表，就是一般的遍历..）
+	2、数据先根据rehash判断该数据要不要重新计算hash值
+	3、然后用indexFor计算该数据的index
+	4、把该数据放到对应新表[index]的最顶部，做法是：talbe[index]=data;data.next=oldData
+	5、重复第一步，直到没有数据
+
+roundUpToPowerOf2：根据给定的toSize，返回((toSize-1)<<1)的最高位(不直接*2是因为要容量是2的次方，
+那为什么要toSize-1？)
+
+inflateTable:对table进行扩容，newTable的容量根据给定的toSize从roundUpToPowerOf2函数获取，并对阈
+值(threshold)进行更新，然后调用initHashSeedAsNeeded()尝试更新hashSeed的值
+
+init：init的是个钩子，虽然HashMap没有调用，但是子类会重写并在初始化时调用，比如LinkedHashMap会
+用来初始化双向链表头
+
+keySet：返回一个KetSet
+
+values：返回一个Values
+
+entrySet：返回一个EntrySet
+
+readObject、writerObject：
+	HashMap为什么要自己实现序列化？
+	    因为引用对象的hash值在不同的JVM里面会不一样，因此如果直接序列化HashMap对象，可能序
+	列化前它的index在0，序列化后再次它的index实际在2，可是数组里面它依然在0，因此如果用get
+	方法，在这种情况下会找不到该Entry，因此HashMap自己设计了序列化，只保存key和value，序列
+	化后再用一个新的HashMap重新计算该hash值，并重新添加，而不是保存整个数组，这种样就避免了
+	hash不一致的问题
+	
+	因此可以看到一些会被更换JVM影响的属性都会加上transient关键字：
+		table、size、modCount、hashSeed、keySet、values、entrySet
+	
+Class：
+	
+HashIterator：
+		expectedModCount：防止并发状态下迭代过程中HashMap被修改，导致同一迭代器在不同时
+	间使用获取的数据不一致，因为modCount记录结构的修改次数，因此迭代器如果自己修改了结构就
+	会更新expectedModCount与HashMap的modCount一致，因此如果外部修改了结构，就会使modCount发
+	生改变，使两个数据不一致，这时候如果再使用迭代器的主要功能，就会抛出ConcurrentModificationException
+	异常，主要功能指next和remove，hashNext没有此判断
+
+	迭代的顺序是按照数组+链表遍历的方式
+
+	    迭代器有三个实现分别是ValueIterator、KetIterator、EntryIterator，一眼就看的出来，分
+	别迭代Key、Value、Entry，分别用newKeyIterator、newValueIterator、newEntryIterator来获取，
+	Values和KetSet都是获取了EntrySet，然后返回EntrySet的key和value
+KetSet：
+		实现了AbstractSet，size、contains、remove、clear等方法都是调用HashMap的，注意因
+	为是KetSet，所以调用的方法都是根据Ket，比如containsKey、removeEntryForKey
+	iterator返回KetIterator
+
+Values：跟KeySet大同小异，参考就行了，Iterator返回ValueIterator
+
+EntrySet：跟KeySet大同小异，参考就行了，Iterator返回EntryIterator
+
+关于HashMap线程不安全：
+	应该是put的时候，线程1遍历到后面，都找不到对应的key，准备增加新的Entry，这时候线程2插入
+了一个相同的Entry，并且插在线程1遍历过的index前面，线程1这时已经遍历到后面了，因此不知道前面增
+加了Entry，线程1遍历结束后，认为这个key不存在，就调用了addEntry，这时HashMap里面有了两个Entry的
+key相同
+
+
+
+
+
+
+
+
+
+
+
+

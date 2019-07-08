@@ -1,0 +1,279 @@
+package com.ry600;
+
+import static org.junit.Assert.assertTrue;
+
+import com.google.gson.Gson;
+import com.ry600.nursing.common.constant.VipAddressConstants;
+import com.ry600.nursing.dto.GDAddressRet;
+import com.ry600.nursing.util.RemoteUtil;
+import okhttp3.Response;
+import org.junit.Test;
+
+import java.io.*;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.*;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+/**
+ * Unit test for simple App.
+ */
+public class NioTest {
+	/**
+	 * nio文件读取
+	 */
+	public String readData(InputStream is) {
+
+		//获取通道
+		try (ReadableByteChannel channel = Channels.newChannel(is)) {
+			//分配缓冲空间
+			//ByteBuffer有两种模式，一种是直接模式、一种是间接模式
+			//间接模式就是直接用ByteBuffer.allocate(1024)，这样会返回一个HeapByteBuffer类的实现，它是直接操作byte[]的，但是内存毕竟有限
+			//如果操作大文件的话,用byte[]就很不实际了，这时候就需要直接模式，即MappedByteBuffer，MappedByteBuffer会把文件直接映射到虚拟内存
+			//虚拟内存就是在内存不够的时候，把部分内存中没用到的数据放到磁盘，需要时再取出来，在windows下会生成一个PageFile.sys文件，因为存在磁盘中，因此速度比不上真正的内存
+			//虚拟内存：计算机系统内存管理的一种技术。它使得应用程序认为它拥有连续的可用的内存（一个连续完整的地址空间），而实际上，它通常是被分隔成多个物理内存碎片，还有部分暂时存储在外部磁盘存储器上，在需要时进行数据交换。
+			//通常MappedByteBuffer可以映射整个文件，如果文件太大，可以分段映射，只要指定文件的部分就行了
+			//MappedByteBuffer有3种模式，分别为，只读、读写、专属，参考FileChannel.MapMode的3个静态常量
+			//只读：修改MappedByteBuffer将会抛异常
+			//读写：不过写了之后如果其它程序也在读同一文件，并且已经读入了通道，那么可能更改的内容对其它程序可能不可见
+			//私有：对缓冲的修改会创建一个修改部分的专用副本，对其它程序不可见
+			//MappedByteBuffer实测比ByteBuffer快了一倍多，MappedByteBuffer直接把文件读取到内存，然后用操作系统底层函数直接取到数据，而ByteBuffer读到内存之后，还要读取到java用户空间中，额外转了一次
+			//MappedByteBuffer有个资源释放问题，在打开文件后，这个文件只有在垃圾收集时才会被关闭，这个点是不确定的
+			//MappedByteBuffer有3个额外的方法：
+			//force：在读写环境下把对缓冲区的修改写入文件中
+			//load：将缓冲区的内容载入内存，并返回获取缓存的引用
+			//isLoaded：判断缓存区的内容是否在物理内存中
+
+			ByteBuffer buf = ByteBuffer.allocate(1024);
+			StringBuilder sb = new StringBuilder();
+			//把数据写入缓冲区
+			//compact()：把下一个可用指针移到当前现有数据的后一位，这样写入的时候就不会覆盖旧数据了，而是在旧数据后面进行添加
+			//clear()：只是把下一个可用设置为起始位置(0)，下一个不可用设置为总容量
+			//flip()：把下一个不可用设置为下一个可用，下一个可用设置为0，这样重新读就从0读起，并且只会读到上一次写入的位置，不会被旧数据影响
+			//mark()：记录当前的指针
+			//mark()：把前面记录的指针替换成当前的指针
+			//transferTo()：把通道的数据传到其它通道
+			//transferFrom()：把其它通道的数据传到本通道
+			//多余的旧数据不同去管，并且不会被影响，每个地址只有使用的时候才回去重新赋值，并且同一对象可以复用，新旧数据不干涉
+			byte[] dataBuf = new byte[1024];
+			for (int count = -1; (count = channel.read(buf)) >= 0 && buf.flip().hasRemaining() && buf.get(dataBuf, 0, count) != null; buf.compact()) {
+				sb.append(new String(dataBuf, 0, count, StandardCharsets.UTF_8));
+//				System.out.print(new String(dataBuf, 0, count, StandardCharsets.UTF_8));
+			}
+			return sb.toString();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return "";
+		}
+
+	}
+	/**
+	 * 文件读写测试
+     */
+	@Test
+	public void fileChannelTest() {
+		try (RandomAccessFile raf = new RandomAccessFile("C:\\Users\\admin\\Desktop\\text.txt", "rw");
+			 FileChannel channel = raf.getChannel();) {
+
+			ByteBuffer buf = ByteBuffer.allocate(1024);
+
+			//limit在read之后不会自动设置到读到的位置，要自己设置
+			for (int count = -1; (count = channel.read(buf)) > 0; buf.limit(count)) {
+				System.out.print(new String(buf.array(), 0, count, StandardCharsets.UTF_8));
+			}
+			buf.compact().put("嘿嘿嘿".getBytes(StandardCharsets.UTF_8)).flip();
+			channel.write(buf);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * nio客户端
+	 */
+	@Test
+	public void client() {
+		try (SocketChannel socketChannel = SocketChannel.open(new InetSocketAddress(8181));) {
+			//设置非阻塞
+			socketChannel.configureBlocking(false);
+
+			//是否已经建立连接，结果能马上返回
+			if (socketChannel.finishConnect()) {
+				ByteBuffer buf = ByteBuffer.allocate(1024);
+				for (int i = 0; i < 10; i++) {
+					TimeUnit.SECONDS.sleep(1);
+					String info = "这是第" + (i + 1) + "秒";
+					buf.clear();
+					buf.put(info.getBytes());
+					buf.flip();
+					while (buf.hasRemaining()) {
+						socketChannel.write(buf);
+					}
+				}
+			}
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * bio服务器
+	 */
+	@Test
+	public void server() {
+		try (ServerSocket serverSocket = new ServerSocket(8181);) {
+			while (true) {
+				Socket clientSocket = serverSocket.accept();
+				System.out.println("客户端地址：" + clientSocket.getRemoteSocketAddress() + ":" + clientSocket.getPort());
+				String result = readData(clientSocket.getInputStream());
+				System.out.println(result);
+				if ("exit".equals(result)) {
+					break;
+				}
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * nio服务器选择器
+	 */
+	@Test
+	public void selector() {
+		try (Selector selector = Selector.open();
+			 //打开服务器通道
+			 ServerSocketChannel ssc = ServerSocketChannel.open();) {
+
+			//绑定端口
+			ssc.socket().bind(new InetSocketAddress(8181));
+			//配置非阻塞
+			ssc.configureBlocking(false);
+			//注册选择器，注册进选择器的通道必须在非阻塞状态，因为注册完之后都是针对选择器进行操作，因此可以注册多个通道，然后由选择器统一处理，做到单线程处理多个请求
+			//SelectionKey有4个静态常量，分别对应几个感兴趣的事件，可以监听4种不同类型的事件，并且包含了刚注册的选择器和通道信息，能通过相应方法获取，那是不是可以同一通道注册多次，每次指定不同的事件？
+			//返回的SelectionKey对象包含了当前注册的感兴趣事件和对应的通道集合，并且可以对interestOps值进行读写(也就是切换值)
+			//interestOps：当前注册的感兴趣的事件
+			//readyOps：准备就绪的操作
+			//那4个判断监听的方法其实就是在判断readyOps的值等于哪个，等于哪个事件就说明监听到了哪个事件
+			//attach(obj)：将信息附着到SelectionKey上，这样就能更方便地识别某些特定通道，可以用attachment()获取，这个值也可以在register的时候在第三个参数传进去
+			ssc.register(selector, SelectionKey.OP_ACCEPT);
+			while (true) {
+				//每过5秒都查询一次是否有新的连接
+				//selector()会阻塞到有新的连接进来
+				//selector(timeout)会阻塞到超时的时间，如果还没有连接就会返回0
+				//selectNow()会直接返回，如果通道变成可选择的，那么会直接返回0
+				if (selector.select(5000L) == 0) {
+					System.out.println("未发现可用连接，即将开始新的轮询...");
+					continue;
+				}
+				//selectedKeys()获取所有可选择的通道，自己需要把通道转成想要的，比如ServerSocketChannel和SocketChannel等
+				//遍历所有的新连接
+				for (SelectionKey key : selector.selectedKeys()) {
+					//以下4个if分别对应4个可监听的事件
+					//连接就绪
+					if (key.isAcceptable()) {
+						//监听连接，在非阻塞模式下，accept()会立即返回，如果没有连接，那么accept()会返回null，因此需要对返回结果进行检查
+						SocketChannel sc = ((ServerSocketChannel) key.channel()).accept();
+						sc.configureBlocking(false);
+						sc.register(key.selector(), SelectionKey.OP_READ, ByteBuffer.allocateDirect(1024));
+						System.out.println("发现来自" + sc.getRemoteAddress() + "的连接");
+					}
+					//读就绪
+					if (key.isReadable()) {
+						SocketChannel sc = ((SocketChannel) key.channel());
+						ByteBuffer buf = (ByteBuffer) key.attachment();
+						int count = sc.read(buf);
+						System.out.println(sc.getRemoteAddress() + "：");
+						while (count >= 0) {
+							buf.flip();
+							if (buf.hasRemaining()) {
+								byte[] datas = new byte[count];
+								buf.get(datas);
+								System.out.print(new String(datas, StandardCharsets.UTF_8));
+							}
+							buf.clear();
+							count = sc.read(buf);
+							if (count < 0) {
+								sc.close();
+							}
+						}
+						System.out.println();
+					}
+					//写就绪
+					if (key.isValid() && key.isWritable()) {
+						ByteBuffer buf = (ByteBuffer) key.attachment();
+						buf.flip();
+						SocketChannel sc = ((SocketChannel) key.channel());
+						while (buf.hasRemaining()) {
+							sc.write(buf);
+						}
+						buf.compact();
+					}
+					//是否可以连接
+					if (key.isValid() && key.isConnectable()) {
+						System.out.println("isConnectable = true");
+					}
+				}
+				selector.selectedKeys().clear();
+			}
+
+		} catch (Exception e) {
+			System.out.println("服务器异常，即将退出...");
+			e.printStackTrace();
+		}
+	}
+
+	@Test
+	public void consumeTimeTest() {
+		byteBufferConsumeTimeTest("C:\\Users\\admin\\Desktop\\tmp\\视频\\1.mp4");
+		mappedByteBufferConsumeTimeTest("C:\\Users\\admin\\Desktop\\tmp\\视频\\1.mp4");
+	}
+
+	/**
+	 * ByteBuffer读取效率测试
+	 */
+	public void byteBufferConsumeTimeTest(String file) {
+		try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
+			 FileChannel channel = raf.getChannel();) {
+			long start = System.currentTimeMillis();
+			ByteBuffer buf = ByteBuffer.allocate((int) raf.length());
+			channel.read(buf);
+			long end = System.currentTimeMillis();
+			System.out.println("ByteBuffer consume time：" + (end - start));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+	/**
+	 * MappedByteBuffer读取效率测试
+	 */
+	public void mappedByteBufferConsumeTimeTest(String file) {
+		try (RandomAccessFile raf = new RandomAccessFile(file, "rw");
+			 FileChannel channel = raf.getChannel();) {
+			long start = System.currentTimeMillis();
+			MappedByteBuffer mbb = channel.map(FileChannel.MapMode.READ_ONLY, 0, raf.length());
+			byte[] bytes = new byte[(int) raf.length()];
+			mbb.get(bytes);
+			long end = System.currentTimeMillis();
+			System.out.println("MappedByteBuffer consume time：" + (end - start));
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+
+}

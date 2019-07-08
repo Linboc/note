@@ -1,0 +1,557 @@
+
+Redis数据结构：
+	
+	String：
+		描述：可以是字符串、整数或浮点数
+		操作：对整个字符串或者其中的某一部分进行操作，整数和浮点数可以自增或自减
+
+	List：
+		描述：链表(没错就是LinkedList)，每个节点都是一个String
+		操作：双向链表的增删功能，根据偏移量对链表进行修剪，读取单个或多个元素，根据值
+查找或移除元素
+
+	Set：
+		描述：看描述其实就是java的set，每个节点都是一个String
+		操作：Set的基本操作都有，添加、获取、移除、检查是否存在，计算交集、并集、差集，
+随机获取元素
+
+	Hash：
+		描述：书里描述的似乎是一个Map
+		操作：键值对，默认的get和set命令似乎就是这个结构
+
+	ZSet：
+		描述：有序的Hash集合，它的值只能为数字，并且会根据值来排序，当score相等时，会根据member进
+		行排序
+		操作：除了基础的增删查，还有根据分值范围或者成员来获取元素
+
+Redis命令：
+
+	key-name：要操作的集合的名字
+
+	String：行为 key-name
+
+		incr key-name：将键的值的+1
+
+		decr key-name：将键的值的-1
+
+		incrby key-name amount：将键的值加amount，amount只能是整数
+
+		decrby key-name amount：将键的值减amount，amount只能是整数
+
+		incrbyfloat key-name amount：将键的值加amount，支持浮点型，2.6以上版本才支持
+		以上如果不存在则创建这个键，默认值为0，然后再执行相应操作
+		
+		append key-name value：把value追加在原来的值后面
+
+		getrange key-name start end：获取key-name从start到end位置的值，包括start和end(跟旧版的substr一样)
+
+		setrange key-name offset value：替换key-name的值，从offset开始，value有几个就替换几个，
+	此功能如果value的长度超过原来的长度会自动扩展，如果offset超过原来的长度会自动加\x00
+
+		setnx：只有在该key不存在的时候才会执行set操作，set成功返回1，如果值已存在返回0
+
+		setex：在setnx的基础上多了一个参数，同时设置键的过期时间
+
+
+	list：行为 key-name 值
+		rpush key-name item：从链表右边插入一个item
+
+		lpush key-name item：从链表左边插入一个item
+
+		lpop key-name：从列表左边弹出一个元素
+
+		rpop key-name：从列表右边弹出一个元素
+
+		lrange key-name 0 -1：获取链表所有数据，-1改成3就是获取0到3位置的元素
+
+		lindex key-name 1：获取1下标的元素
+
+		ltrim key-name start end：对列表进行修剪，只保留start到end的元素，包括start和end
+
+		blpop key-name [key-name...] timeout：从多个key-name中的左边弹出一个值，如果多个key-name都没
+	有值，则持续阻塞timeout秒，如果到了时间还是没有值就返回(nil)
+
+		blpop key-name [key-name...] timeout：从多个key-name中的右边弹出一个值，如果多个key-name都没
+	有值，则持续阻塞timeout秒，如果到了时间还是没有值就返回(nil)
+		
+		rpoplpush source-key dest-key：从source-key的右边弹出一个值，塞入dest-key的左边
+
+		brpoplpush source-key dest-key timeout：从source-key的右边弹出一个值，塞入dest-key的左边
+	，如果source-key为空，那么在timeout秒之内阻塞并等待可弹出的元素出现
+		前面加b的就是block(阻塞)的意思
+
+
+	set：行为 key-name 值
+
+		sadd key-name item [item...]：把item加入set，并返回成功添加的item的数量(item已存在则不计算)
+
+		srem key-name item [item...]：把item从set移除，并返回成功移除item的数量(item不存在则不计算)
+
+		sismember key-name item：set中是否存在item，存在返回1，不存在返回0
+
+		smembers key-name：返回set中所有的元素
+
+		scard key-name：返回set中元素的数量
+
+		spop key-name：随机移除一个元素，并返回被移除的元素
+
+		smove source-key dest-key item：把source-key中的item转移到dest-key，如果item被成功从source-key
+	中移除返回1，移除未成功或者item不存在返回0
+
+		并集、交集、差集：
+
+		sdiff key-name [key-name...]：返回存在于第一个集合，但不存在于其他集合中的元素(第一个集合
+	跟其它集合的差集)
+
+		sdiffstore dest-key key-name [key-name...]：将存在于第一个key-name，但不存在于其它key-name
+	中的元素存到dest-key中
+
+		sinter key-name [key-name...]：返回同时存在于所有集合中的元素(交集)
+
+		sinterstore dest-key key-name [key-name...]：把同时存在于所有集合中的元素存到dest-key(交集)
+
+		sunion key-name [key-name...]：返回至少存在于一个集合中元素(并集)
+
+		sunionstore dest-key key-name [key-name...]：把至少存在于一个集合中元素存到dest-key(并集)
+
+
+	hash：行为 key-name 值
+		hset key-name key1 value1：把key1的映射设为value1，返回新增元素的数量
+
+		hget key-name key1：获取key1的值
+
+		hdel key-name key [key...]：删除key-name中的多个key，返回成功删除的数量
+
+		hgetall key-name：获取所有的映射
+
+		hmget key-name key [key...]：获取key-name中的多个key的值
+		
+		hmset key-name key value [key value...]：为key-name的多个key赋值
+
+		hlen key-name：返回key-name包含的键值对数量
+
+		hexists key-name key：该key是否存在于key-name中
+
+		hkeys key-name：返回该key-name中的所有键
+
+		hvals key-name：返回该key-name中的所有值
+
+		hincrby key-name key amount：将key-name中的key的值加上amount(整数)
+
+		hincrbyfloat key-name key amount：将key-name中的key的值加上amount(可以是浮点数)
+
+	zset：行为 key-name 值
+		zadd key-name 110 member1：增加一个member为member1，score为110的映射，返回新增元素的数量
+
+		zrange key-name 0 -1：获取所有元素，只有member，根据score排序，把-1改成其它的也是获取所有
+
+		zrange key-name 0 -1 withscores：获取所有的元素，包含member和score，根据score排序
+
+		zrem key-name member1：删除键为member1的元素
+
+		zrangebyscore key-name min max：返回分值在min和max范围内的所有member
+
+		zrangebyscore key-name min max withscores：返回分值在min和max范围内的所有member和score
+
+		zincrby key-name amount member：将member的值加上amount
+
+		zcount key-name min max：返回分值介于min和max之间的成员的数量
+
+		zrank key-name member：返回member在有序集合中的排名
+
+		zscore key-name member：返回返回member的值
+
+		zrevrank key-name member：返回集合里的member排名，排名按照从大到小计算
+
+		zrevrange key-name member start stop [withscores] [limit offset count]：返回集合里start到
+	stop范围内的member排名，排名按照从大到小计算，如果加了withscores则同时返回分值
+
+		zrevrangebyscore key-name min max [withscores] [limit offset count]：返回分值在min到max
+	之间的memeber，加了withscores可以同时返回分值，并按照分值从大到小排序
+
+		zremrangebyrank key-name start stop：移除集合中位置介于start和stop中的元素(rem移除range
+	区间by根据rank等级)
+		
+		zremrangebyscore key-name min max：移除分值介于min和max中的元素(rem移除range区间by根据
+	score分值)
+
+		zinterstore dest-key key-count key [key...]：对给定的集合进行交集运算，把结果放进dest-key
+
+		zunionstore dest-key key-count key [key...]：对给定的集合进行并集运算，把结果放进dest-key
+
+		有序集合的的聚合是判断键是否相等，如果相等的话，就对值进行聚合操作，ZParams的Aggregate枚
+	举类型：SUM, MIN, MAX，默认的聚合函数式SUM
+
+	通用的命令：
+
+		rename：把key-name替换成新的，如果返回OK说明成功，这样旧的key对应的值就为null了，新key拥
+	有旧key的值
+
+		key *：获取所有的key-name
+
+	消息订阅、发布：
+
+		publish channel message：向指定频道发布消息
+		
+		subscribe channel [channel...]：订阅一个或多个频道的消息
+
+		unsubscribe channel [channel...]：退订一个或多个频道，如果不指定频道则退订所有
+
+		psubscribe pattern [pattern...]：订阅与给定模式相匹配的所有频道
+	
+		punsubscribe pattern [pattern...]：退订与给定模式相匹配的所有频道，如果不指定模式则退订所有
+
+		退订只是某个订阅者的行为，发布者不受影响
+
+		发布：conn.publish("channel-1", "通道1消息1");
+		订阅：conn.subscribe(jps, "channel-1");	
+		jps是一个自定义类，通道收到信息或者进行相关行为会对这个对象的对应方法进行回调
+
+	sort：
+		sort source-key [ASC|DESC] [ALPHA] [STORE dest-key]：常用的排序语句
+				 正序|倒序  是否以字母表排序  排序的结果放到目标key
+		
+
+	事务：
+		事务使用：用multi开启事务，同时返回事务对象，用事务对象执行exec提交事务
+
+		redis在执行事务的过程中，会延迟执行已入队的命令直到客户端发送exec命令为止，大多数redis客
+	户端都会等到事务包含的所有数据都出现之后，才会一次性地以exec命令发送给redis服务器，然后等待到redis
+	返回所有命令的回复为止，因此事务会自动使用流水线功能
+
+		redis的事务不会对数据进行加锁，比如关系型数据库里如果要对某个数据操作，包括查询和修改，数
+	据库就会对相关数据进行锁定（共享锁和排他锁），这样后面访问的事务就会被阻塞，直到前面的事务执行完
+	成后释放锁，才能进行修改，用的是悲观锁；而redis如果同一数据被多个事务进行修改，那么前面的会直接修
+	改成功，后面的exec方法会返回null（前提是用了watch对相关key进行了监听），用的是乐观锁，因此后面的
+	修改要在返回null后进行重试，这样做的好处是不用等待其他事务执行，减少了客户端的等待时间，坏处是要
+	做好修改失败后的处理方式
+		
+	WATCH(监视)：
+		可以监听一组key，在监听开始到执行exec的过程中，如果该key中的值被修改了，那么exec就会返回
+	null，可以防止在查询某些值的时候，还未执行相关修改，该值就被修改了，也就是说只能在流水线或者事务
+	执行时进行监视，因为一般命令根本用不着exec，watch有个问题，那就是极其容易被触发，特别是在数据量大
+	的时候，程序如果每次监听到被修改都进行重试的话，会引起很频繁的重试
+
+	unwatch：如果监视之后想取消监视，可以使用unwatch来取消当前的所有监视
+
+	discard：如果在事务开启之后，想取消监视，依然可以用discard取消监视
+
+
+	流水线：
+		流水线使用：用conn.pipelined()获取流水线，用pipelined.exec()提交流水线，事务自动使用流水线
+
+		pipelined方法，使用该方法返回的对象执行命令，可以把命令存储在本地，等到执行pipelined对象
+	的exec方法才会一次性把命令发给服务器，通过减少客户端与Redis服务器之间的通信次数来提升Redis在执行
+	多个命令时的性能，因为是批量执行，因此会返回一个List<Object>，包含多个命令的执行结果，缺点就是不
+	能即时获取命令的返回结果
+
+
+		
+	
+	键的过期时间(过期就是删除的意思)：
+		persist key-name：移除键的过期时间设置
+
+		ttl key-name：查看键距离过期时间还有多少秒,如果已过期返回-1
+
+		expire key-name seconds：指定键在seconds秒后过期
+
+		expireat key-name timestamp：键在到达指定UNIX时间戳的时候到期，只能精确到秒
+
+		pttl key-name：查看键距离过期还有多少毫秒(2.6版本后可用)
+
+		pexpire key-name milliseconds：指定键在milliseconds毫秒后过期(2.6版本后可用)
+
+		pexpireat key-name timestamp-milliseconds：设置一个毫秒精度的时间戳为到期时间(2.6版本后可用)
+
+	redis的存储方式分为两种：硬盘数据库工作模式和内存数据库工作模式，硬盘数据库模式就是把key(索引)存
+储在内存中，值存储在硬盘中，内存工作模式就是把key和value都存在内存中，这样更快当然也更耗内存
+
+	redis的单线程是指redis服务器在处理网络请求的时候使用多路I/O复用模型，只用一个线程进行处理所有请求
+(nio?)，正式运行redis server的时候肯定不止一个线程，必须在进行持久化操作的时候就是多线程，因为要等到i/o操
+作，单线程阻塞着太浪费时间了
+
+	如果单线程运行就已经占用
+
+	每个key的类型可能在第一次赋值就确定了，比如用lpush key1 item增加了一个key1键，然后用hget key1 item
+就会报错：ERR Operation against a key holding the wrong kind of value
+
+	直接用get和set，这个key的类型就是String，可以直接对这个key进行incr、decr等，对于集合就必须指定到
+具体的元素
+
+	Redis的所有配置文件都需要在运行时指定，只改配置文件不指定是不会生效的，比如在命令行启动服务器：
+redis-server redis.conf，这样配置文件里面的内容才会被加载，如果要指定某个参数，比如客户端启动需要指定端口
+，可以用：redis-cli -p 6378
+
+持久化：
+
+	快照持久化(RDB)：
+
+		快照持久化会保存某个时间点上的数据副本，每次持久化新文件替换旧文件
+		
+		bgsave：开一个子进程将快照写入硬盘,Windows可能不支持,会调用fork创建子进程,可能Windows没有
+
+		save：将快照写入硬盘，在快照创建完毕前不响应其它任何命令，一般不常用，如果没有足够的内存
+	执行bgsave的话可以考虑这个，因为少了一个子进程争抢资源，所以比bgsave快一些，可能有4-5倍
+
+		save 60 10000：从Redis最近一次成功生成快照算起，60秒之后，并且有10000次写入的话就会自动触
+	发bgsave，如果设置了多个save n n，那么任意一个满足了都会触发一次bgsave，配置文件中指定
+
+		shutdown：会执行save命令，执行完毕后关闭服务器
+
+		sync：当连接另一个Redis服务器，并向对方发送sync命令开始一次复制操作的时候，如果主服务器
+	没有正在执行或者刚执行完bgsave操作的话，那么主服务器就会执行bgsave命令，主服务器指的是主从服务器
+	中的主服务器
+
+	注意！使用快照持久化来保存数据，如果系统发生奔溃，用户将对视最近一次生成快照之后的更改的所有数据，
+因此快照持久化只适合即使丢失一部分数据也没关系的应用
+
+	书里讲的对日志进行聚合计算，日志不是指redis的日志，而是应用程序的日志，把日志里面记录的数据加到
+redis里面，并且记录读到什么位置，如果redis的数据丢失了，就可以通过读取日志文件来恢复redis的数据
+
+	dbfilename，dir，port那些都是在配置文件中配置的，在本机中是在服务器应用根路径的redis.conf文件中
+
+
+	AOF持久化(append only file)：
+	
+		appendonly yes：打开aof持久化
+
+		appendfsync x：同步频率，always：每次写入都同步到硬盘,everysec：每秒执行一次,no：让操作系统决定
+
+		bgrewriteaof(重写)：把当前服务器的数据以aof的格式写入一个新的临时文件，然后替换掉旧文件，
+			因为旧的aof文件可能有修改、删除记录，而新的aof只有写入命令，因此肯定小很多
+
+		auto-aof-rewrite-percentage 90：如果开启了aof持久化，并且文件比上次大了至少90%，就会进行
+	重写，如果这两个属性同时配置了，那么这两个条件同时满足的情况下才会进行重写
+	
+		auto-aof-rewrite-min-size 64mb：如果开启了aof持久化，并且aof文件的体积大于64mb，就会进行
+	重写，如果这两个属性同时配置了，那么这两个条件同时满足的情况下才会进行重写
+
+		所以目前就是，开启了aof持久化，并且aof文件比上次大了90%，并且aof文件大于64mb的话，就重写
+
+		AOF持久化只会在每次执行写命令的时候都把该命令往文件后面追加，写命令包含添加、修改、删除等
+	，因此aof的效率比rdb更高，因为只需要追加，而rdb会把数据全部重新生成，覆盖；但是这样会有很多冗余命
+	令，因此文件通常更大，加载更费资源，比如某个数据在aof里面有写入-修改-删除命令，而在rdb里面就不会
+	有这个命令，当然aof如果重写过也不会有这个命令，用更冗余的备份文件换取更高的备份效率
+
+		redis服务器每次启动都会加载数据文件，如果同时存在rdb和aof，那么会以aof的为准，因为它触发
+	比rdb频繁，正常情况下数据也比rdb更完整
+
+
+	复制：
+		
+		slaveof host port：指定当前服务器的主服务器，连接的时候主服务器会执行bgsave，RDB的sync指
+	令有相关说明，这个命令可以放在配置文件中，也可以在服务器运行过程中发送命令成为从服务器
+
+		如果这个命令是用配置的方式，那么Redis在启动时首先会载入当前可用的任何快照或者aof文件，然
+	后执行连接主服务器步骤，如果用命令的方式，会在连接主服务器成功后，直接执行连接步骤
+
+
+		slaveof no one：让从服务器终止复制操作，不再接收主服务器的数据更新
+	
+	从服务器连接主服务器复制的步骤：
+
+		1、从服务器连接主服务器，发送sync命令
+
+		2、从服务器根据配置决定是根据当前现有的数据处理客户端的请求，还是向客户端返回错误
+
+		3、主服务器开始执行bgsave，并使用缓冲区记录bgsave之后执行的所有写命令
+
+		4、主服务器执行bgsave完毕，向从服务器发送快照文件，在此期间继续保持原来的工作	
+	
+		5、从服务器丢弃所有的旧数据，开始载入主服务器发来的快照文件
+
+		6、从服务器完成对快照文件的解释操作，像往常一样开始接受命令请求
+
+		7、主服务器快照文件发送完毕，开始向从服务器发送缓冲区里的写命令
+
+		8、主服务器缓冲区的写命令发送完毕，从现在开始，每执行一个写命令，都向服务器发送相同的命令
+
+		9、从服务器执行主服务器法发来的所有缓冲区的写命令，从现在开始，执行主服务器发来的每一个写命令
+
+	当多个从服务器同时连接同一个主服务器的时候，主服务器执行完旧的从服务器连接步骤之后，会对新的连接
+重复进行连接步骤
+
+	主从链：
+		如果一个主服务器拥有过多的从服务器，那么会造成网络不可用，因此从服务器也可以拥有自己的从
+	服务器，并由此形成主从链，这样从服务器就能分摊主服务器的压力，每次主服务器进行写入时都发送给所有
+	从服务器，当从服务器过多时，主服务器可能无法快速更新所有从服务器，因此主从链可以解决这个问题，主
+	服务器只需要给少量从服务器发送写请求，然后这些从服务器再给自己的从服务器发送相同的写请求，主从链
+	还可以把数据持久化到多个服务器上，只要这些从服务器都开启了持久化选项，这些从服务器都是独立的服务
+	器
+
+	从服务器连接从服务器进行复制的步骤：
+
+		从服务器对从服务器进行复制操作和从服务器对主服务器进行复制操作的唯一区别在于，从服务器在
+	进行对快照文件的解释操作时，会断开与从服务器的连接，导致从服务器需要重新连接并重新同步
+
+	
+	Redis不支持主主连接，也就是两个主服务器互相作为对方的从服务器
+
+	如果对从服务器执行写操作将引发一个错误，就算这个从服务器是其它从服务器的主服务器，也是如此，可以
+通过修改从服务器是否只读：slave-read-only默认为yes，改为no之后从服务器就能执行写入命令了
+
+	如果主服务器出了问题，短时间内无法修复，假如现在有一个主服务器，一个从服务器
+	那么可以把从服务器改为主服务器，也就是在从服务器运行slaveof no one，然后用一个新的从服务器连接为
+从旧从服务器的从服务器。
+	还可以在从服务器上运行save命令，保存最新的数据快照文件，然后把这个快照文件发给新的服务器，然后启
+动服务器，新的服务器就有了最新的数据，然后把新服务器当主服务器，用从服务器连接就可以了
+	以上的方法都需要修改客户端配置，让客户端去正确服务器进行读写
+
+	redis可以利用zset在score相等的时候会根据member的ASCII码进行排序，因此如果有时候看到zset的score全
+都是0，而又不直接使用set的话，可能就是想利用score为0根据member排序的特点；如果想获取前缀是abc的所有元素，
+并且里面的元素全都是英文，就可以通过插入abb{(z的后一个符号)和abc{，这能保证abc后面是任何值都会在它们的区
+间，并且获取他们所处位置，然后获取这两个位置之间的数据，完成操作后再删掉abc'和abc{就行了，如果怕并发操作，
+可以给abc'和abc{后面加uuid，自己删除自己创建的就行了
+
+	分布式锁：通过redis实现分布式锁
+		
+		需要自己实现，利用setnx命令，相同的锁对应相同的key-name，如果不存在该key-name则说明该锁可
+	获取，存在说明已被获取，如果用完了可以删掉该key-name来释放锁，value可以是一个随机生成的UUID，只有
+	持有者才知道，释放函数要判断传入的id是否和该key里面的一样来决定要不要释放锁
+
+		如果需要细粒度的锁，比如对一整个key-name进行加锁，那么可以用lock: + key-name来当key，其它
+	线程获取锁需要判断该key是否存在；如果只针对该key里面的某个值，可以用lock: + value来当key，其它线
+	程获取锁也需要判断该key是否存在才能操作该value，这样就能避免原本只需要一个或者一部分的值不被修改
+	，而让其他不相关的数据也会被锁住无法进行操作了
+
+		超时限制的锁，也就是会自动过期的锁，可以使用setnx命令，如果成功了，就用expire设置过期时间
+	，不成功说明锁已经被获取了，可以检查一下该锁是否设置了过期时间，如果没有，就为它设置一个过期时间
+	，因为可能在setnx之后程序奔溃了，导致没有设置过期时间，所以每次都判断一下是否要设置过期时间，也可
+	以用setex来同时设置value和过期时间，这样就保证肯定会有过期时间，就不用每次都判断是否有设置了
+		
+	信号量：
+		它也是一个锁，不过能同时被多次获取，并且有上限，比如同一个账号同时登陆多个平台，进行多项
+	操作，信号量可以限制它只能同时在5个平台登陆，可以用来做支持多平台登陆的token，同一个用户有多个token
+	，并且同一时间token有上限数量的那种，后进来的token会挤掉最旧的token，也可以用来在后台功能里做资源
+	竞争的锁；也可以限制并发量，比如服务器只允许客户端同时下载3个资源
+
+		每一个信号量都是一个key-name，它的类型是zset，key是生成的id，value是当前时间，然后判断当
+	前插入的这个id是排名在哪一位，比如最多只允许5位，那么如果新加入的信号量属于最新的那5位，那就保留
+	它，并清除多余或过期的信号量，然后返回id，否则就是获取失败，删除该信号量，已经成功获取的信号量可
+	以通过程序执行完毕后程序释放，也可以通过计算过期时间来自动释放
+
+		上面的信号量有一个问题，因为不同的系统时间是不一样的，如果某一个系统的时间比较快，那么它
+	总是能抢到信号量，哪怕其它系统请求的比他快，因为它的时间总是比较靠前；这时候可以使用计数器的方式
+	来解决，用一个key专门做一个计数器，然后每次想获取信号量都去获取一个计数，获取的计数越小优先级越高
+	，这样获取信号量的结果就跟请求的时机相关了，也可以同时再给该key做一个超时集合，这样就能自动过期了
+	，有效避免程序崩溃还占用信号量，这样就比较公平
+
+		可以增加一个刷新机制，去刷新计数和时间，也就是value值，这样能防止某一个进程一直在使用，只
+	是因为登录时间比较早，就被新进程刷新了，比如应用程序可以每次访问都刷新一下value，这样每次清除都只
+	会清除最长时间不使用的信号量
+
+
+Redis降低内存占用的几种方式：
+
+	分片(sharding)：
+		分片的本质上就是基于某些简单的规则将数据划分为更小的部分，然后根据数据所属的部分来决定将
+	数据发送到哪个位置上
+
+		redis中需要自己实现分片，大概方式是：通过传入的key计算出应该放到哪个key-name里面，类似于
+	HashMap里的forIndex（1.8没有这个函数了，直接key.hashCode & tab.length-1）了，然后get就去那个计算
+	出来的key-name里面去找，set也会把数据放到计算出来的key-name里面，这样就能把集中在一个key-name中的
+	大量数据分散在多个key-name里面，不过在任何操作之前都要加一步计算key-name
+
+	如果有一个计数器散列非常大，导致对这个散列的操作非常慢，那么把它分片成多个ziplist编码可以有效提高
+对其操作的性能(这个不一定，可能还会降低，因为散列的性能不会因为数据量而受太大影响)，并且还能大量节约内存
+
+
+	ziplist：
+		redis可以通过压缩数据以减少数据在内存中的占用，ziplist会以序列化的方式存储数据，这些数据
+	每次读取都要进行解码，写入也要进行重新编码
+
+		list-max-ziplist-entries 512：在压缩列表的情况下，最多能包含多少个元素
+		list-max-ziplist-value 64：在压缩列表的情况下，每个节点最大体积是多少个字节
+		如果超出了限制，redis就会将其从ziplist转回原来的结构
+		（3种结构的命令都类似，不过前面的list改为hash或zset）
+		
+		set的压缩有所不同，如果所有成员都可以被解释为十进制整数，并且成员的数量足够少的话，set会
+	以有序整数的方式存储集合，这种存储方式又被称为整数集合int set，也就是说，如果某个元素是非整形，
+	这个intset格式就会转换为hashtable格式
+
+		set-max-intset-entries 512：整数集合的最大元素数量
+		
+		debug object key-name：可以查看某个key的信息，里面有个属性时encoding，如果为ziplist就是
+	压缩列表
+
+		之所以有集合过大之后就不进行压缩，是因为随着压缩结构的体积变得越来越大，操作这些结构的速
+	度也会越来越慢，这样虽然减少了内存消耗，但是性能降低了，并且随着数据量的增大性能还会越来越差，可
+	以根据那几个配置设定一个平衡点，既可以降低内存消耗，也不会导致性能过差
+		
+		如果数据量过大，又想对数据量进行压缩，并且还想保持性能，可以考虑用分片，并且让每个分片都
+	保持在能够进行ziplist编码的范围
+	
+	将大量数据打包在字符串里面：
+		string类型是一个数组的格式，因此可以保持对string的某个下标直接进行操作而保持高性能
+
+		如果有大量数据需要保存，并且格式是固定的，那么可以考虑把那些数据进行一定的编码，然后保存
+	在string里，比如保存每个user的所属省和市的信息，首先根据userId决定他所在的位置，比如userId是:1,2,3...
+	，那么它在string中的位置就可以确定了，省和市可以看成两个数组，获取他们两个的下标，然后转成char，
+	占用两个字节，也就是说，如果userId是3，那么他会在3*2(字节数)的偏移量上，往后两个字节存储他的信息，
+	这样就能用string保存所有用户的位置信息了，并且能保持高性能，低内存占用
+
+		缺点是每次进行任何操作都要根据userId对下标进行计算，并且把位置信息下标转为对应字节
+	
+	
+	Redis Sentinel(哨兵)：
+		Redis Sentinel是运行在特殊模式下的Redis服务器，Sentinel会监视一系列主服务器以及它们的从服
+	务器，通过向主服务器发送publish和subscribe命令，并向所有服务器发送ping命令，各个Sentinel进程可以
+	自主识别可用的从服务器和其它Sentinel。当主服务器失效的时候(用ping命令判断？)，监视这个主服务器的
+	所有Sentinel就会基于彼此共有的信息选出一个Sentinel，并从现有的从服务器当中选出一个新的主服务器。
+	当被选中的从服务器转成主服务器之后，那个被选中的Sentinel就会让剩余的从服务器去复制这个新的主服务
+	器，默认配置下，Sentinel会一个一个地迁移从服务器，这个数量可以通过配置进行修改
+
+		一般来说，使用Sentinel的目的就是为了向主服务器属下的从服务器提供自动故障转移服务，Sentinel
+	还提供了可选的故障转移通知功能，在发生故障后，调用用户提供的脚本来执行配置更新等操作
+
+提升读性能：主从服务器，读写分离
+
+提升写性能：尽可能减少需要存储的数据量，保存计算结果而不是原始数据，用锁代替WATCH/MULTI/EXEC等会给速度带
+来限制的命令，如果都不行只能说明到了一台机器带来的瓶颈，这就需要多台服务器来分担压力，开多个服务器分片
+
+
+Redis的Lua脚本：
+
+	redis服务器2.6以上的版本才支持Lua脚本，使用Lua脚本对性能会有极大的提升，因为是在服务器直接执行，
+没有通信成本
+
+	script load file：加载脚本，加载的脚本会缓存在redis，加载之后会返回一个sha1字符串，这个字符串代表
+了载入的这个脚本
+
+	evalsha：执行脚本需要传入sha1值，通过加载Lua脚本时返回的值来调用对应脚本
+
+	script flush：清空脚本缓存
+
+	感觉目前用不上，先不管
+
+
+Redis的数据库：
+	Redis的数据库数量可以通过databases属性配置，默认是16，从db0到db15，可以通过select number命令切换
+到不同的数据库，各个数据库之间的数据不会共享
+
+
+各个文件的作用;
+
+	appendonly.aof:aof持久化文件
+
+	dump.rdb：快照持久化文件
+
+	redis.conf：redis配置文件，需要在运行服务器时指定才会生效,例如：redis-server redis.conf，配置也可
+		以在运行中设置
+
+	redis-benchmark.exe：测试redis服务器在本机器下理论上的极限性能，理论上的意思也就是看看就好
+
+	redis-check-aof.exe：检查aof文件，并且可以修复，修复就是把第一个出现错误的地方以及后面的所有数据
+		全部删除，命令：redis-check-aof --fix aof文件路径
+
+	redis-check-dump.exe：跟上面的差不多，不过换成了快照文件，这个好像无法修复
+
+	redis-cli.exe：客户端
+
+	redis-server.exe：服务器
+
+	libhiredis.dll：Redis的C客户端库函数
+
+随机读、写：
+	随机读、随机写，跟java的RandomAccessFile差不多，就是有个指针可以在表里自由移动，读取某
+一行的数据或在某一行写入

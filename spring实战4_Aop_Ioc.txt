@@ -1,0 +1,508 @@
+
+		Spring的目标是致力于全方面简化Java开发
+
+那么Spring是怎么简化的？
+
+Spring采取了以下4种关键策略：
+	1、基于POJO的轻量级和最小入侵性编程；
+	2、通过依赖注入和面向接口实现松耦合；
+	3、基于切面和惯例进行声明式编程；
+	4、通过切面和模板减少样板式代码。
+
+依赖注入：
+	如果在程序中new对象的话，那么这个对象在一开始就注定了，而如果使用依赖注入的话，那么
+对象将是动态的，谁也不知道它下一次会注入哪个类的对象，并且使用这个类的时候无需关心下一个注入
+的是什么类型，因为判断的逻辑不需要它来关心
+
+应用上下文(Application Context)：
+	Spring中的上下文可以理解为解析过后的XML文件，因为上下文可以直接从XML文件里面获取Bean,
+并且上下文的创建需要一个资源文件的路径。上下文的用处可以理解为加强的BeanFactory,因为它不止有
+BeanFactory的获取Bean的功能，应用上下文还能动态加载资源文件
+
+	Spring的Bean如果实现它给定的几个接口，实现的几个方法将会在初始化或对象销毁前调用，
+这些方法的调用Spring容器会完成，它会检测是否实现这几个方法来决定是否调用这些方法，这些方法
+也说明了Bean的生命周期
+
+	每个Spring模块都会有3个Jar文件，分别是二进制类库，源码的Jar和JavaDoc的Jar
+
+	如果要使用spring，那么可以使用@RunWith(SpringJUnit4ClassRunner.class)来进行测试，它会
+使spring的功能生效，@ContextConfiguration(classes=CDPlayerConfig.class)此注解是加载配置类，此
+时，配置并没有写在xml文件中，而是用注解的方式写在类中，因此加载了这个类，也会加载这个类上的注
+解配置，比如指定包扫描@ComponentScan后在应用上下文中就会有此包中所有使用了@Component注解的类的
+Bean，配置类还要使用@Configuration来注明它是一个配置类
+	
+	自动注入是会注入指定类型或者它的子类，如果有多个Bean满足注入的条件，那么就会抛出异常，
+Spring会为Bean指定一个ID，比如Test类在使用了@Component后生成了Bean，可是这个Bean我们并没有指定
+ID，这时Spring会自动为其生成一个ID，ID为首字母小写：test
+
+	自动注入还可以用在构造器，Spring会在上下文里找到一个符合构造器需要类型的Bean，然后进行
+注入，注入给构造器的类型也要是一个Bean，并且注意不要自己注入给自己，无限注入，造成栈溢出
+
+	Spring有时使用出了异常，比如setter注入方法名跟类型不匹配，异常后修改好保存再运行还是会
+继续异常，这时候可以随便加个空格啥的再运行，让其重新加载编译，就可以运行了
+
+Bean定义的方式：
+	@Bean：	需要使用@Bean注解，并且定义一个返回Bean的方法，可以使用Java写自己的逻辑，非常灵活
+	Component：	直接用类生成Bean，非常方便，只要一个@Component注解搞定
+	XML：	在XML文件里使用<Bean>标签，较为繁琐，并且也不能像@Bean一样保证Bean的存在，不过可以借助IDE检测
+
+多个配置文件的交互：
+	Bean之间的互相引用，包括注解Bean，JavaConfigBean，XMLBean，这三个之间的Bean是互通的，
+用户可以根据自己的方式来自定义，如果XML文件想加载JavaConfig类的配置，那么直接把配置类生成一个
+Bean就可以了
+
+	XML > XML	：<import resource="***.xml">
+	Java > Java	：@Import(***.class)
+	XML > JAVA	：把Java配置类生成Bean
+	Java > XML	：@ImportResource("classpath=***.xml")
+
+	有时候甚至可以把所有的配置写好了，然后专门用一个XML或者Java配置类把他们集中起来，这个
+集中配置类或XML只做集合，不定义Bean，这样代码会方便管理
+
+Bean的生命周期：	
+	1、实例化
+	2、对Bean的属性进行注入
+	3、使用
+	4、容器关闭，销毁
+
+这几步是必须的，不过用户可以实现一些接口，Spring会在不同的阶段调用这些接口对应的方法：
+, BeanNameAware			传入ID
+, BeanFactoryAware		传入BeanFactory
+, ApplicationContextAware	传入ApplicationContext
+, BeanPostProcessor		有两个方法，分别在初始化前后调用，传入Bean对象和Bean的name，
+				需要返回一个Bean，这个Bean是作为getBean的返回参数，这两个方
+				法似乎是所有Bean共用的
+, InitializingBean		初始化调用	
+, DisposableBean		容器关闭前，销毁时调用，销毁所有的Bean
+
+
+ApplicationContext和BeanFactory的区别：
+
+	BeanFactory是Spring里面比较原始的Factory它只支持一些Bean级别的操作，而ApplicationContext
+不但有了BeanFactory的功能，而且还有面向框架的功能，比如支持AOP，国际化，事件传播，多个上下文继承
+对web应用的支持等功能，算是增强了的BeanFactory，还有，ApplicationContext是自动注册，而BeanFactory
+是手动注册
+
+Bean的name和id的区别：
+	id是Bean的标识，是唯一的，每个Bean仅能有一个，name是Bean的别名，可重复，可以有多个
+
+profile：
+	spring给的不同数据源加载方案，profile也使用了@Conditional，使用这个注解判断了该Bean的
+profile是否处于激活状态
+
+通过注解条件性的创建Bean：
+	使用@Conditional注解，并且指定一个Condition的子类，该接口有一个方法返回boolean，并且有
+两个参数，分别是ConditionContext：可以获取bean的信息和资源的信息、AnnotatedTypeMetadata：可以
+获取注解相关的信息，例如该bean的其他注解
+
+自动注入Bean的抉择：
+	自动注入的时候难免会有想要注入的类型有多个Bean符合的情况，这种时候如果使用@Qualifier
+的话，就会出现Bean跟注解的参数紧耦合，这种时候可以使用@Qualifier参数来匹配,可是@Qualifier参数
+每个Bean只能定义一个，因为java8以前不允许同一条目上有多条相同的注解，这时候就可以使用自定义注
+解了，就是在定义Bean的时候，给Bean加上自定义注解,然后使用@Autowired的时候也加上自定义注解会自
+动匹配注解符合最多的那个Bean，这样就算类重构了,里面的代码改了类名改了，也不会影响到Bean的自动
+注入
+
+Bean的作用域：
+	单例(Singleton)	：	该Bean在整个应用共用只有一个
+	原型(Prototype)	：	每次请求Bean都会是新的Bean
+	会话(Session)	：	每次会话重新创建一次Bnea
+	请求(Request)	：	每次请求重新创建一次Bnea
+
+使用ConfigurableBeanFactory类的常亮能避免单词拼写错误
+作用域的定义在定义Bean的时候，比如@Bean @Scope("*")、@Component @Scope("*")、<Bean scope="*">
+
+Bean的代理：
+	@Scope(proxyMode=ScopedProxyMode.INTERFACES)
+	<aop:scope-proxy />				作为<bean>的子标签使用，默认使用CGLib
+							创建目标类(bean的类)的代理
+	<aop:scoped-proxy proxy-target-class="false">	使用接口代理
+
+	如果Bean的作用域是会话域或请求域，那么存在注入Bean的时候并没有请求或会话域，那这个Bean
+怎么处理呢？我们可以使用代理接口（或类），这样我们在需要注入Bean的时候，注入的是接口的对象，我
+们调用的也是接口的方法，Spring会自动代理用去访问对应Session或Request域的对象访问对应方法。
+
+spring的properties属性文件：
+	如果要引用properties文件里的属性，使用注解的话需要用@PropertySource("classpath:
+/app.properties")注解来引用文件，在xml里的话则要使用<context>标签，引用完成后使用的语法：
+"${属性名}"，如:"${bd.age}"
+
+	XML中引用属性文件：
+		<bean id="propertyConfigurer"
+         	     	class="org.springframework.beans.factory.config.PropertyPlaceholderConfigurer">
+          		<property name="locations">
+             			<list>
+            	               		 <value>/app.properties</value>
+              	       		</list>
+              		</property>
+     		</bean>
+	
+	properties文件的初始路径：
+		前缀为classpath: ：类路径
+		前缀为file:// ：文件系统
+		无前缀：Web应用根路径
+
+aop：	
+	在spring中使用aop需要注意，如果要对一个类或接口进行拦截，那么调用这个类或接口的对象必
+须是通过IOC容器注入的Bean才能够被解析并匹配表达式，否则自己new的对象是无法被表达式匹配的
+
+	环绕增强：
+		在使用环绕增强的时候，环绕增强的方法必须有ProceedingJpinPoint的参数，这个对象
+	代表当前对象的控制权，如果想要把控制权交给被通知的方法，那么它需要调用proceed()方法，
+	如果不调用这个方法的话，它的下一个需要通知的方法就会被阻塞，调用如果不想下面的通知执行
+	那么不调用就可以了，当然也可以多次调用让下面的通知多次执行
+	
+	ProceedingJpinPoint：
+		这个对象代表着被拦截的对象，用户可以通过getThis获取当前对象，通过getSignature.
+	getName()获取它准备访问的方法名，和传入的参数等等
+	
+	关于一次访问执行多次相同增强：
+		切面类的Bean如果生成了多个，BeanFactory里也有多个Bean，切点也会多次匹配，那么
+	如果用其中一个Bean调用了方法，Spring会把所有的切面对象进行匹配这时多个Bean都被SpEL表达
+	式匹配了，代理就会把这几个Bean进行增强处理，这时候就会出现了调用一次方法，各种增强执行
+	了多次的情况
+
+	aop的使用：
+		定义好了切面类，然后使用Spring注入的Bean去访问切面类表达式所能匹配的方法，切面
+	类会自动拦截并执行对应的连接点方法
+	
+	aop使用需要的参数：
+		定义切面类、切点表达式、连接点(前置后置、和执行的切面类方法)	
+	
+	aop拦截了方法之后取得它的参数：
+		在表达式后加上 and args(属性名, 属性名)，要跟被拦截的方法参数匹配，然后再切面
+	的方法形参也加上相同的类型和属性名，就会注入调用被拦截对象的对应参数了
+
+	使用AspectJ切面：
+		Spring提供的aop只支持方法级别的切面，如果想对构造器切面或者字段的操作切面，那
+	么就需要使用AspectJ了，目前对这方面的认知仅限于AspectJ的aop比Spring更加强大，能够切面
+	构造器和对象，如果以后有需要再深入了解
+
+Bean初始化多次的问题：
+	如果多次在配置类中使用包扫描，并且扫描了相同的包，那么包里面的组件会多次加载，比如有
+@Bean注解的方法就会跑两次，创建了两次Bean，这种情况因为ID都一样，可能会发生覆盖，目前没发现会
+抛异常
+
+
+
+
+XML标签说明：
+
+	
+<bean>：双标签
+	定义一个Bean
+	参数：
+		class：Bean的类型
+		id：Bean的id
+		c:cd-ref：为构造器指定一个引用参数，可以是一个Bean的ID
+		c:_属性名="param"
+		c:_0=""：XML不允许标签里有多个属性名相同，因此第一个参数可以是c:_0，第二个是c:_1
+			 ，会按照顺序给构造器注入
+
+	<constructor-arg>：单标签
+		被<bean>包含，定义一个构造器参数（构造器有多个参数就指定多个）
+		参数:
+			ref：指定一个引用参数，可以是一个Bean的ID
+			value：指定值，直接的值
+
+		<list>：双标签
+			构造器参数有时会是一个集合，<list>标签代表了一个list集合，这种参数c:命名空间就无能为力了
+			<value>：双标签
+				list的子标签，每个value代表list的一个元素，只能是直接量
+
+			<ref>：单标签
+				作用与<value>一样，不过它是引用量
+				属性：	
+					bean：通过Bean的ID引用一个Bean
+
+		<set>：双标签
+			set集合的用法完全跟list一样，参考着用就行了，需要注意的是set的值是无法重复的
+	
+	<property>：单标签 or 双标签
+		set注入的属性，可以指定属性针对性注入
+		属性：
+			name：属性名
+			ref： 引用的Bean，所以我猜测还有个value表示直接量
+		<list> or <set>
+			<property>如果用双标签的话，也可以包含集合用法都一样，参考上面
+		
+<import>
+	XML资源之间加载的标签
+	属性：
+		resource：指定一个XML资源的路径
+
+<Beans>
+	一个Bean的集合，Beans之间可以嵌套使用
+	属性：
+		profile：指定一个profile，对应的profile激活后这个beans才会扫描
+		xmlns：  约束
+
+<aop:aspectj-autoproxy/>
+	自动代理切面Bean
+
+<aop:config>
+	说明标签里面的子标签都是aop的配置
+
+<aop:aspect>
+	定义一个切面
+	属性：
+		ref：指定拦截到后要执行方法的BeanId
+
+<aop:pointcut/>
+	定义一个表达式，其它的连接点可以直接引用
+	属性：
+		expression：具体表达式字符串
+		id：表达式的Id
+
+<aop:pointcut/>
+<aop:before/>
+<aop:after/>
+<aop:after-returning/>
+<aop:after-throwing/>
+	各种增强
+	属性：
+		pointcut：定义一个表达式，字符串
+		pointcut-ref：指定一个表达式的引用，也就是它的Id	
+		method：指定切面匹配到之后使用<aop:aspect>的ref调用哪个方法，字符串
+
+
+
+
+
+
+
+
+
+
+
+注解说明：
+
+@Autowired：
+	自动注入，会寻找类型匹配的Bean注入,如果有多个Bean符合条件，就会抛出异常
+	参数：
+		required：这些Bean是否必须的，如果设置为false，没找到的Bean就不会注入，不然找不到就抛异常
+	使用时机：
+		属性：	直接注入符合该属性类型的Bean，找到多个则报错
+		构造器：会根据参数类型自动注入符合的Bean，可以是多个
+		setter：会根据方法名跟参数注入，参数可以指定具体类型，方法名是set+参数类型或其父类
+		构造器注入可以用在固定的属性，例如在父类里使用，然后在子类选择性的使用serter注入
+		缺点很明显，如果不是自己写的类，无法添加@Component注解，就无法实现自动注入了		
+
+@Primary
+	把Bean设置为首选，在使用@Autowired的时候，如果有多个符合条件的可装配Bean就会抛出异常，
+	当某一个Bean使用了这个注解之后，当多个Bean符合条件的时候，就会选择使用了@Primary的Bean
+	它是跟@Bean一起使用的	
+
+@Qualifier
+	指定想要的BeanID或@Qualifier参数，需要注意的是，如果指定的Bean是默认生成的Bean，比如使
+	用@Component，那么这个Bean的Id就是类名首字母小写，使用此注解的字符串是Bean的ID，因此如
+	果类重构了，类名改了，那么会引发一些问题，比如value的参数没改，就会找不到类，因为参数
+	与BeanID是紧耦合的
+	与@Autowired配合：	指定Bean的ID或者定义Bean时候的定义@Qualifier参数来注入Bean
+	与@Bean配合：		指定自定义的@Qualifier参数，@Qualifier会匹配自定义的参数
+	参数：	
+		value：指定一个要限制的ID
+
+@Resource
+	自动注入，可以指定根据name还是类型注入
+	参数：
+		name：指定一个BeanName，根据name属性注入Bean
+		type：指定一个类型，根据type注入Bean
+
+@ContextConfiguration(classes = CDPlayerConfig.class)：
+	指定当前类运行时的配置类，会去加载指定类和其中的配置注解
+
+@RunWith(SpringJUnit4ClassRunner.class)：	
+	单元测试，可以让当前类进行单元测试，使用了Spring的单元测试后才能让Spring的功能生效
+
+@Test：
+	使用了@RunWith之后就能使用此注解进行单元测试了
+
+@Configuration：
+	说明当前是个配置类
+
+@Import
+	把配置类组合起来，对于配置类，每次测试都要在测试类用@ContextConfig...(*.class)去加载，
+这样如果有很多配置类无疑会很麻烦，Import就是配置类的导入，如果一个配置类导入了其他配置类，那么
+Spring扫描配置类的时候也会把被导入的配置类也一起扫描
+
+@ConponentScan：
+	扫描当前包以及子包下的所有包，只有扫描了的包才会纳入Spring的生效范围
+	参数：
+		("包名")，如果不加参数会默认扫描当前包，加了则扫描指定包，如果想更加清晰的说
+		明你要扫描的是基础包，可以写成(basePackages="包名")，如果需要扫描多个包，则
+		可以写成数组(basePackages={"pack1", "pack2", "pack3"....}),不过这种字符串的
+		写法不太安全，因为如果代码重构，包名改了，这里不会有任何提示，因此还有另一个
+		参数：(basePackageClasses={T1.class, T2.class, T3.class....})，这时候会将指定
+		类所在的包作为基础包来扫描
+		
+
+@Component：
+	希望把当前类生成Bean，只有生成了Bean才能进行依赖注入
+	如果想自定义ID，那么可以为其加个参数，(value="myId"),value=可以省略
+
+@Named：
+	java提供的依赖注入方案(在javax包里)，Spring也支持，大多数情况下可以和@Component互换使用
+	参数：
+		("myId")，如果想自定义ID，那么可以为其加个参数
+
+@Bean
+	java配置的注解，说明这个方法会返回一个Bean，Bean的ID是方法名，因为是用java代码生成Bean
+	，因此优势非常明显，可以定义各种生成Bean的规则，可以根据传入的参数返回不同的Bean，甚至
+	可以随机生成Bean等等，如果这个Bean需要其他Bean作为参数，它可以直接调用其他Bean的方法返
+	回，也可以在参数指定需要的Bean类型，这个参数会被Spring自动使用Bean来注入，因此这个Bean
+	可以通过组件扫描或者XML配置
+	参数：
+		name：		指定Bean的name，是数组，可以指定多个
+		autowired：	指定要注入的Bean
+		initMethod：	该Bean执行的初始化方法
+		destroyMethod：	该Bean执行的销毁方法
+
+@ImportResource("classpath:/spring.xml")
+	加载XML资源的配置，默认路径在src，似乎默认路径有多个选择
+
+@Profile
+	定义一个profile，选择Bean的加载，可以跟@Bean或者@Configuration一起定义
+	profile的启动可以在VM启动参数里面加上：-Dspring.profiles.active="dev"，如果是用Tomcat
+	启动就加在Tomcat的VM arguments里，也可以在程序里激活
+	@Bean：定义了profile，只有对应的profile激活才会创建该Bean
+	@Configuration：该配置类只有对应的profile激活才会扫描
+	参数：
+		value：指定一个profile数组
+
+@ActiveProfiles
+	测试环境的数据加载方案，激活填充profile数组
+	参数：
+		value：填充一个profile值的数组
+
+@Conditional
+	条件性生成Bean，指定一个类，这个类必须要实现Condition接口，在实现的方法写条件
+	参数：
+		value：指定一个Condition接口的子类
+
+@PropertySource("classpath:/app.properties")
+	指定属性文件的路径
+
+@Value
+	可以使用SpEL获取某个Bean的属性，或者某个类的变量，和属性文件的属性，可以给形参直接注入
+，或者注入某个属性，源码里好像还可以注释注解类型、方法等，怎么获取到值就没了解了
+
+@Aspect
+	说明本类是个切面类，这样才会执行里面的切面匹配和增强
+
+@Pointcut
+	把一个方法定义成Aspectj切点表达式，这样只要要连接点连接此方法的字符串就行了，不需要每
+	个增强都写一遍表达式比如这个注解标注了a方法，那么其他地方的增强注解Before("a()")就能
+	进行对此匹配了，如果方法有参数，只要在里面加变量名，不用类型，功能类似定义变量
+	参数：
+		value：参数是字符串，写Aspectj切点表达式
+
+@Before			前置
+@After			后置
+@AfterReturning		前置结束
+@AfterThrowing		前置异常
+@Around			环绕，需要注意aop的环绕增强说明
+	参数：
+		value：要匹配的切点表达式，配合@Pointcut就可以只简化表达式的书写
+	
+@EnableAspectJAutoProxy
+	自动代理切点对象
+
+@DeclareParents
+	动态的为对象增加属性和方法时使用，就教了定义没教怎么使用，需要时再查
+
+@Repository
+	有着@Component的功能，一般在Dao层使用，使其成为一个上下文中的组件
+	
+@Inject
+	
+
+
+
+
+
+
+名词解释：
+
+最小入侵性：
+    	有一些框架用户除了写自己的代码之外，还会被强迫实现某些接口，重写某些方法，这种行为
+    无疑影响了用户的代码质量，而使用Spring时，代码中除了注解之外，不会有任何证据证明使用了Spring
+
+命名空间：
+	命名空间是Spring提供用参数来代替标签，如果要使用命名空间则需要在<Beans>的参数里面声
+明，目前接触的有c:(简化构造器的装配)，p:(简化setter的装赔),util:(简化集合的装配，并且可以把
+public static变量和Bean的某个属性暴露出来成为一个Bean)
+
+
+
+异常：
+	xml中加了某个标签的异常：
+		cvc-complex-type.2.4.c: The matching wildcard is strict, but no declaration can be found for element  'aop:aspectj-autoproxy'.
+		这是因为新增的标签没有在beans里的schemaLocation增加新的约束，比如新加了context标签，就要加context约束
+
+
+
+
+
+
+Spring语言表达式：
+
+	它能够以一种简洁的方式将值装配到Bean属性和构造器里，SpEL可以在运行时计算并得到值，这是
+其他的装配技术难以做到的,能够如java般调用bean的属性和方法，并且使用它们的返回值继续调用，但是
+也受限于访问修饰符。
+	
+	SpEL的特性：
+		1、使用Bean的ID来引用Bean
+		2、调用有方法和访问对象的属性	
+		3、对值进行算数、关系和逻辑运算
+		4、正则表达式匹配
+		5、集合操作
+
+	SpEL的语法：
+		SpEL要放到 "#{...}" 里面，而属性占位符则要放在 "${...}" 里面，可在注解或xml赋值时使用
+		用T()，表示JAVA对象，比如：T(System).out 表示java.lang.System.out属性T()
+		为Class对象，只要类名给全，一样可以访问自定义的类的静态属性，lang包应该是默认的
+
+		#{beanId.属性}，这样可以使用bean的属性
+		#{systemProperties['bd.title']}，这样可以引用properties属性文件的属性
+		 （不知为何测试不行，无提示属性为null）
+	
+	?. :在调用时，有时候属性或方法返回值是null，一般调用是使用 . ，如果为了防止报空指针异常
+	可以使用?.来访问，?.的作用是如果调用者为null，那么此表达式返回null 
+
+	SpEL支持的运算符：
+		算术运算 +、-、 * 、/、%、^(乘方)
+		比较运算 < 、 > 、 == 、 <= 、 >= 、 lt 、 gt 、 eq 、 le 、 ge
+		逻辑运算 and 、 or 、 not 、│
+		条件运算 ?: (ternary) 、 ?: (Elvis)
+		正则表达式 matches
+	
+	三目运算符：
+		常规用法跟java一样，不过有一种判断是否为null的写法不同
+		#{bd.title ?: "not null"} 这种写法如果bd.title为null的话，返回Null,否则返回not null
+		也就是条件语句只写属性，成功的操作也不写，就会自动判断是否为空，不为空返回设定的条件
+
+	正则表达式：
+		#{ 数据 matches '表达式' }，结果将会返回一个boolean类型
+
+	集合：
+		如果要获取集合的值，可以用#{bd.list[3]}，这样获取的是第四个值(从0开始)，这种
+	获取的方法同样适用于数组、字符串(也是char数组，规则一样)
+	
+	集合的子集：
+		使用.?，比如${bd.list.?[title == 'hello']}，这样就会返回bd.list集合里元素的title
+	等于'hello'的所有对象，符合条件的会组成一个集合，能用===，就代表也能用其他运算符，高级
+	点可以在集合的条件里使用比如：其他两个Bean的属性相加等同于集合对象的某个属性，只要返回
+	的是true，就会成为子集的对象，
+		.?	：	获取符合条件的子集
+		.^	：	获取子集的第一个对象
+		.$	：	获取子集的最后一个对象
+		.!	：	把对象的某个属性投影成一个新集合
+	以上的运算符可以互相配合使用
+
+	
+
+
+
+
+

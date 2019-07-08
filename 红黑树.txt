@@ -1,0 +1,91 @@
+
+红黑树是平衡树的一种，平衡树的要求是在二叉树的基础上，每个节点的左右两边的节点高度相差不会大于1
+，并且它的子节点也遵循这条规则。这样避免了二叉树可能存在的所有数据集中在某一结点上的问题
+
+1、每个节点要么是红色，要么是黑色。
+2、根节点必须是黑色
+3、红色节点不能连续（也就是，红色节点的孩子和父亲都不能是红色）。
+4、对于每个节点，从该点至null（树尾端）的任何路径，都含有相同个数的黑色节点。
+5、新插入的节点必须是红色
+
+
+红黑树属于平衡树，实际的原理跟二叉树差不多，不过它的数据是平衡的，平衡就是两边的节点不会有一边
+过多，而另一边过少，它是会不断自动调整的，因此用来查找的效率比二叉树强了很多
+
+稍微了解了一些，不过想要理解估计要手写出来，以后有空再写一遍
+
+p左节点不变，接受r的左节点为p的右节点，r变为p的父节点
+
+如果左旋的是root，那么r=root
+
+不然就判断把左旋的节点在他父节点那里是在左边还是在右边，并把那个原本引用向他的引用向r
+
+左旋和右旋都不会影响二叉树的完善，所有节点的左边都是比他小，右边的都比他大，并且还改变了红黑的位置
+
+为什么在左旋或右旋的时候要把某一子节点给原来的父节点，因为原本的节点左边的都比他小，右边的都比他大
+如果还留在原处，那么左边跟右边的节点都集中在某一边，违反了二叉树的原则
+
+
+
+Entry的属性
+ 	K key;
+        V value;
+        Entry<K,V> left = null;		左节点
+        Entry<K,V> right = null;	右节点
+        Entry<K,V> parent;		父节点
+        boolean color = BLACK;		颜色
+
+
+
+
+
+
+
+红黑树添加新节点后的自我调整函数：
+
+private void fixAfterInsertion(Entry<K,V> x) {
+    x.color = RED;					// 把被调整节点设置为红色
+    while (x != null && x != root && x.parent.color == RED) {		// 如果被调整节点不为空、不为root、它的父节点是red就继续循环，因为被调整节点必然是红色，那么它的父节点就需要是黑色
+        if (parentOf(x) == leftOf(parentOf(parentOf(x)))) {			// parentOf该函数作用不明，为大量使用的核心函数，无法继续理解
+            Entry<K,V> y = rightOf(parentOf(parentOf(x)));
+            if (colorOf(y) == RED) {//如果y为null，则视为BLACK
+                setColor(parentOf(x), BLACK);              // 情况1
+                setColor(y, BLACK);                        // 情况1
+                setColor(parentOf(parentOf(x)), RED);      // 情况1
+                x = parentOf(parentOf(x));                 // 情况1
+            } else {
+                if (x == rightOf(parentOf(x))) {
+                    x = parentOf(x);                       // 情况2
+                    rotateLeft(x);                         // 情况2
+                }
+                setColor(parentOf(x), BLACK);              // 情况3
+                setColor(parentOf(parentOf(x)), RED);      // 情况3
+                rotateRight(parentOf(parentOf(x)));        // 情况3
+            }
+        } else {
+            Entry<K,V> y = leftOf(parentOf(parentOf(x)));
+            if (colorOf(y) == RED) {
+                setColor(parentOf(x), BLACK);              // 情况4
+                setColor(y, BLACK);                        // 情况4
+                setColor(parentOf(parentOf(x)), RED);      // 情况4
+                x = parentOf(parentOf(x));                 // 情况4
+            } else {
+                if (x == leftOf(parentOf(x))) {
+                    x = parentOf(x);                       // 情况5
+                    rotateRight(x);                        // 情况5
+                }
+                setColor(parentOf(x), BLACK);              // 情况6
+                setColor(parentOf(parentOf(x)), RED);      // 情况6
+                rotateLeft(parentOf(parentOf(x)));         // 情况6
+            }
+        }
+    }
+    root.color = BLACK;
+}
+
+
+
+
+
+
+

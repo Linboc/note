@@ -1,0 +1,90 @@
+
+1、DispatcherServlet.doGet
+
+	这个doGet在父类FrameworkServlet实现的
+
+2、FrameworkServlet.processRequest
+
+	把当前的几个线程变量更新，比如LocaleContextHolder.localeContextHolder，RequestContextHolder.reque
+stAttributes，因此可以直接通过LocaleContextHolder的静态方法获取当前线程的语言信息和request和response的对
+象，requestAttributes对象包含了request和response
+
+3、DispatcherServlet.doService
+
+	设置一些参数进request，比如flashMap、themeResolver、localeResolver、applicationContext等
+
+4、DispstcherServlet.doDispatch
+
+	checkMultipart()：判断是否多请求，也就是把一个请求分成多个，如果contentType是以multipart/开头则认
+为是，并且把解析的request对象返回，然后替换点原有的request
+
+	multipartRequestParsed：是否多请求的标识，如果request被替换掉了，则为true
+
+	getHandler：会返回一个HandlerExecutionChain，执行链，包括拦截器、真正执行的方法等
+
+		在通过遍历mappingRegistry的映射将handlerMethod匹配到之后，会在请求域里面会添加一个参数：
+	HandlerMapping.BEST_MATCHING_HANDLER_ATTRIBUTE：org.springframework.web.servlet.HandlerMapping.bestMatchingHandler
+	，代表当前请求匹配到的controller映射相关信息
+
+		还会加一个HandlerMapping.PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE：org.springframework.web.servlet.HandlerMapping.pathWithinHandlerMapping
+	参数，里面放的是实际请求的路径(lookupPath)
+
+		getHandlerExecutionChain：把获取到的handler(匹配到的控制器)转成HandlerExecutionChain(执行
+这个控制器需要进行的一系列方法，包括转换器拦截器、静态资源拦截器，比如/webjars/**、/**/favicon.ico、静态
+资源路径等等)，所以参数转换和静态资源解析都是用拦截器完成的
+
+	noHandlerFound：如果没有匹配到相关的handler的话，就执行这个方法，主要就是执行response.sendError(
+HttpServletResponse.SC_NOT_FOUND)，这个SC_NOT_FOUND就是404
+
+	getHandlerAdapter：获取适合处理当前请求的适配器
+
+	handle：开始执行对应的handler
+
+		invokeHandlerMethod：执行handler方法
+
+			getDataBinderFactory：获取目标controller类的binderFactory，里面是该controller里
+		所有加了InitBinder注解的方法，只有第一次执行才会去遍历查找，找到后会缓存在initBinderCache
+		变量中，属于各个controller私有的，在RequestMapping之前执行的类型转换器，必须是void方法，
+		会传入一个WebDataBinder对象
+
+			getModelFactory：跟上面一样，不过改成了方法没有RequestMapping注解并且有ModelAttribute
+		注解才会被加入modelAttributeCache中,这个modelAttributeCache方法会在controller之前被调用，
+		并且它的返回值会被加入model中，也就是说用来在调用该controller之前，会先调用它的modelAttributeCache
+		里的方法，并把方法返回值加入model中,当然ModelAttribute的作用不止这个，如果不和RequestMapping
+		一起，那么就是用来在controller之前创建model值的，并且先于controller执行，如果和RequestMapping
+		一起，那么会在RequestMapping之后将值加入model，如果用在返回值，那么效果也和标注方法一样，
+		如果用在参数上，就会把model的值注入这个参数，注意，model里的值不等于request里的值
+	
+			在把invocableMethod的各项参数准备好之后，就会创建一个ModelAndViewContainer对象，
+		然后把前面加入request的flashMap参数取出来放进mav的Attributes里面
+
+			再把sessionAttributes里的参数取出来放进mav的Attributes里面
+
+			initModel：执行之前添加在modelAttributeCache里面的方法，并用类型和方法计算出key，
+		返回值当value，加入mav中，找出要执行的controller方法中所有标注了@ModelAttribute注解的参数
+		，然后解析他们所需要的参数名，如果注解指定了参数名就用注解的，否则就通过类信息生成参数名
+
+			然后是一堆异步请求相应的处理，目前没干涉到
+
+			invokeHandlerMethod：一切准备就绪，准备执行controller方法
+	
+				invokeForRequest：执行请求映射方法，先通过getMethodArgumentValues方法获取
+			参数，遍历目标函数需要的所有参数，会先尝试通过传入的可变数组获取，如果找不到就遍
+			历所有的解析器，每个解析器都会去用supportsParameter方法匹配目标参数，一直到找到
+			能匹配的解析器，然后返回解析结果，如果所有解析器都不匹配，就会抛异常：Unsupported parameter type.....
+
+				然后尝试设置响应码，和响应码相关的信息，如果有错误原因等信息，就直接返回
+
+				handleReturnValue：设置返回值信息，首先进入selectHandler，判断返回值是什
+			么类型，使用this.returnValueHandlers挨个使用supportsReturnType方法遍历判断返回值
+			是否能匹配，如果能匹配就返回匹配到的handler，有：ModelAndView、Model、View、Callable
+			、方法与类是否有@ResponseBody等类型与注解的判断
+
+				writeWithMessageConverters：handleReturnValue方法的最后一步来到这里，首先
+			会判断返回的对象是不是资源类型，比如InputStreamResource和Resource，然后判断返回类
+			型，有哪些是可以生产的，哪些是可以接受的，哪些是可使用的，最后在可使用列表里选择
+			第一个可用的MediaType，然后设置响应文件名，其实就是最后一个/后面的内容，然后write
+			，当然不是response的write，write之后先设置header信息，比如编码，文件长度，内存类
+			型等，最后writeInternal，然后flush，信息返回完毕
+
+

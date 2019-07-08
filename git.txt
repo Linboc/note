@@ -1,0 +1,204 @@
+
+	版本控制系统只能跟踪文本文件，比如TXT、html、java等， 能检测到这些文本文件的每一次修改，
+并记录下来，像图片、视频这些二进制文件，虽然也能被管理，不过只能知道属性的变化，具体的变化是不
+知道的
+
+	千万不要使用Windows自带的记事本编辑任何文本文件。原因是Microsoft开发记事本的团队使用了
+一个非常弱智的行为来保存UTF-8编码的文件，他们自作聪明地在每个文件开头添加了0xefbbbf（十六进制）
+的字符，你会遇到很多不可思议的问题，比如，网页第一行可能会显示一个“?”，明明正确的程序一编译就
+报语法错误，等等，都是由记事本的弱智行为带来的。
+
+	git fsck --lost-found：找回被挂起的git,也就是没被任何分支或者HEAD指向它，可是它又进行了
+提交，因此被挂了起来，到了一定的数量就会被git调用gc命令清除，有一次就是用idea的git进行了提交，
+然后进行了pull，代码就丢失了，然后通过这个命令找了回来，通过开头的命令找到commit_id之后，再通过
+git show commit_id来查看是不是丢失的提交，如果是的话，就可以通过checkout、reset、rebase等操作找回
+
+	工作区：就是平时使用的文件夹
+
+	版本库：就是隐藏的.git文件夹，里面包含了很多东西，其中最重要的就是成为stage(或者index)
+的暂存区，还有Git自动创建的第一个分支master，和指向master的指针HEAD
+
+	暂存区：git的提交分为两步：add和commit，add是为了把文件提交到暂存区，commit是为了提交到
+分支，在add之后查看status会看到这样一句描述：(use "git reset HEAD <file>..." to unstage)，就是
+说明以下文件将会被提交到暂存区，暂存区就是存放临时add的，可以在暂存区存放很多add，然后再一次性
+commit
+
+	GitHubSSH：在shell运行：ssh-keygen -t rsa -C "email"就会在用户根目录(users/admin)生成一
+个.ssh的文件夹，在里面添加两个文件，分别是id_rsa(私匙)和id_rsa.pub(公匙)，然后把公匙配置到GitHub
+，GitHub会在提交的时候通过公匙来确认是不是本人提交，也就是去.ssh验证配置的密匙和它保存的是否对
+应的上，GitHub可以配置多个公匙，因此如果要在多个电脑上提交到GitHub，就要在在多个电脑上配置公匙、
+私匙，然后把公匙配置到GitHub
+
+	GitHub没有访问权限问题，配置的公匙私匙的名称是id_rsa和id_rsa.pub，而如果本地安装了GitHub
+的话，在C:\Users\admin\AppData\Local\GitHub\PortableGit_f02737a78695063deace08e96d5042710d3e32db\etc\ssh\ssh_config
+路径能找到ssh_config，可以在里面看到有个属性是IdentityFile=~/.ssh/github_rsa，它指向的文件是github_rsa
+，而我在GitHub配置的是id_rsa.pub，因此公匙会无法匹配，这时候只要把github_rsa改成id_rsa，让其指向
+配置的文件就可以了
+
+	HEAD总是代表当前，比如创建一个dev分支，并切换到dev分支，那么HEAD也会指向dev分支，并且dev
+分支本身也会有一个dev指针，因此指向关系是HEAD->dev->dev branch，因为HEAD指向当前分支，因此不能
+删除当前分支，只能切换到其它分支才能对当前分支进行删除
+
+	新建一个新分支并切换到该分支，HEAD和该分支的指针都会指向新分支，然后新分支一直提交，HEAD
+和分支指针也一直向前，到了某个次切换其它分支去了，分支指针还在指向该分支离开时的位置，HEAD就去到
+新分支的分支指针的位置，因为它是直接指向分支指针的，为什么不直接指向分支的最新提交呢，因为分支
+可能切换到某个旧提交去了，而这个旧提交就是分支指针保持的，因此切换回去肯定要保持原状，所以指向
+分支指针是最好的选择，新建分支并切换，HEAD指向新分支指针，切换分支，HEAD指向要切换的分支指针，
+删除分支，HEAD保持不变，因为HEAD代表当前分支，当前分支总是不会被删除，切换版本，分支指针指向对
+应版本号，HEAD指向分支指针，因此也会指向切换的版本，因为git只是切换指针指向，因此分支操作很快
+
+	新建的分支的内容完全和当前分支一样，因此在不同的分支创建分支可能会有不同的结果，新分支
+等于把当前分支的内容复制一份出来自己维护，后面不管什么操作都是自己内部的事
+
+	解决分支合并冲突，在分支合并后，可以打开文件看到冲突，也可以使用git status查看冲突的文件
+，git会用<<<<<代表当前的分支，>>>>>>代表要合并的分支，======代表两个分支修改内容的分割线，其实
+合并在执行了git merge <branch>之后就已经合并了，因为可以看到它们的值都在文件里面了，不过因为冲突
+的原因所以加了特殊字符，这时候git就把两边分支的内容放在那里让你选，自己做处理，想怎么改就怎么改
+，改完直接add、commit就行了，甚至可以不用改，只要不在意那些信息，直接add、commit又是一条好分支
+
+	从远程库pull下来，等于版本也跟远程库一样了，就算是有冲突，那也不过是把冲突的文件标记了
+而已，其它没有冲突的文件已经在了，因此把pull下来的当做最新的，最新的直接add-commit-push自然是没
+问题的，因为没有冲突了
+
+	如果git pull提示no tracking information，则说明本地分支和远程分支没有创建连接关系
+
+
+
+
+
+
+
+ls -ah：显示当前目录的隐藏文件夹
+
+	git init：把当前目录变成一个git仓库，就是在当前目录创建一个.git隐藏文件夹，里面放一些配置
+	
+	git add file1.txt file2.txt。。。：把文件添加到仓库
+	
+	git commit -m "提交描述"：把当前add的所有文件提交到仓库
+	
+	git status：查看仓库当前的状态，比如哪个文件被修改过了，提交了没有,如果只是修改了文件，
+就会提示该文件被修改了，还没有提交；如果使用了git add，就会提示该将会提交该文件，add多个的话应
+该会提示将要提交的文件列表；如果执行了git commit之后在使用git status，就会提示没有要提交的修改
+，并且工作目录是干净的
+
+	git diff file.txt：查看file.txt被修改的内容：
+		-Git is a version control system.		减少了一行
+		+Git is a distributed version control system.	增加了一行
+		 Git is free software.				一行保持不变
+
+	git log：可以查看提交记录，包括每一次提交的commit_id、分支、用户、日期、分支名等信息，也
+可以加上--pretty=oneline参数，只显示commit_id和描述
+
+	git reset：版本回退，HEAD指向当前的版本，使用HEAD^表示上一个版本HEAD^^表示上两个版本，
+这样如果版本要回退很多^也要写很多，因此使用HEAD~回退版本数，效果也一样，示例：git reset --head HEAD^
+，git reset也可以指定commit_id跳到指定的版本，可以只指定前面几个编号，只要保证前面那几个编号是唯
+一的，git就会自动找到匹配的commit，示例：git reset --hard(硬reset) 91ab0，git reset可以重置到任
+何commit过的版本，因为有个HEAD指针，git只要把那个指针指向目标commit_id，然后刷新工作目录就可以了
+
+	git reflog：显示最近执行过的命令和每次命令的commit_id和描述
+
+	git checkout：把工作区的修改全部撤销，示例：git checkout -- file.txt，如果该文件不在暂
+存区，就会回退到版本库的状态，如果该文件已经用git add加到暂存区了，那么checkout就会让该文件回到
+暂存区里面该文件的状态
+
+	git reset HEAD <file>：如果把文件add进暂存区，可是又想撤销掉，这时候就可以用该指令把文
+件移出暂存区，移出之后就可以用git checkout回退到版本库状态了，也可以让该文件在commit时不生效，
+示例：git reset HEAD readme.txt，还有一种需求，把单独一个文件撤销到某一版本库状态，示例：
+git checkout commit_id -- file.txt
+
+	文件回退总结：
+		checkout：如果有暂存区就回退到暂存区，没有暂存区就回退到最新版本库，如果有暂存
+区还想回退到最新版本库，那就可以用git reset HEAD <file>把文件移出暂存区，如果想把文件回退到某个
+版本库，就用git checkout commit_id -- file.txt
+
+	git rm：如果直接把文件删除掉，git也会知道，不过git只是记录了这个修改，因此checkout之后
+依然是从暂存区-》版本库获取，就算删除之后再commit，也还是能使用checkout直接恢复；如果要在版本库
+当前的版本把它删除，那么就要在删除之后使用git rm <file>，然后commit，这样如果从最新版本checkout
+就会找不到它
+
+	git remote add：使用以下指令把当前仓库关联到远程仓库：Linboc的learngit版本库的origin分
+支：git remote add origin git@github.com:Linboc/learngit.git
+  给远程库在本地起个名↑                账号↑    ↑github的版本库  
+
+	git push：推送到远程分支，第一次要用git push -u origin master，加-u是为了把远程的master
+分支关联到当前的master分支，origin是因为前面已经把learngit在本地起名为origin，直接关联就是master
+分支，第一次用-u关联了之后，就直接使用git push origin master就能把本地提交的master分支推送到learngit
+远程库的master分支了
+
+	git clone：克隆远程库，如果已经关联上了本账号，直接打开一个文件夹，然后就会在当前文件夹
+创建一个版本库，示例：git clone git@github.com:Linboc/gitskills.git，这样会拉取Linboc账号的gitskills
+远程库，并且在当前目录下创建一个gitskills文件夹，里面包含了.git文件，和远程库本来就存在的文件，
+可以以使用github提供的url来clone，clone后面改成url就行了，比如git clone https://github.com/Linboc/gitskills.git
+
+	git branch dev：创建dev分支
+
+	git checkout dev：切换到dev分支
+
+	git checkout -b dev：创建并切换到dev分支
+
+	git branch：查看所有分支，分支名前面有*的代表当前分支
+
+	git merge dev：把当前分支和dev分支合并，合并之后HEAD还是在当前分支
+
+	git branch -d dev：删除dev分支
+
+	git log --graph --pretty=oneline --abbrev-commit：--graph可以看到分支合并图，第二个可以
+让提交只显示一行，--abbrev-commit可以只显示commit_id的前几位
+
+	git merge --no-ff -m "merge with no-ff" dev：合并dev分支并禁用Fast forward模式，Fast forward
+模式就是，如果两个分支没有修改同一文化部，当前分支就会直接指向要合并的分支，不过因为是直接切换
+指针的，因此在分支历史上看不出来有这个合并，而使用了--no-ff，就会在合并分支后，add合并分支修改
+过的文件，然后进行一次commit，因此需要指定-m，这样的话就有合并的记录，而不是仅仅切换指针，尽管
+效果看起来一样(经测试，分支合并历史一样也有，不过因为指针直接指向合并的分支，这样会导致两个分支
+的commit历史一模一样，后面的commit还是分开的)
+
+	git stash：保存现场(贮藏)，后面可以恢复执行git stash当时的所有状态
+
+	git stash list：查看所有的现场(贮藏)
+
+	git stash apply：恢复一个最近的现场(贮藏)
+
+	git stash pop：恢复一个最近的现场(贮藏)，并删除该现场(贮藏)
+
+	git stash apply stash@{1}：git stash可以执行多次，因此同时可能会存在多个贮藏，这他们每
+个都有编号stash@{0}、stash@{1}、stash@{2}...,通过指定stash@{1}来指定恢复编号为stash@{1}的贮藏
+
+	git branch -D <name>：新建的分支如果有修改，使用git branch -d <name>是无法删除的，会有
+提示未合并，删除失败，这时候要把-d改为-D，强行删除
+
+	git pull：如果同一份文件被多个人修改，push就会提示错误，这种情况要先pull下来，git会试图
+合并，如果合并失败，git会把失败的地方用>>>,<<<,===标记出来，没冲突的会直接合并，等在本地解决冲
+突了，再add-commit-push就可以了
+
+	git branch --set-upstrean-to <branch-name> origin/<branch-name>，其中第一个<branch-name>
+是本地分支名，第二个是远程分支名，origin是远程分支在本地的的别名，这个名在本分支的时候才会引用
+向链接的远程分支，如果在其它分支使用可能指向的就是其它远程分支了
+
+	git checkout -b branch-name origin/branch-name：在本地创建一个分支，并让它和远程分支关
+联，两个关联的分支名最好一致，在与创建一个分支并且与远程分支关联的时候，可能会出现错误提示，此
+时需要用git fetch，出错也许有有一些分支没有更新？
+
+	git fetch：更新所有远程仓库，而pull只更新当前分支
+
+	git rebase <branch_name>：把当前未push的提交整理成一条直线，比如当前分支要合并dev分支，
+这时候如果看分支线就会看到一条线从其它分叉指向当前分支，rebase的作用就是，把所有未push的线条整
+理成一条，原理是分支2从分支1分离出去，然后两个分支持续开发，这时候如果要合并，就要把两个分支merge
+起来，这时候就会有合并的分叉线，而rebase就是，把分支2的修改全部另外存放起来，然后插在分支1的修
+改后面，这样如果merge合并有冲突，那么rebase也会有冲突，如果merge没有冲突，那么rebase也不会有冲
+突，因为合并原理是一样的，不过流程改了，把原来先全部改好，再并入，变成先一个一个并入，碰到冲突
+再改
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

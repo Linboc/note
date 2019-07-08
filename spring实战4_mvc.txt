@@ -1,0 +1,180 @@
+SpringMvc的启动：
+	需要继承AbstractAnnotationConfigDispatcherServletInitializer类，这个类的父类最终会实现
+WebApplicationInitializer接口
+
+需要重写3个方法：
+	getServletMappings：拦截哪些映射到SpringMvc的Dispatcher(调度器)Servlet上，一般都是'/'
+	getRootConfigClasses：配置扫描的包、和过滤器的类型、启动SpringMvc等
+	getServletConfigClasses：视图解析器、静态资源之类的配置
+
+Controller映射中跳转到另一个映射的方式：
+	Controller返回的方式可以直接返回视图名称，那么他会通过视图解析器加上前后的路径，也可以
+返回另外一个映射的名称，那它就会调用另外一个映射，访问另外一个映射的方式有两种：
+	请求转发：在访问的映射前加上 redirect:
+	重定向：  在访问的映射前加上 forward:
+
+SpringMvc中的监听器：
+	ServletContextListener：
+		监听Web服务器的启动和销毁
+		在启动Web容器时，自动装配Spring applicationContext.xml的配置信息，因为这个监听
+	器实现了ServletContextListener这个接口，因此只要配置了这个监听器，在容器启动和销毁时会
+	执行实现的方法：init和destroyed方法，并传入ServletContextEvent对象
+	
+	RequestContextListen：
+		监听Web服务器接收的每次请求的启动和销毁
+		只要配置了这个监听器，因为实现了ServletRequestListener监听器接口，因此在容器启
+	动和销毁时会调用它实现的两个方法：init和destroyed方法，并传入ServletRequestEvent对象
+		
+	IntrospectorCleanupListener：
+		负责由JavaBeans Introspector的使用而引起的缓冲泄露
+
+返回视图带上参数：
+	这样做的好处是可以在重定向中保存想要的request域的参数
+	添加在Model对象里的参数，可以在返回的字符串中使用{key}代表那个参数，并且会自动转义，而
+添加在Model里又没有在返回的字符串里面引用的Model参数，则会变成请求的数据跟着传过去，好吧，本来
+添加进Model后就是在请求域里面的数据，使用GET会带在URL后面，POST则不可见，可是引用类型却无法传送
+
+请求域的引用类型变量保留到重定向后：
+	其原理就是暂时保存在session中，并且使用后删除掉，不过Spring不需要我们删除，它会自动删除
+删除的时机是在下一次请求，使用RedirectAttributes对象，用法跟Model一样，一样的获取和添加属性
+
+
+
+
+
+
+注解：
+	
+@EnableWebMvc		
+	使SpringMvc生效	
+
+@Controller
+	注明一个类是控制器类，这个类会生成为上下文中的一个Bean
+
+@RequestMapping
+	指定一组映射，标注类或方法，在请求的时候每一个方法的路径会是类+方法的组合起来的映射值，
+	如果方法不指定，那么访问该类的映射就是访问该方法的，同一映射可以GET和POST同时使用，如
+	果想要在映射里获取值，
+	属性：
+		value：指定一个映射以使用value为"/{}"的格式，这会使传入的参数为一个变量，可配合
+		 @PathVariable使用，只有没有匹配到常量映射的请求才会匹配这种变量映射
+		mothod：指定请求的类型
+
+@RequestParam
+	标注控制器方法的形参，使对应的请求参数注入到被注解的参数中
+	属性：
+		请求参数的属性名
+	
+@PathVariable
+	标注一个形参，使映射变量注入到标注的参数里
+	value：@RequestMapping指定的某个"{}"里的某个参数值
+		
+@ResponseStatus
+	标注一个异常类，用来在控制器抛出异常的时候使用
+	属性：
+		value：HttpStatus类的静态常量，说明这个异常的状态，NOT_FOUND说明找不到，404
+		reason：该异常的描述
+
+@ExceptionHandler
+	在控制器中使用，会捕获该控制器类的所有异常
+	属性：
+		value：指定一个异常类，抛出对应异常的时候会执行被注解的方法，返回的视图也是以
+		这个被标注的方法为准
+
+@ControllerAdvic
+	    全局异常控制器，标注一个类，如果控制器发生了异常，就会来这个类里面找到被@ExceptionHandler
+	注解的方法，然后根据抛出异常的类型找到对应的@ExceptionHandler的value属性指定类型，并执
+	行该方法
+	属性：
+		value：指定一个异常类
+
+
+
+javax.validation包数据验证：
+
+	如果数据不符合条件，也不会有任何动作，不过可以带一个Errors对象在该pojo参数的后面，
+Errors必须紧跟在验证的参数后面，它代表的是前一个位置的参数验证的结果，具体逻辑需要自己决定
+
+@NotNull
+	标注一个属性非空
+
+@Null
+	标注一个属性为空
+
+@Size
+	标注字符串、数字、集合的长度范围，
+	属性：
+		min：最小长度
+		max：最大长度
+
+@Max
+	一个数字的最大值
+
+@Min
+	一个数字的最小值
+
+@Pattern
+	给定一个正则表达式，参数必须匹配
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Servlet3.0的无web.xml的web应用：
+	SpringMvc的无web.xml注解式启动怎么配置倒是说了，不过没有说怎么使用，因为无web.xml模式
+是基于Servlet3.0的，所以先学一下Servlet3的无注解启动，希望能借此完成SpringMvc的注解启动
+
+@WerServlet
+	等同于servlet + servlet-mapping的功效，以前定义的servlet一般有4个标签，两个指定名字，
+	一个指定映射，一个指定类
+	属性：
+		name：指定servlet的name
+		urlPatterns：两个作用相同，指定映射
+		value：作用同上
+		映射的类是被注解的类
+		initParams：指定一组Servlet初始化参数
+		loadOnStartup：指定Servlet加载的顺序
+		asyncSupported：声明Servlet是否支持一步操作
+		description：Servlet的描述信息
+		displayName：该Servlet的显示名
+
+@WebInitParam
+	一般是配合@WebServlet或@WebFilter使用，作为初始化参数的猜载体
+	属性：
+		name：参数名
+		value：参数值
+		description：参数描述
+
+@WebFilter
+	把一个类声明为过滤器，过滤的是一个个Servlet，在访问这些Servlet时用value或url去匹配过滤
+	属性：
+		filterName：指定过滤器的name
+		value：指定一组过滤器的映射
+		urlPatterns：同上
+		servletNames：指定过滤器应用于哪些Servlet,参数是ServletName数组
+		dispatcherTypes：指定过滤器的转发形式，如重定向，请求转发，错误转发
+		initParams：指定一组过滤器初始参数
+		asyncSupported：声明Servlet是否支持一步操作
+		description：Servlet的描述信息
+		displayName：该Servlet的显示名
+		

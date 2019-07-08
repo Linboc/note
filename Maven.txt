@@ -1,0 +1,264 @@
+Maven是什么？
+	Maven是一个项目管理工具
+
+约定优于配置：
+	就是一些东西如果没有手动配置，就会按照默认的方式进行处理，这个默认的方式就是约定，比如EJB3
+的实体类，只需要将一个类标注为@Entity,框架会假定表名和列名是基于类名和属性名，系统也提供了一些
+钩子，当有需要的时候可以重写这些名字，但大部分情况下，用默认值就足够了
+
+Maven在没有自定义的情况下，约定：
+	代码约定放在：/src/main/java
+	资源文件约定放在：/src/main/resources
+	测试代码约定放在：/src/test
+	编译好的字节码约定放在/target/classes
+	可分发的jar文件约定放在/target
+
+	遵循“约定优于配置”的好处是，如果按照Maven的约定，那么只需要进行几乎为零的工作，剩下的
+事Maven将会处理，这样做的一个副作用是，用户可能会觉得他们被强迫使用一种特殊的方法，但是很多默认
+配置是可以自定义的
+
+Project Object Model：
+	项目对象模型，把每个项目都看成一个对象，也就是一个依赖，通过在pom.xml添加依赖导入项目的jar包
+
+基于Maven插件的全局性重用：
+	Maven的核心其实没做什么事，除了解析一些XML文档，管理生命周期和插件，其余什么也不做，Maven
+被设计成将主要职责委派给一组Maven插件，如打包WAR文件，打包二进制代码，发布站点，从Apache下载的
+Maven不知道如何打包WAR包，也不知道如何单元测试，Maven大部分智能是由插件实现的，第一次运行如mvn 
+install命令时，它会从中央仓库下载大部分核心Maven插件
+	Maven Surefire插件是负责单元测试的插件，如果某个项目用的Surefire是1.0版本，那么如果想用
+3.0版本，只需要在pom.xml文件里面把依赖版本改成3.0就行了，以前的测试仍能成功运行，但是又获得了新
+功能，不只是Surefire插件，其它插件 也一样，不需要重头自定义项目的构建系统然后提供支持
+
+	Maven的配置会放在C:/Users/admin/.m2目录下的的settings.xml文件里面，该文件包含了用户相关
+的认证，仓库和其它信息的配置，用来自定义Maven的行为。Maven的默认本地仓库在C:/Users/admin/.m2/repository/
+
+Maven可以使用旧版本的插件执行一些命令：mvn org.apache.maven.plugins:maven-archetype-plugin:2.4:generate
+，比如这行命令使用2.4版本的archetype插件的generate目标
+
+groupId，artifactId, packaging(jar或war), version——是Maven的坐标，它们唯一标识了一个项目
+
+在项目的基础目录(有pom文件的目录)下运行mvn help:effective-pom，可以看到一个完整的pom文件，基本
+都会比所看到的的pom文件大，因为里面暴露了Maven的默认配置
+
+Maven核心概念：
+
+plugin(插件)：
+	Maven的功能是由插件提供的，一个插件里面包含多个目标
+
+goal(目标)：
+	目标是一个明确的任务(功能)，比如archetype:generate，就是使用archetype插件的generate
+功能，一个目标是一个明确的任务，它可以单独运行或者和其它目标在一个大的构建一起运行，目标是Maven
+中的一个"工作单元"
+
+构件：
+	Maven中任何依赖或项目输出(jar、war)都可成为构件，每个构件都有自己的唯一坐标
+
+阶段：
+	每个阶段都会绑定0个或多个目标，被绑定的目标随着它们阶段的运行而运行
+
+lifecycle(生命周期)：
+	“一个生命周期是一些阶段的序列”，比如运行mvn package，package生命周期包含
+了多个阶段：resources(打包resources资源)、compile(编译java文件)、testResources(打包test的resources
+资源)、testCompile(编译test的java文件)、test(运行所有的测试并创建捕捉测试结果的文件)、jar(打jar
+包)等6个阶段；所以执行一个生命周期等于执行一些序列的阶段，序列就是有序的，因此就是执行一个生命周
+期就会按照顺序执行一些目标。(打包就是把资源复制进resources文件夹里面)
+	因此执行mvn package和执行mvn resources:resources compiler:compile resources:testResources compiler:testCompile surefire:test jar:jar
+会得到一样的结果
+
+Maven坐标(coordinates)：
+	Maven坐标可以用来唯一标识一个项目，一个依赖，或者一个插件
+	坐标由groupId、artifactId、packageing、version组成，还有classifiers，尽管很少用，而使用
+groupId、artifactId、version就能使之成为一个独一无二的项目，另外两个的作用更多是标识
+	maven坐标通常用冒号作为分隔符，比如写成这种格式：groupId:artifactId:packaging:version
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>3.8.1</version>
+      <scope>test</scope>
+    </dependency>
+
+    以上依赖可以表示为：junit:junit:jar:3.8.1
+
+Maven仓库：
+
+在Maven仓库中，所有的东西存储在一个与Maven项目坐标匹配的目录结构中，比如junit:junit:jar:3.8.1
+能在\junit\junit\3.8.1\里面找到依赖的文件，文件名为junit-3.8.1.jar,在仓库根目录下，按照下面的目
+录格式来存储构件：
+	/<groupId>/<artifactId>/<version>/<artifactId>-<version>.<packaging>
+
+	在重新构建项目时，Maven会从本地仓库重新获取需要的构件
+
+	仓库需要一个构件时，会在本地仓库找，本地仓库找不到就会去远程仓库找，本地仓库默认在：
+C:\Users\admin\.m2\repository，该路径可以自定义，远程仓库的地址也可以自定义
+
+依赖范围：
+	Maven可以通过dependency scope来限制某些依赖的作用，比如把junit的dependency scope改为test
+，那么这个依赖在resources:resources时是不会被打包进resources资源的，只有在resources:testResources
+时才会被打包
+
+	也可以使用provided范围，让Maven在打jar包或war包时忽略不符合provided范围的依赖，比如让Servlet
+的API只有在编译时使用，不会编译进WEB-INF/lib里面，这时候就可以使用provided范围进行限制
+
+mvn install:install/deploy:deplot无法执行的原因和解决方法：
+	如果jar包已经存在了，可是因为使用了packaging生命周期，导致没有存到本地仓库，如果想跳过
+前面执行过的阶段，直接运行mvn install:install，这样会出现错误；因为Maven为了防止一些错误，mvn install:install
+是需要其它的上下文信息来做验证的，因此直接执行install:install会找不到上下文的信息，这时候就要用
+mvn jar:jar install:install来达到目的，jar:jar这一步会创建install:install所需要的上下文，使用
+jar:jar似乎会用jar插件来构建一个新的jar，即使没有内容被改变。默认情况下，如果这个文件没有改变，
+插件将跳过创建jar这一步
+
+mvn site：
+	站点生成和报告，在项目根目录下运行，site生命周期将会在target目录下生成一个site目录，里面
+的文件包含了项目站点和一些报告，包括依赖和相关开发人员，项目坐标、名称等等
+
+Maven的help插件的目标能获得Maven里面的帮助信息，比如mvn help:describe -Dplugin=exec -Dfull能获得
+exec插件的所有描述
+
+mvn dependency:resolve能够浏览项目的所有依赖，包括传递性依赖
+mvn dependency:tree能够看到依赖树
+甚至可以用mvn install -X(debug模式)来查看完整的依赖，包括纳西因为冲突而被拒绝引入的构件
+
+单元测试：
+	所有的单元测试的类都要放在~/src/test/java包下面，并且它们都要继承Junit定义的TestCase类
+
+	运行mvn test生命过程就会执行项目中所有能在 src/test/java 找到的并且文件名与 **/Test*.java
+， **/*Test.java 和 **/*TestCase.java 匹配的所有单元测试。因此测试类的命名要符合规范，test调用
+测试类后，会执行所有以“test”开头的公有方法
+
+	在Maven Surefire插件执行JUnit测试的时候，它同时也在h/target/surefire-reports目录下生成
+XML和常会文本报告。如果测试失败了，可以去这个目录里面找到单元测试生成的异常堆栈信息和错误信息
+
+在构建项目时忽略测试失败：
+在pom.xml中配置插件属性：
+    <build>
+        <plugins>
+	    <plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-surefire-plugin</artifactId>
+		<configuration>
+		    <testFailureIgnore>true</testFailureIgnore>
+		</configuration>
+	    </plugin>
+        </plugins>
+    </build>
+在命令行执行时传入参数： mvn test -Dmaven.test.failure.ignore=true
+
+在构建项目时跳过单元测试：
+	用法跟忽略测试一样不过把testFailureIgnore属性改成skip一样
+	在命令行执行时传入参数： mvn test -Dmaven.test.skip=true
+
+可以在/src/main/java里面把代码写好，然后在/src/test/main里面进行测试，因为在同一个项目里面，测试
+很方便，只要test的规范写好，然后运行mvn test就行了，而mvn install只会打包/src/main/java里面的文件
+
+	如果test里面有编译错误，使用failure.ignore=true一样会打包失败，因为failure.ignore=true
+的作用是忽略运行中的异常，如果想在test有编译错误的情况下一样打包成功，那么就要用skip=true
+
+mvn assembly:assembly：
+	构建可分发的jar包，需要在pom.xml里面加上<artifactId>maven-assembly-plugin</artifactId>
+plugin的配置信息
+
+在使用mvn archetype:generate的时候，可以传参archetypeArtifactId=maven-archetype-webapp，这样就
+不需要再选择maven项目模板了，而是直接选定为web应用；其它模板也能用这种方式直接生成
+
+自定义打包的文件名称：
+	<build>
+	   <finalName>simple-webapp</finalName>
+	</build>
+
+在war中了
+
+使用jetty启动，添加插件
+	<plugin>
+	    <groupId>org.mortbay.jetty</groupId>
+	    <artifactId>maven-jetty-plugin</artifactId>
+	 </plugin>
+然后进入项目根路径运行vmn jetty:run来启动web应用，启动的是项目，而不是war包
+
+也许会需要先加servlet的依赖：
+	<dependency>
+	  <groupId>org.apache.geronimo.specs</groupId>
+	  <artifactId>geronimo-servlet_2.4(servlet的版本)_spec</artifactId>
+	  <version>1.1.1</version>
+	  <scope>provided</scope>
+	</dependency>
+
+<scope>provided</scope>，是告诉Maven jar文件已经由容器提供了，不需要打包进war里面了，加依赖是因
+为需要在本地编译通过
+
+如果想加jsp的依赖，就把servlet改为jsp就行了
+
+多模块：
+	
+	子模块的文件夹要在父模块的文件夹目录下
+
+	子模块的groupId和version继承了父模块的，因此不需要写，由于子项目之间可能会互相依赖，因
+此要先编译被依赖的模块之后才能编译依赖他的模块，当Maven执行一个带有子模块的项目时，Maven首先载
+入父pom，然后定位所有的子模块pom，Maven会将这些项目的pom放入一个Maven反应堆，然后由它负责分析模
+块之间的依赖关系，因此如果子模块之间有依赖关系，那么会先去编译被依赖的模块，并且模块之间不允许
+循环依赖。在公司项目里面也有过编译父项目报错，要先编译client子项目其它项目才能编译，这是什么原因？
+
+	如果构建的是一个父模块，那么这个父模块和它的所有子模块是反应堆，如果构建一个单独模块，
+那么这个模块就是反应堆
+
+	父项项目里面加上<module>子项目文件夹名</module>，子项目加上<parent>
+
+	多模块的好处是依赖有继承关系，能集中管理
+
+<dependencyManagement>：
+	如果把<dependencies>写在它里面，那么该<dependencies>里面的所有依赖都不会被子项目继承，
+并且当前项目也不会导入里面的的依赖，子类如果想使用该依赖，那么在正常的依赖标签里面引用<groupId>
+和<artifactId>就行了，不需要<version>，<version>默认使用<dependencyManagement>里的，这样做看起
+来没少多少代码；不过这样有个好处，能统一管理版本、能继承该依赖的所有自定义属性，子项目有时候并
+不需要父项目那么多依赖，这时候就可以把依赖放<dependencyManagement>里，需要再引用，还能保证版本
+的一致性，如果想更改版本或者属性，还可以在子项目覆盖
+
+	另外<dependencyManagement>里面还能引用其它项目的<dependencyManagement>，如果有多个项目
+都需要同一套有个多相同的依赖，这时候可以在<dependencyManagement>里面导入一个已经有<dependencyManagement>
+的pom，这样就能多个项目复用同一套<dependencyManagement>，并且可以扩展，因为导入的<dependencyManagement>
+也只是本项目里面<dependencyManagement>中的一个依赖，例子：
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.sonatype.mavenbook</groupId>	选择坐标
+				<artifactId>simple-parent</artifactId>
+				<version>1.0</version>		
+				<type>pom</type>		此例子是导入一个pom类型，还有jar、war等
+				<scope>import</scope>		范围为import
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+注：该导入<dependencyManagement>的方式只能在<dependencyManagement>中才能使用
+
+类似于<dependencyManagement>，maven还提供了<pluginManagement>来管理插件，作用基本一致
+
+继承是为了减少重复性配置，聚合是为了方便构建项目
+
+反应堆裁剪(只构建反应堆的部分模块，反应堆有多个模块才能裁剪)：
+
+pl：指定想要构建的模块，只会构建webapp和weather模块
+mvn install -pl simple-webapp,simple-weather
+
+-am：构建反应堆里面的模块，包括它的父模块，和它依赖的模块
+mvn package -pl simple-webapp -am
+
+-rf：指定从哪个模块开始构建，比如完整的反应堆是1,2,3,4，如果指定2号模块，那么就会构建2,3,4
+mvn package -rf simple-webapp
+
+复合裁剪：
+mvn package -pl simple-webapp -am -rf simple-weather：一开始有6个，-pl后剩下1个，-am后剩下3个，-rf后剩下2个
+有点像Stream，链式调用，每次都返回上一次的裁剪过的反应堆，然后继续裁剪
+
+
+
+
+
+
+
+
+
+
+
+
+
+，

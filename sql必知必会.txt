@@ -1,0 +1,238 @@
+	DISTINCT，对指定的列除重，会针对所有查询的列，如果指定多个，那么多个列都相同才算重复
+
+	ORDER语句，后面可以BY 列1,列2,列3....，也可以用数字，BY 2,1,3....这里的数字对应的是前
+面SELECT的列，例如SELECT id,name,age FROM person ORDER BY 2,1,3，效果等同于ORDER BY name,id,age
+，这样的方式对于没有被显式指定的列式无法生效的，而如果BY后面式指定的列名，则可以指定未被查询的
+列，因此BY 数字方便，BY 列名功能更强，最强的是混合使用
+
+	DESC，原来DESC不是指定所有的列都逆序，而是只针对它前面的列，比如SELECT * FROM person 
+ORDER BY 2 DESC,name DESC, age，可以这样使用，与DESC对应的是ASC,不过ASC一般没用，因为默认就是
+ASC，默认情况下A与a会被认为是同样大小的，因此排序会在同一级别，如果需要进行区分，则需要依靠
+DBMS的设置
+
+	判断NULL的时候，不能直接使用 = NULL，而是应该使用SQL提供的 IS NULL来判断是否为NULL,而且
+选择返回NOT IN判断的时候，NULL并没有被返回，也不会返回，因为未知(unknown)有特殊的含义，数据库不
+知道它们是否匹配
+
+	IN操作符用来指定条件范围，范围中的每个条件都可以进行匹配。IN取一组由逗号分隔、括在圆
+括号中的合法值。IN操作符就跟很多OR一样，只要存在里面任何一个就为真，不过IN的效率一般比多个OR快
+了很多，因此能使用IN就不要使用多个OR，并且IN最大的优点是能包含其它SELECT语句
+
+	NOT，NOT能否定跟在其后的条件，并且可以放在列名前，比如：WHERE id NOT IN = ('t2','t1')，
+的效果和WHERE NOT id IN = ('t2','t1')，的效果是一致的，并且WHERE id NOT = 't1'是不合法的，只能
+是WHERE NOT id ='t1'，当然如果非要的话可以WHERE id NOT IN = ('t1')
+
+	操作符作为谓词的时候不是操作符
+	
+	文本查询通配符%，%无法匹配NULL，并且有一种情况需要注意，如果某一列有50个字符，可是用户
+只存放了17个，那么很多DBMS都会用空格来补全后面的空余，这种情况如果要用'F%q'来匹配F开头q结尾的
+字符串，那么它有可能匹配不到，因为最后面是空格，而不是q，这种情况可以用函数去掉空格，而不是再
+后面再加一个%，因为着就不能保证最后一个是q了，并且如果把通配符放在最前面，通常是搜索最慢的，通
+配符如果能被其它代替就尽量代替，虽然很多时候无可替代，不要过度使用
+
+	在sqlserver中，like 可以使用[子集]，比如[aks]%就会匹配a或k或s开头的所有字符串，如果
+[^aks]%就会匹配所有非a或k或s开头的字符串，注意这并不是正则
+
+	TRIM：删除左右两边的空格，LTRIM删除左边的空格，RTRIM删除右边的空格
+	sql server TRIM实测无用，可以用LTRIM嵌套RTRIM达到相同效果
+	
+	别名的其他用途：常见的用途包括在实际的表列名包含不合法的字符（如空格）时重新命名它，
+在原来的名字含混或容易误解时扩充它。别名有时也称为导出列
+
+	CONVERT：数据类型转换，param1：系统类型，如int,char等，param2：需要转化的数据
+
+	LEFT：返回左边的字符串，param1：源数据，param2：返回的数量;RIGHT：跟LEFT一样，返回右边
+
+	UPPER：转大写、LOWER：转小写
+
+	SOUNDEX：返回该字符发音的SOUNDEX值，这些值是根据发音返回的，因此就算字符不一样，如果发
+音相同返回的也是相同的SOUNDEX值
+
+	GETDATE()：获取当前时间
+	
+	DATEPART：获取该时间数据的某一部分，param1：指定药获取的部分：yyyy年,mm月,dd日,hh时,mi
+分,ss秒，param2：数据源
+
+	日期的条件判断：可以用BETWEEN startDate AND endDate来选择某个范围的日期，或者直接操作符
+判断比较
+
+	聚合函数：对某些行运行的函数，计算并返回一个值，如果指定DISTINCT，则除重后再计算，否则
+		  计算所有的值，对于分组的语句，聚合函数计算的是每一组的数据，而不是所有数据
+		AVG	平均数	对NULL行进行忽略
+		COUNT	总数目	如果参数是*，会连NULL一起计算，如果参数是某列，则会忽略NULL
+		MAX	最大值	对NULL行进行忽略，对字符串有效果
+		MIN	最小值	对NULL行进行忽略，对字符串有效果
+		SUM	总和	对NULL行进行忽略
+	
+	DISTINCT不支持count(*)，只支持具体列，估计是count(*)会直接返回表的size，并且对于MAX和
+MIN没有意义，但是能用，之所以使用了DISTINCT就会对所有需要的字段进行除重，并且不允许有加了语句
+之后额外的字段不除重的，是因为如果某个字段id不同,name相同，那么对name除重，并获取id，那么这两
+个id到底应该给哪个？ORDER也一样，存在多个不确定的值不知道用哪个进行排序，因此不指定也无法使用
+
+	GROUP也一样，如果要获取某些字段，那么该字段就必须在GROUP里面，因为分组之后，分组的字段
+相同的只剩下一个，那么其它的可能有多个不同的值，这些值应该显示哪个？明显是不确定的，ORDER也一
+样，存在多个不确定的值不知道用哪个进行排序，因此不指定也无法使用这时候可以把该字段也加入GROUP，
+不过会改变分组的逻辑,或者使用聚合函数，让其有一个明确的值，因此GROUP一般配合聚合函数使用GROUP
+在对多个表分组时，会进行全连接
+
+	GROPY BY后面可以时表达式，或者使用函数，但不能是聚合函数，如果使用了表达式或函数，那么
+在SELECT后面选择的数据必须跟该表达式或函数一样，不能用别名，如果分组的列有NULL，那么也会生效，
+所有的NULL分为一组，分组多列的话，要多列都相同才算一组
+	
+	HAVING：对分组后的数据进行过滤，因此只能对分组的字段进行判断(不分组的话可能一组对应好
+几个数据，不知道要的是哪个)，并且HAVING是针对每一个分组，where是对表的所有数据
+
+	聚合不应该出现在where里面，因为where针对的是每一条数据的筛选，对于一条数据来说，不存在
+聚合，HAVING则可以使用，因为HAVING针对的是一组数据，因此可以使用聚合
+
+GROUP的字段是同一张表和不同表之间的区别：
+	一张表内：每一条数据算作一个对象，如果多个对象的值全都相同，就分为一组，只有某一列不算
+	多张表：类似于全连接，1-1,1-2,1-3,2-1,2-1...，在全连接之后，如果多个字段都相同算为一组
+
+	关系型数据库并不是指物理上的关系，而且逻辑上的，比如需要保存供应商和其商品的信息，如果
+只有一张表的话，那么就会有多个商品是同一供应商，例如供应商有名称、地址、电话等等信息，重复保存
+的话就会极大的浪费资源，并且同一供应商的商品在添加的时候不能保证供应商信息都是一致的，而且如果
+修改供应商信息，就要修改多条数据，所以这种情况下进行分表是很有必要的，商品表只要保存供应商表对
+应供应商的ID就可以了
+
+	联接就是为了在多张有关系的表中取出需要的数据
+
+	连接的语法： 第一个表 连接方式:如INNER JOIN 第二个表 ON 条件
+	内连接：只有符合条件的才会保留
+	外连接：主连接表一定保留，如果条件不符合，除了被连接的表会返回NULL
+		左外连接：保留连接左边的表
+		右外连接：保留连接右边的表
+		全外连接：先把两表符合条件的进行连接(两张表的行凑成一行)，剩下的分别保留左边右
+		   边为NULL ，保留右边左边为NULL，也就是所有的数据都会存在，不过相同的被合并了
+	自然链接：自己手动排除数据，例如查询3张表，筛选第三张表的部分数据，用第三张表的剩余数
+		据筛选第二张表，再用第二张表剩余数据筛选第一张表，就是那种查几张表，然后表之间
+		的条件互相判断，就是不同的表之间相同的属性过滤
+	
+	如果直接写LEFT JOIN，效果和LEFT OUTER JOIN是相同的
+
+	UNION：要查询多个表的数据，如果直接查两张表，就会是笛卡尔积，如果加其他条件，又不能
+保证两张表都是完整的，而且全连接又有很多NULL，这时候可以用UNION，把两张表的数据合并成一张表，
+后输出，必须保证两张表输出的列(可以使表达式或聚合函数)数量一致，并且类型也一致(并非一定相同而
+是能够隐式转换)，因为它会把两张表的数据合成一张表输出，如果类型不一致，则无法合成，合成后可以
+当做一个新表使用，如果有重复数据将会被自动除重，如果有多个列，那么多个列都一样则会被除重，如果
+不希望被除重，可以使用UNION ALL，保留所有数据
+	只能在最后一条SELECT语句后面使用排序，看起来只排序了最后一个SELECT，其实排序了所有数据
+
+	EXCEPT：功能类似UNION，不过只保留只在第一个表中存在第二个表不存在的数据
+	INTERSECT：跟上个差不多，只保留两个表都存在的数据
+	实际上这两个的功能联结就能做到
+
+	INSERT SELECT：利用查找出来的数据添加进一张表中：
+		insert into customer (customerId, customerName, customerCode, address, telphone) 
+		select supplyId, supplyName, supplyCode, address, telphone from supply
+	列名可以省，这样不过是为了把列对应起来，1-1.2-2，如果列正好顺序对应，可以改成这样：
+		insert into customer () 
+		select * from supply
+	
+	SELECT INTO：把查出来的数据创建一个新的表
+		SELECT * INTO supplyCopy FROM supply
+	会创建一个supplyCopy，数据完全跟supply一样，SELECT语句保持原有的所有功能
+	
+	DELETE FROM supply会删除supply所有行，如果要删除所有行的话，使用TRUNCATE TABLE更加方便
+	，因为不记录数据的变动
+
+	创建表：
+		create table 表名{
+			id char(15) NOT NULL,
+			name varchar(10) NOT NULL,
+			createDate date NOT NULL DEFAULT GETDATE()
+		}	
+	删除表：
+		DROP TABLE table[表名]
+
+	修改表的结构：
+		固定的起手式：ALTER TABLE table[表名]
+		增列：
+			ADD addTest[列名] char(20)[类型]
+		删列：
+			DROP COLUMN addTest[列名]
+	
+	视图：
+		视图的作用是简化SELECT语句，视图只支持SELECT语句
+
+	创建视图：CREATE VIEW viewName[视图名] AS SELECT语句.......
+	删除视图：DROP VIEW viewName[视图名]
+
+	视图的使用：
+		跟表一样直接使用，并且它能使用的字段是它返回的所有字段，未返回的都是不可用的如
+		果在调用视图的时候也用了WHERE，那么会在视图返回的数据里面进行WHERE筛选
+	视图的作用：
+		视图可以方便的封装SELECT语句，可以嵌套视图使用，可以格式化数据，做好视图后只要
+		SELECT视图然后WHERE关键数据，就可以返回可能需要很复杂的查询和格式化后才能出现的
+		结果，使用起来很方便
+	
+	事务(transaction)：一组SQL语句，数量取决于事务开始和提交的位置
+	回退(rollback)：退回到事务开始前或保留点保存时的状态
+	提交(commit)：结束事务，将未存储的SQL语句结果写入数据库中
+	保留点(savepoint)：事务中的临时占位符，可以看出事务里的子事务，可以只回退到事务的某个
+			   位置，让事务更加灵活
+
+	事务只能回退：INSERT、UPDATE、DELETE语句，就是让这些语句的结果不会真正的执行，为什么
+	平时执行会直接生效？因为不是在事务处理块中的语句会隐式提交，即提交操作是自动进行的，
+	而在事务处理块中需要进行明确提交才会生效
+
+	语法：
+		BEGIN TRANSACTION
+			在其间运行的SQL语句如果出错会退回到BEGIN时的状态
+		COMMIT TRANSACTION
+	
+	@@ERROR：SQL SERVER记录在事务中记录执行失败语句次数的变量，非0则是有错误发生
+
+	保留点语法：
+		BEGIN TRANSACTION
+			INSERT INTO Customers(cust_id, cust_name)
+			SAVE TRANSACTION delSupply[保留点标识名]	//定义一个保留点
+			
+			//如果@@ERROR不等于0，就退回到delSupply时的状态
+			UPDATE user SET name='x'
+			IF @@ERROR <> 0 ROLLBACK TRANSACTION delSupplu	
+			
+			//如果这里出错也会回退到delSupply时的状态
+			DELETE FROM user
+			IF @@ERROR <> 0 ROLLBACK TRANSACTION delSupplu
+		COMMIT TRANSACTION
+
+	创建索引：
+		CREATE INDEX supply_ind1 ON supply(supplyId, supplyCode)
+		CREATE INDEX [索引标识] ON [表名]([字段1], [字段2]....)
+	检索时如果要用索引，那么where后面的排序就必须是 字段1条件 and 字段2条件...，因为索引存
+储的顺序是字段1、字段2...，如果条件是先where字段2 and 字段1，索引就没办法用优势找到字段2，那样
+就只能全表查询了
+
+	约束：
+		唯一约束：唯一约束用来保证一列（或一组列）中的数据是唯一的，不能定义外键
+		检查约束：检查约束用来保证一列（或一组列）中的数据满足一组指定的条件。
+
+
+	触发器：
+		CREATE TRIGGER customer_state			//创建名为customer_state的触发器
+		ON Customers					//根据Customers表的动作触发
+		FOR INSERT, UPDATE				//在进行INSERT和UPDATE时触发
+		AS
+		UPDATE Customers				//触发后执行的语句
+		SET cust_state = Upper(cust_state)		//把新加的数据某列改成大写
+		WHERE supplyId = (SELECT supplyId FROM inserted)//被修改或增加进来的数据存放inserted表里
+	
+	inserted表里包含insert和update后的新数据
+	deleted表里包含delete和update前的旧数据
+	触发器也支持在事件前触发或事件后触发
+	
+	delete触发器支持数据库和服务器作用域，顾名思义就是在触发器所在的数据库才有效，和在整个
+SQL Server都有效
+
+	游标也很简陋
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,358 @@
+	Spring Cloud是基于Spring Boot实现的微服务架构开发工具，它为微服务架构中设计的配置管理
+、服务治理、智能路由、微代理、分布式会话...等操作提供一种简单的开发方式
+
+	Spring Boot提供了一种Web项目的简单开发方式，它遵循着约定大于配置的理念，开发者只需要进行
+少量的配置就能进行开发，而Spring Cloud在Spring Boot的基础上，对很多微服务框架进行了默认配置，两
+者的原理差不多，一个是针对WEB开发，一个是针对微服务开发，每个微服务也可以看做一个WEB项目
+
+	自己选择框架，自己配置就跟DIY一台电脑一样，使用Spring Boot\Cloud就跟买品牌机一样，各有优势
+
+Spring Cloud包含的常见子项目：
+
+	Spring Cloud Config：
+		配置中心，可以让用户把配置文件放在一处管理起来，重复的配置可以写在一起多个微服
+务共同调用，这样在每个项目中只需要保留极少的配置文件就行了，并且还支持加密/解密配置内容、客户端
+配置信息刷新等；
+
+    Spring Cloud Netflix：核心组件，对多个Netflix OSS开源套件进行整合
+      Netflix OSS：Netflix公司主持开发的一套代码框架和库，目的是解决上了规模之后的分布式系统可能出现的一些有趣问题，比如：服务发现、负载均衡、容错
+	Eureka：服务治理组件，包含注册中心、服务注册和服务发现的实现，就是微服务的管理中心
+	Hystrix：容错管理组件，实现断路器模式，帮助服务依赖中出现的延迟和故障提供强大的容错能力
+		断路器模式：某个服务挂掉后访问它的服务可能在持续的范围得不到回应后消耗太多资源
+			    也跟着挂掉，断路器就是在某个服务在被多次无效调用后，断路器直接返回
+		     	    错误，而不是继续让其他服务在挂掉的服务上浪费资源
+	Ribbon：客户端负载均衡的服务调用组件
+	Feign：基于Ribbon和Hystrix的声明式服务调用组件
+		声明式服务调用：在用注解声明接口后，可以做到服务之间互相的调用，看起来像RMI
+	Zuul：网关组件，提供智能路由、访问过滤等功能
+	Archaius：外部化配置组件
+
+	Spring Cloud Bus：
+		事件、消息总线，用于传播集群中的状态变化或事件，以触发后续的处理，比如用来动态
+刷新刷新配置等
+
+	Spring Cloud Cluster：针对Zookeeper、Redis、Hazelcast、Consul的选举算法和通用状态模式实现
+	Spring Cloud Cloudfoundry：与Pivotal Cloudfoundry的整合支持
+	Spring Cloud Consul：服务发现与配置管理工具
+	Spring Cloud Stream：通过Redis、Rabbit或者Kafka实现的消费微服务，可以通过简单的声明来发送和接收消息
+	Spring Cloud AWS：用于简化整合Amazon Web Service的组件
+	Spring Security：安全工具包，提供在Zuul代理中对OAuth2客户端请求的中继器
+	Spring Cloud Sleuth：Spring Cloud应用的分布式跟踪实现，完美整合Zipkin
+	Spring Cloud Zookeeper：基于ZooKeeper的服务发现与配置管理组件
+	Spring Cloud Startrs：Spring Cloud的基础组件，它是基于Spring Boot风格的基础依赖模块
+	Spring Cloud CLI：用于在Groovy中快速创建Spring Cloud应用的Spring Boot CLI组件
+	  Groovy：基于JVM的敏捷开发语言
+	  Spring Cloud CLI：Spring Boot Client(Spring Boot项目脚手架)的一个插件
+	......还有更多
+
+Jetty和Tomcat一样是个Servlet容器，不过Jetty使用了NIO，处理静态资源更有优势，Tomcat使用了BIO，处
+理一些大量被请求的资源时性能更好
+
+	Spring Boot应用只要打成jar包，使用java -jar命令就能启动了
+
+Starter POMs：
+	一套Spring Boot中的一站式Spring相关技术解决方案
+	比如，开发Web应用的时候，就引入spring-boot-starter-web，想开发数据库访问功能，就再引入
+spring-boot-starter-jdbc或者spring-boot-starter-data-jpa。
+	在使用Spring Boot时，各项功能模块的整合不再像传统的Spring应用开发方式那样，需要在pom.xml
+里引入大量的依赖配置，而是通过Starter POMs定义的依赖包来导入对应的功能，使得功能模块整合变得非常
+轻巧，易于理解和使用。
+
+	Starter POMs采用spring-boot-start-*命名方式，*代表功能模块，比如web，test
+
+Spring Boot的默认配置文件是src/main/resoruces目录下的application.properties文件
+
+YAML：
+	Spring也支持YAML格式的配置文件，YAML采用空格和分行符来分隔资料，巧妙避开了各种特殊符号
+示例：
+server:
+  port: 8081
+
+spring:
+  application:
+    name: hello
+
+spring:
+  profiles: dev
+
+等价于
+server.port=8081
+spring.application.name=hello
+spring.profiles=dev
+
+YAML将属性加载到内存中保存的时候是有序的，如果对属性顺序有要求的话,YAML比properties文件更有优势
+
+在使用java -jar命令启动的时候，使用--参数名=值为参数赋值，这样赋值优先级比properties文件的优先级高
+比如：--server.port=8888，把端口改为8888
+
+在设置了spring.profiles.active属性之后，Spring Boot会按照application-active.properties的格式去找
+配置文件，比如spring.profiles.active=test的话配置文件就是application-test.properties，active可以
+在application.properties中指定，也可以在命令行运行时指定如果没有找到对应active的文件，那么就会
+使用默认的application.properties,如果找到了对应的文件，那么active文件会继承application.properties
+文件的所有属性，如果有重复的，那么将会active的覆盖默认的
+
+Spring Boot加载属性的顺序：
+
+1.在命令行中传入的参数
+2. SPRING_APPLICATION_JSON中的属性。 SPRING_APPLICATION_JSON是以JSON格式配置在系统环境变量中的内容
+3.java:comp/env中的JNDI属性。
+4.Java的系统属性,可以通过 System.getproperties()获得的内容。
+5.操作系统的环境变量。
+6.通过 random.*配置的随机属性。
+7.位于当前应用jar包之外,针对不同{profile}环境的配置文件内容,例如application-{profile}-properties或是YAML定义的配置文件。
+8.位于当前应用jar包之内,针对不同{profi1e}环境的配置文件内容,例如application-{profi1e}-properties或是YAML定义的配置文件。
+9.位于当前应用jar包之外的application.properties和YAML配置内容。
+10.位于当前应用jar包之内的application.properties和YAML配置内容。
+11.在@Configuration注解修改的类中,通过@PropertySource注解定义的属性。
+12.应用默认属性,使用SpringApplication.setDefaultProperties定义的内容。
+
+以上优先级由高到低，数字越小优先级越高
+
+7和9项都是从外部获取属性文件，所以事先外部化配置的原理就是从7和9切入从外部加载配置
+
+
+
+
+
+actuator:
+
+只要增加starter-actuator模块的依赖，就会自动启用
+	
+应用配置类：在应用启动的时候就确定的信息，可以说是静态报告
+
+各种请求的数据说明：
+
+/autoconfig：		自动配置
+
+"positiveMatches": {		匹配成功的配置
+	"AuditAutoConfiguration.AuditEventRepositoryConfiguration": [{
+		"condition": "OnBeanCondition",
+		"message": "@ConditionalOnMissingBean (types: org.springframework.boot.actuate.audit.AuditEventRepository; SearchStrategy: all) found no beans"
+	}]，
+	......
+}
+"negativeMatches": {		匹配失败的配置
+	"AuditAutoConfiguration#authenticationAuditListener": [{
+		"condition": "OnClassCondition",
+		//匹配失败的原因，AbstractAuthenticationEvent类找不到，因为没有引入相关依赖，因此不会加载这个配置
+		"message": "required @ConditionalOnClass classes not found: org.springframework.security.authentication.event.AbstractAuthenticationEvent"
+	}]，			
+	......
+}
+
+/beans：		bean信息
+
+{
+	"bean": "helloController",	bean的Id
+	"scope": "singleton",		作用域
+	"type": "com.boc.demo.com.boc.demo.controller.HelloController",		bean类型
+	//bean所在的路径，如果是jar包，就会从包路径开始
+	"resource": "file [D:/works/java/idea-workspace/demo/target/classes/com/boc/demo/com/boc/demo/controller/HelloController.class]",
+	//依赖的bean
+	"dependencies": ["proTest"]
+	}
+
+/configperps：		应用中的配置
+
+"management.health.status.CONFIGURATION_PROPERTIES": {		配置描述	
+	"prefix": "management.health.status",			属性前缀
+	"properties": {		
+		"order": null					属性名和值(最下层的属性)
+	}
+}
+
+/env：			所有可用的属性，包括环境变量、jvm属性、应用配置和命令行参数等
+
+"profiles": ["dev"],			当前的profiles
+"server.ports": {
+	"local.server.port": 1111	当前的port
+},
+"applicationConfig: [classpath:/application-dev.properties]": {		配置来源
+	"server.port": "1111",						该配置里定义的所有属性
+	"spring.application.name": "dev"
+},
+"applicationConfig: [classpath:/application.properties]": {		配置来源
+	"server.port": "8080",
+	"com.boc.demo.random2": "${random.long(100,1000)}",
+	"spring.profiles.active": "dev",
+	"com.boc.demo.random1": "${random.value}",
+	"spring.application.name": "hello"
+}
+这是部分内容，表述的信息显而易见，如果是一些比如password、key的命名，就会以*代表
+
+/mappings：		所有的可访问的映射
+	
+"{[/hello]}": {		映射名，这里对应的是Controller的hello方法
+	"bean": "requestMappingHandlerMapping",		标识了该映射的请求处理器
+	//该映射调用的方法
+	"method": "public java.lang.String com.boc.demo.com.boc.demo.controller.HelloController.hello()"
+}
+
+/info：
+
+默认情况下该断电只会返回一个空JSON，可以在properties配置文件中通过info前缀设置一些属性：
+info.app.name=Spring-Boot-Hello
+info.app.version=v1.0.0
+然后服务器就会返回：{"app":{"name":"Spring-Boot-Hello","version":"V1.0"}}
+
+
+度量指标类：
+
+/metrics：显示应用运行状态信息，比如线程数量，应用运行时间，处理器数量，各种请求结果的数量，gc等
+
+CounterService对象可以收集访问信息，这个Bean的id默认是counterService，它有3个方法：
+	 increment：让指定字符串次数+1
+	 decrement：让指定字符串次数-1
+	 reset：重置次数
+比如每次访问hello都调用：counterService.increment("didispace.hello.count")，然后访问/metrics就
+能看到："counter.didispace.hello.count": 6,
+
+/health：健康指标信息
+加一个Bean，通过重写rocketMQ的方法，可以返回更多的信息
+    @Bean
+    public HealthIndicator rocketMQHealthIndicator() {
+        return () -> {
+            int errorCode = check();
+            if (errorCode != 0) {
+                return Health.down().withDetail("Error Code", 3).build(); \\down方法对应status，下面是附加信息
+            }
+            return Health.up().build();
+        };
+    }
+
+{
+加了这个Bean之后出现新的信息：
+"status": "DOWN",
+"rocketMQ": {
+	"status": "DOWN",
+	"Error Code": 3
+}
+
+/dump：运行中的线程信息
+/trace：基本的http跟踪信息，在什么时间，用什么方式访问了什么接口，请求头,响应头等信息
+
+操作控制类：
+	默认开启的，后续引入Eureka后会引入
+
+Eureka：
+
+  服务治理：
+
+    服务注册：
+	在服务治理中，通常会有一个注册中心，每个服务单元向注册中心登记自己提供的服务，将主机、
+端口号、版本号、通信协议等信息告知注册中心，注册中心按服务名分类组织服务清单。
+	比如有两个服务A的进程个两个服务B的进程在注册中心注册之后，就会产生一个服务清单：
+
+服务名：A	位置：192.168.1.100:8080、192.168.1.101:8080
+服务名：B	位置：192.168.1.100:9000、192.168.1.102:9050、192.168.1.105:8073
+
+	另外，服务注册中心还需要以心跳的方式去检测清单中的服务是否可用，将不可用的从注册中心排除
+
+    服务发现：
+	由于在服务治理框架下，服务之间的调用不再通过具体的实例地址来实现，而是通过服务名发起请求
+调用实现，所以服务调用者并不知道有哪些服务可以调用，也不知道服务实例的位置；因此调用方需要向服务
+注册中心咨询服务，并获取所有服务的实例清单，以实现对服务的访问。
+	比如，服务A想调用服务B，服务A就要向注册中心发起咨询服务请求，注册中心就会返回3个可用的
+服务，192.168.1.100:9000、192.168.1.102:9050、192.168.1.105:8073。当服务A调用时，就从清单中用
+某种轮询策略取出一个位置进行服务调用，这就是客户端负载均衡。当然这只是一种简单的方式，有时候服务
+不会每次都向注册中心咨询，可能会使用缓存等方式。
+
+    Netflix Eureka：
+	
+	Spring Cloud Eureka使用了Netflix Eureka来实现服务注册于服务发现，包含了服务端和客户端，
+也包含客户端组件，并且都是用java编写的，因此使用java能直接使用，所欲Eureka主要适用于Java实现的
+分布式系统，不过由于Eureka的服务治理机制提供了完备的RESTful API，因此它也支持其它语言，不过客
+户端就要自己实现了
+
+	高可用集群：就是在某个服务故障之后，其它服务马上接手它的工作，在用户看来服务永远不会停止
+，因为高可用要有多个服务才能进行替换，因此想要高可用必须要集群
+
+	强一致性：在数据库管理系统操作数据库之前，要先把日志写入磁盘，如果突然断电了，日志没写完
+，那么数据库的数据也不会受到影响，如果日志写完了，在写数据时断电了，就可以通过日志来回滚或前滚，
+这样就保证了数据的强一致性
+
+	数据分片：在分布式系统中，就是利用多个独立的计算机来解决单个计算机(节点)无法处理的问题，
+每个计算机都只负责系统总问题的一个子集，那么总问题怎么拆分到多个节点？在分布式存储系统中，任务
+的拆分就是数据分片
+
+	Eureka服务端：
+	  也称为服务注册中心。和其它服务注册中心一样，支持高可用配置。它依托于强一致性提供良好
+的服务实例可用性，可以应对多种不同的故障场景。
+	  如果Eureka以集群模式部署，当集群中有分片出现故障时，那么Eureka就转入自我保护模式，它
+允许在分片故障旗舰继续提供服务注册和发现，当故障分片恢复时，集群中的其他分片会把他们的状态再次
+同步回来。不同注册中心通过异步模式互相复制各自的状态，这样虽然基本能保证故障服务的状态，也意味
+着同一时间点，所有服务的状态依然有细微差别
+
+	Eureka客户端：
+	  主要处理服务注册和发现。客户端服务通过注解和配置的方式，嵌入在客户端程序的代码里，在
+程序运行时，Eureka客户端向注册中心注册自身提供的服务，并周期性地发送心跳来更新它的服务租约。它
+也能从服务端查询当前注册的服务信息，把它们缓存到本地并周期性地刷新服务状态
+	
+	在Eureka的服务治理设计中，所有节点既是服务提供方，也是服务消费方，服务注册中心也不例外
+
+	Eureka默认开始高可用模式，只要同时使用eureka.client.service-url.defaultZone向多个服务注
+册，那么一旦其中某个服务挂了，其它服务一样能访问本服务
+
+Eureka服务治理体系的三个核心要素：
+	服务注册中心：提供服务注册与发现功能
+	
+	服务提供者：提供服务
+	
+	服务消费者：从服务注册中心获取服务列表，然后去调用服务
+
+	很多时候客户端既是服务提供者也是服务消费者，甚至三者都是，这次的demo一个客户端同时是服
+务注册中心和服务提供者
+
+	服务注册中心可以互相注册，这样既保证了高可用，还能共享服务，如果有两个服务中心注册成了
+高可用集群，那么服务在任何一个服务注册中心注册的效果是一样的
+
+	zone就是在配置文件配置的服务注册中心，用获取逗号分隔的zone数组，然后调用getEurekaServerServiceUrls
+方法获取每个zone的urls List这样就形成了一个Map，然后每个Map上层还有一个Mop，key就是region
+
+
+
+Ribbon：
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

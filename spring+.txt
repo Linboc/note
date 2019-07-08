@@ -1,0 +1,246 @@
+留有疑惑的标识：$?$
+
+
+@Configuration注册过程：
+
+register(annotatedClasses);	START
+
+	spring的默认取名策略是用className，比如(com.boc.Test$Entry)找到最后一个'.'的位置，然后
+找到第一个'$$'的位置(如果没有就是className.length)，取"."的位置用的是className.lastIndexOf(46);
+这个46代表的ASCII码的"."，然后获取"."+1的位置到"$$"的位置做BeanName，比如当前的Test$Entry，然后
+把所有"$"替换成"."，这里就变成了Test.Entry(不过内部类不都是一个"$"吗)$?$
+
+源码：
+        int lastDotIndex = className.lastIndexOf(46);
+        int nameEndIndex = className.indexOf("$$");
+        if (nameEndIndex == -1) {
+            nameEndIndex = className.length();
+        }
+
+        String shortName = className.substring(lastDotIndex + 1, nameEndIndex);
+        shortName = shortName.replace('$', '.');
+	return shortName;
+
+然后首字母小写：
+
+        char chars[] = name.toCharArray();
+        chars[0] = Character.toLowerCase(chars[0]);
+        return new String(chars);
+
+再判断各种注解是否存在，存在就修改一些AnnotatedGenericBeanDefinition的一些值，所有相关的比如：
+优先级，是否懒加载，角色，描述信息都在这时候用if判断解析放在Bean定义里面：
+有：@Lazy、@DependsOn、@Role、@Description等
+	if (metadata.isAnnotated(Primary.class.getName())) {
+		abd.setPrimary(true);
+	}
+	AnnotationAttributes dependsOn = attributesFor(metadata, DependsOn.class);
+		if (dependsOn != null) {
+		abd.setDependsOn(dependsOn.getStringArray("value"));
+	}
+
+
+@Configuration类会被加进2个集合，并且被manualSingletonNames删除：
+	this.beanDefinitionMap.put(beanName, beanDefinition);		ConcurrentMap	
+	this.beanDefinitionNames.add(beanName);				ArrayList
+	this.manualSingletonNames.remove(beanName);			LinkedHashSet
+
+manualSingletonNames的说明是：在冻结配置的情况下缓存bean定义名称数组。$?$
+
+register(annotatedClasses);	END
+
+总结：给Bean起个名，创建了BeanDefinition，并且把Bean和其定义加进几个集合中
+
+
+refresh();	START
+
+
+prepareRefresh();	刷新准备
+
+	保存启动时间、设置启动、关闭标识：
+		this.startupDate = System.currentTimeMillis();
+		this.closed.set(false);
+		this.active.set(true);
+
+	initPropertySources();	给个钩子方法
+
+	getEnvironment().validateRequiredProperties();	验证配置属性如果有属性为null就报错$?$
+
+ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();初始化BeanFactory，创建一些要使用的集合
+
+prepareBeanFactory(beanFactory);	初始化BeanFactory
+
+	设置BeanClassLoad、表达式解析器、属性编辑注册、添加ApplicationContextAwareProcessor，还
+有一大堆ignoreDependencyInterface，注册几个registerResolvableDependency,还有一个ApplicationListenerDetector，
+如果找到loadTimeWeaver这个Bean的话就会再addBeanPostProcessor一个LoadTimeWeaverAwareProcessor，
+还有注册几个单例环境Bean，environment、systemProperties、systemEnvironment都是一下环境方面的资
+源对象，比如运行环境，jdk信息，环境变量等，后面两个都是从前面的environment里面获取的Map
+
+
+
+
+	ApplicationContextAwareProcessor：实现了BeanPostProcessor接口，postProcessAfterInitialization
+方法没做什么，而postProcessBeforeInitialization方法则负责调用各种Aware，因此Aware是在postProcessBeforeInitialization
+里面调用的，而postProcessBeforeInitialization是在初始化方法之前执行的，因此Aware接口的方法也是
+在初始化方法之前执行的，他也有多线程执行的选项，也就是如果System.getSecurityManager() != null成
+立，并且Bean实现了Aware子接口，那么就会多线程执行下面的代码：
+	if (bean instanceof Aware) {
+		if (bean instanceof EnvironmentAware) {
+			((EnvironmentAware) bean).setEnvironment(this.applicationContext.getEnvironment());
+		}
+		if (bean instanceof EmbeddedValueResolverAware) {
+			((EmbeddedValueResolverAware) bean).setEmbeddedValueResolver(this.embeddedValueResolver);
+		}
+		if (bean instanceof ResourceLoaderAware) {
+			((ResourceLoaderAware) bean).setResourceLoader(this.applicationContext);
+		}
+		if (bean instanceof ApplicationEventPublisherAware) {
+			((ApplicationEventPublisherAware) bean).setApplicationEventPublisher(this.applicationContext);
+		}
+		if (bean instanceof MessageSourceAware) {
+			((MessageSourceAware) bean).setMessageSource(this.applicationContext);
+		}
+		if (bean instanceof ApplicationContextAware) {
+			((ApplicationContextAware) bean).setApplicationContext(this.applicationContext);
+		}
+	}
+
+	Aware执行流程：所有单实例Bean创建完，开始用所有单实例Bean执行所有的BeanPostProcessor的
+前置方法，不断地把Bean传进去，然后ApplicationContextAwareProcessor就会用传进来的Bean匹配Aware接
+口，一旦匹配就会向上转型成对应类型调用Aware的方法
+
+	ignoreDependencyInterface：忽略接口，这个接口博客中的描述是忽略接口中的依赖注入，也就是
+如果接口中有set方法，那么这个set方法将不会被注入，也就是子类实现了这个接口，然后重写了它的set方
+法，这时候spring就不会注入，如果是子类自己的set，那么就会生效，还真是忽略依赖接口，接口的依赖将
+会被忽略，忽略的主要就是ApplicationContextAware、MessageSourceAware等接口，因为Spring知道它们的
+set方法是要在初始化的时候调用，而不是用来给属性赋值的
+
+	registerResolvableDependency：ResourceLoader、BeanFactory、ApplicationEventPublisher、
+ApplicationContext，注册了这几个依赖，因此这几个依赖是随时可以被获取的，因为一开始就注册了，不
+过除了BeanFactory是beanFactory之外，其它的所有都是this，也就是ApplicationContext
+
+	ApplicationListenerDetector：实现了MergedBeanDefinitionPostProcessor接口，这个接口继承了
+BeanPostProcessor，因此ApplicationListenerDetector也有postProcessBeforeInitialization方法，清除
+所有的侦听器，postProcessAfterInitialization方法用来添加所有的侦听器，核心代码：
+	if (bean instanceof ApplicationListener)
+		if (Boolean.TRUE.equals(flag))
+			this.applicationContext.addApplicationListener((ApplicationListener<?>) bean);
+	
+	postProcessBeanFactory(beanFactory);	钩子方法，给子类实现的beanFactory后置处理器	
+
+	
+	先给所有的BeanDefinitionRegistryPostProcessor按几个Order接口的优先级排序执行，因为BeanDefinitionRegistryPostProcessor
+是BeanFactoryPostProcessors的子接口，因此也有BeanFactoryPostProcessors的方法，所以执行完BeanDefinitionRegistryPostProcessor
+之后，再给所有BeanDefinitionRegistryPostProcessor里面的BeanFactoryPostProcessors执行，然后再给
+所有的BeanFactoryPostProcessors接口的实现类按照接口的优先级排序执行，其实BeanDefinitionRegistry
+就是BeanFactory强转成的
+
+	BeanDefinitionRegistryPostProcessor接口的BeanDefinitionRegistryPostProcessor	Order
+	BeanDefinitionRegistryPostProcessor接口的BeanFactoryPostProcessors		nonOrder
+	BeanFactoryPostProcessors接口的BeanFactoryPostProcessors			Order
+	其中BeanDefinitionRegistryPostProcessor是BeanFactoryPostProcessors的子接口
+
+	registerBeanPostProcessors(beanFactory);	注册所有的BeanPostProcessors
+
+	所有的BeanPostProcessors都是在注册BeanPostProcessors的时候创建的，因此实现了BeanPostProcessors
+系列接口的是最先创建的
+
+	获取所有的BeanPostProcessors，然后根据PriorityOrder->Order->nonOrder的顺序注册BeanPostProcessor
+，然后注册实现了MergedBeanDefinitionPostProcessor接口的bean，它也有排序，不过没有分Priority和Order
+而是全部混在一起排序，最后注册一个ApplicationListenerDetector对象
+
+	总的顺序是：
+		1、所有的BeanPostProcessors(priorityOrder->Order->nonOrder)
+		2、MergedBeanDefinitionPostProcessor(Order)，全部混在一起直接排序
+		3、单独增加一个注册ApplicationListenerDetector
+	
+	不同的BeanPostProcessor会注册多次，每次执行beanFactory.addBeanPostProcessor方法，都会把
+传入的addBeanPostProcessor先删掉，再增加，目前的作用是把所有的BeanPostProcessor里实现了MergedBeanDefinitionPostProcessor
+接口的放在beanPostProcessors的后面，排序也是用的Integer的比较器，难道BeanPostProcessors是从后往
+前执行的$?$
+
+	Order接口的数值越小，优先级越高
+
+	sortPostProcessors，方法如果传入的对象没有实现Order接口，就会给一个Integer.MAX_VALUE值，
+也就是最低优先级
+
+
+
+
+AnnotationConfigUtils.registerAnnotationConfigProcessors方法注册autowiredBeanPostProcessor
+	
+	代码片段：	
+
+	public static final String AUTOWIRED_ANNOTATION_PROCESSOR_BEAN_NAME =
+		"org.springframework.context.annotation.internalAutowiredAnnotationProcessor";
+
+	if (!registry.containsBeanDefinition(AUTOWIRED_ANNOTATION_PROCESSOR_BEAN_NAME)) {
+		RootBeanDefinition def = new RootBeanDefinition(AutowiredAnnotationBeanPostProcessor.class);
+		def.setSource(source);
+		beanDefs.add(registerPostProcessor(registry, def, AUTOWIRED_ANNOTATION_PROCESSOR_BEAN_NAME));
+	}
+
+AutowiredAnnotationBeanPostProcessor：
+
+	构造器：
+	Set<Class<? extends Annotation>> autowiredAnnotationTypes.add(Autowired.class、Value.class、javax.inject.Inject(获得接口的Class))
+		Inject = ClassUtils.forName("javax.inject.Inject", AutowiredAnnotationBeanPostProcessor.class.getClassLoader())
+
+
+	setAutowiredAnnotationType：
+		传入一个Class<? extends Annotataion>，autowiredAnnotationTypes.clear
+		然后autowiredAnnotationTypes.add(class)，为啥每次都清空
+
+	setAutowiredAnnotationTypes：
+		跟上面类似，不过参数变成了Set<Class<? extends Annotataion>>
+
+	setRequiredParameterName		所需参数值
+	setRequiredParameterValue		所需参数值，这两个值大概每次注入都会试图获取
+
+	PriorityOrdered.getOrder()		初始值是Integer.MAX-2，不过提供了public set
+
+	processInjection(Object bean)注入
+		获取该bean的InjectionMetadata对象，这个对象里面保存了一个Collection<InjectedElement>
+，这个InjectedElement类型就是字段的描述，他有个Member属性，虽然只是个没有父接口的接口，可是看到
+它的inject(注入)方法中有这种操作：Field field = (Field) this.member;
+
+	this.isField = (member instanceof Field);
+	if (this.isField) {
+		Field field = (Field) this.member;
+		ReflectionUtils.makeAccessible(field);
+		field.set(target, getResourceToInject(target, requestingBeanName));
+	}
+	getResourceToInject(target, requestingBeanName)方法返回null，需要子类重写，每个bean都跑
+一遍processInjection方法实现注入
+
+	finAutowiringMetadata(beanName, clazz, propertyValues)：返回bean的InjectionMetadata对象
+
+		buildAutowiringMetadata(final Class<?> clazz)：有两种解析器：字段解析器和方法解析器
+
+	ReflectionUtils.doWithLocalFields：属性遍历
+		遍历所有字段
+		  获取该字段的注解集合(也就是注解类型包含于autowiredAnnotationTypes集合里面的注解)
+		    判断是否静态，静态直接返回，因为bean存在了才能注入，因此静态属性无法注入
+		      用字段类型和required创建一个AutowiredFieldElement对象
+			把所有的AutowiredFieldElement放进一个InjectionMetadata中
+			  
+	ReflectionUtils.doWithLocalMethods：方法遍历
+		和上面几乎一样，不过把Field换成了Method，创建的也不是AutowiredFieldElement而是
+AutowiredMethodElement(这两个类型都是AutowiredAnnotationBeanPostProcessor的内部类)，并且都实现
+了一个inject方法，因为属性的方法的注入逻辑不同，排除静态和参数数量为0的方法，并且根据class和method
+获取了一个PropertyDescriptor对象
+
+	上面每个遍历的InjectionMetadata.InjectedElement都会存进一个elements集合中，然后遍历这个
+集合，调用每一个element的inject方法进行注入
+
+每个InjectionMetadata.InjectedElement对象在创建时都需要传入一个是否必须的required标识：
+	获取该属性所有的注解：AnnotationAttributes ann = findAutowiredAnnotation(bridgedMethod);
+	判断是否必须的：boolean required = determineRequiredStatus(ann); 
+	return (!ann.containsKey("required") ||	true == ann.getBoolean(this.requiredParameterName));
+
+
+
+
+
+
+
+

@@ -1,0 +1,313 @@
+一、
+1、是
+
+2、3、
+File file = new File("C:/Users/admin/Desktop/tmp"); 
+File[] files = file.listFiles(File::isDirectory);	//用接口的第一个参数来调用指定的函数，这种写法是方法引用？
+next(file).forEach(System.out::println);
+
+public List next(File file) {
+	List list = new ArrayList();
+	tmp(file, list);
+	return list;
+}
+private void tmp(File file, List list){
+	file.list((f,s)->{
+		f = new File(f.toString() + "/" + s);
+		if (f.isDirectory()) 
+			tmp(f, list);
+		else if (s.endsWith("txt"))
+			list.add(f);
+		return false;
+	});
+}
+4、在上面的基础上，本来就是按照目录路径的顺序保存的，在目录数组遍历前先对目录文件进行排序就行了
+
+5、用过
+
+6、
+	new Thread(uncheck(()->{
+		Thread.sleep(1000);
+		return "ret";
+	})).start();	
+	
+	public static Runnable uncheck(Callable runner) {
+		return ()->{
+			try {
+				String ret = runner.call().toString();
+				System.out.println(ret);
+			} catch (Exception e) { e.printStackTrace(); }
+		};
+	}
+
+7、
+	new Thread(andThen(()->{
+			System.out.println("我是r1");
+		}, this::r2)).start();
+
+	void r2(){
+		System.out.println("我是r2");
+	}
+	public static Runnable andThen(Runnable r1, Runnable r2) {
+		return ()->{
+			r1.run();
+			r2.run();
+		};
+	}
+
+8、
+	String[] names = {"Peter", "Paul", "Mary"};
+	List<Runnable> runners = new ArrayList<>();
+	for (int i=0; i<names.length; i++){
+		int tmp = i;
+		//lambda里的值必须是最终的，因为这个值会保存到该函数运行时才取，如果是引用对象的属性也会取函数运行时的值，因此引用类型的值可以在lambda定以后改变
+			//如果想值不会改变就定义一个临时变量，每次把值复制一遍，然后lambda里面使用临时变量
+		runners.add(()->System.out.println(names[tmp]));
+	}
+	for (Runnable runner : runners)
+		new Thread(runner).start();
+
+9、没用过Consumer和Predicate
+
+10、"把每个方法放到哪个接口中"是什么意思，把每换成哪的话，Collections中的方法有很多都可以放进
+Collection中，这样很多集合类都可以省略类似于get、sort这样的方法实现了
+
+11、
+	如果实现的两个接口方法都一样，那就实现一次就行了，如果继承的类正好有相同的方法，并且该
+方法的访问修饰符是public，会默认该方法已实现
+
+12、遗留代码编译失败场景、二进制兼容性、JAR文件遗留代码是否能运行。。。。。。无能为力
+
+闭包：
+    	闭包就是能够读取其他函数内部变量的函数。例如在javascript中，只有函数内部的子函数才能读
+取局部变量，所以闭包可以理解成“定义在一个函数内部的函数
+java的闭包：
+	lambda可以实现闭包，匿名内部类也可以，虽然只能读取final变量
+
+	lines是用了Files.lines(Paths.get(x))读取了一个文件内容的流
+	lines.flatMap(l -> Stream.of(l.split("[ \t]+"))).filter(s -> s.length() > 0).forEach(System.out::println);
+	double dd = ds.stream().mapToDouble(d -> d).sum();
+	int length = lines.flatMapToInt(s -> Stream.of(s.length()).mapToInt(i -> i)).sum();
+	st.foreachOrdered：在并行流的状态下按照原来的顺序执行forEach，不过这样会丧失并行的优势
+	lines.limit(5).forEach(System.out::println);：只保留位置在5之前的数据，前面5个
+	st.onClose(closeHandler):在调用close之前会执行该函数
+	lines = lines.peek(s -> System.out.println(s.length()));返回一个新的流，新的流会被加监控，每次执行前就进入peek才执行后面的操作
+	flatMap是返回一个Stream，然后把这些Stream的数据集中到一个Stream里面
+	map是返回一个数据，再把每次返回的数据存在一个Stream里面
+	collect把Stream返回为一个集合(list、set、map等):
+	List<Integer> list = lines.collect(() -> new ArrayList<Integer>(), (l, s) -> l.add(s.length()), List::addAll);
+	List<String> list = lines.collect(Collectors.toList());
+	Collectors.toCollection(Stack::new、HashSet::new等)，能把Stream转成对应的集合，可以放个已经在使用的集合，让该方法永远返回这个对象就行了，数据会和原来的叠加
+	reduce:把上一次的结果继续调用reduce，直到Stream没有值，sum:上一次返回的结果、item：新的值
+	reduce可以有两个参数，如果第一个参数没有就会返回一个Optional对象，Optional是为了防止空值
+	如果有指定第一个参数，则以第一个参数作为基点，也就是第一次的sum，因为有第一个参数，不会有null的情况，因此直接返回值
+	如果第一个参数给null，因为第一次sum会传进来，如果用sum操作，可能会直接空指针，因为基本数据类型跟null加减都会空指针
+	int sum = lines.map(String::length).reduce((sum, item) -> sum + item).get();获取lines的总字符串长度
+	reduce如果只用一个或两个参数的重载，那么Stream是什么类型就只能返回什么类型，如果Stream是String类型，而想获得Integet
+	类型的聚合结果，就需要用三个函数的reduce，第三个参数是在并行计算时，可能会产生多个结果：求Stream总长度
+	lines.reduce(0, (sum, s) -> sum + s.length(), (sum1, sum2) -> sum1 + sum2);这样就会直接返回int类型，当然也能像上面那样先转成Stream<Integer>，然后转IntStream，在获取sum
+	Stream.concat:合并两个流
+	获取100-199：
+	Iterator<Integer> iterator = Stream.iterate(0, sum -> sum + 1).skip(100).limit(100).iterator();
+	获取100-199和300-399：
+	iterator = Stream.concat(Stream.iterate(0, sum -> sum + 1).skip(100).limit(100),				
+		Stream.iterate(0, sum -> sum + 1).skip(300).limit(100)).iterator();
+	StreamSupport.stream(orgTree.spliterator(), false);iterable迭代器生成器转Stream，第二个参数决定是否要并行
+	如果Stream是String类型，可以用collect(Collectors.joining())把所有数据连接起来，如果希望他们之间有有分隔符，可以给joining加个String参数
+	collect(Collectors.summarizingInt(s -> s.length))，把一个Stream的String类型转成一个IntSummaryStatistics类型，
+	这个类型可以做常规的算数操作，比如求总数、平均值、求和、最大最小等，有int、double、long类型可以转换
+	Collectors.toMap(keyMapper, valueMapper)，第一个参数会给一个Stream的泛型，要求返回key，第二个要求返回value
+	，这时候如果有相同的key，就会抛异常，如果加上第三个函数参数，会传入一个旧的value和一个新的value，这时候可以选择要那个值，或者两个值一起要，比如value是一个list
+
+分组：
+	通过Stream.collect()把一个Stream转成Map<T, Collection>，通过本来的数据生成key，自己就是value，如果生成的key一样，那么就在同一个key下
+
+	Stream转Map时自定义value和map的类型：
+
+		locales.collect(Collectors.toMap(
+			  l -> l.getDisplayLanguage()				指定key
+			, l -> Collections.singleton((l.getDisplayLanguage(l)))	指定value，其实就是返回一个set，并且set添加了该传入的值，之所以不自己new，因为add会返回boolean，影响泛型，否则就要写好几行代码
+			, (old, now) -> {					在key相同的情况下，传入旧的value和新的value
+				Set<String> set = new HashSet<>(old);		每次都累加新的参数
+				set.addAll(now);
+				return set;
+			}
+			, TreeMap::new))					指定返回TreeMap
+				.forEach((k, v) -> System.out.println(k + "," + v));
+
+
+
+参数：
+Collectors.groupingBy(String::length)；直接传入决定key值的函数，value就是数据自己
+第二个参数可选，可以传入Collectors.toSet\toList等选择value的结果集的集合，或者传入Collectors.counting()，把value改为集合的数量
+第二个参数也能选"x1"or"x2"，还能选Collectors.maxBy\minBy，然后传个选择器，value只保留一个最大或最小值
+
+如果返回key的Function为boolean的话，就能用partitioningBy分组，效率比groupingBy更高，除了返回key的函数是boolean类型，其它用法都一样
+
+include("x1"):
+如果value能返回(比如String.length)是int、long、double就能用(记得改方法名为对应类型):Collections.summarizingInt会返回IntSummaryStatistics(平均、最大最小、求和总数等)类型、Collections.summingInt(总和)会返回Integer类型
+因为Collections.xxx大多数都是返回Collector容器，而collect第一个参数要求是Function，因此key不能用，只能用在value
+
+include("x2"):
+groupingBy的第二个参数还能选择Collectors.mapping，mapping能决定value也就是可以不再是数据本身
+第一个参数Function，会传入原来Stream的泛型数据，然后groupingBy的第二个参数原样移到mapping的第二个参数，就能在原来groupingBy的效果基础上改变value的值，maxBy\minBy\IntSum..一样用，针对的目标变为修改后返回的value
+
+include("x3"):
+
+
+例子：
+Stream<String> stream = Stream.of("hhh", "666", "zz", "fas", "java");
+
+只保留每个key最大的value：
+stream.collect(Collectors.groupingBy(String::length, Collectors.maxBy(String::compareTo))).entrySet().forEach(out::println);
+
+length为key，把value连接起来：
+stream.collect(Collectors.groupingBy(String::length, Collectors.mapping(s -> s.toString(), Collectors.joining()))).entrySet().forEach(out::println);
+2=zz
+3=hhh666fas
+4=java
+
+parallel方法可以把流转为并行流(默认是串行流)，unordered方法可以无视顺序强行并行，因为有一些方法会阻碍到并行，
+比如limit，如果只要随意的一百个，而不是前面一百个，就可以在并行状态使用unordered来提高效率
+
+Stream是延迟操作，在创建时什么都不会做，因此在Stream进行终结操作前对原始数据对象做的一切改动都会生效，
+Stream只有在进行终结操作时才会正式获取数据保存到另一个集合中，并且Stream在进行终结操作期间不能对原始数据进行修改，如果在期间进行修改会抛出并发修改异常
+
+Optional:
+	
+	Optional作为null值和可选值中间的桥梁，是对对象的封装，防止null值
+
+	isPresent：是否存在值
+	ifPresent(Function f)：如果值存在的话，调用该方法把值传进来，无返回值
+	map(Function f)：如果值存在的话，调用该方法把值传进来，并返回值，Function：R funcation(T t)
+	orElse("default")：如果有值就返回值，没有就返回给定的值
+	orElseGet(Function f)：用代码生成默认值
+	orElseThrow(Exception::new)：没有值的话抛一个异常
+	Optional flatMap(Function f)：
+		作为Optional对象的调用链(每次都返回Optional类型队形)使用，如果Optional存在值，就会调用flatMap，并传入参数，不然就返回Optional.empty(),
+	optional.flatMap(o::getId1).flatMap(o::getId2).flatMap(o::getId3)：只要中间的某一次返回empry，那么最终结果就是empry
+
+
+	T Optional.of(T t);创建一个自己的Optional
+
+	Optional<T>.ofNullable(value)如果value为null返回Optional.empty，否则返回Optional.of(value)
+
+java.util.function提供了很多常用的函数式接口，如果能用的话参数传一个函数式接口是很不错的选择
+
+Files提供了一系列方便快捷的文件操作
+	Files.readAllBytes(path, StandardcHARSETS.urf_8)，返回字节数组
+	Files.readAllLines(path)，返回所有行集合
+	File.lines(path)，返回所有行的Stream
+	Files.write(path, lines)，按照行写入文件
+	Files.write(path, lines, StandardOpenOption.APPEND)，追加模式
+	Files.newInputStream(path)可以快捷的返回一个输入流，同样，其它的流也能用Files.new..类似的方法返回
+	Files.copy(in, path)把输入流的内容保留到文件中，Files.copy(path，out)把文件的内容保留到输出流中	
+	Files.createDirectory(path)创建一个文件夹，除了最后一部分其它必须都存在
+	Files.createDirectories(path)，创建一个文件夹，如果中间哪个不存在就会自动补全
+	Files.create(path)，创建一个文件，如果已存在就抛出异常
+	File.exists(path)，检查一个文件或目录是否存在
+	Files.copy(fromPath, toPath)，复制文件,如果目标已存在则报错
+	Files.move(fromPath, toPath)，移动文件，即复制再删除,如果目标已存在则报错
+	上面两个方法如果想覆盖已存在的目标文件，第三个参数需要加StandardCopyOption.REPLACE_EXISTING
+	如果想复制所有的文件属性，第四个参数可以使用StandardCopyOption.COPY_ATTRIBUTES,这两个参数可以同时使用
+	Files.delete(path)，删除文件，文件不存在则报错
+	Files.deleteIfExists(path)，如果文件存在则删除
+	Files.createTempFile(路径， 文件名， 后缀)，有不需要路径才重载
+	Files.createTempDirectory(文件名， 后缀)
+	文件名可以为Null,如果不指定文件名，会用随机生成的一大串数字做文件名
+	Files.list(path)，遍历目录中的流，返回一个Stream<Path>，只会遍历当前目录
+	Files.walk(pathToRoot, depth)，能遍历子目录，并且能限制访问的深度
+Path提供了相对路径的操作,详情请看API
+
+	Comparator比较器，每次比较都会返回一个Comparator对象，这时候可以用thenComparing，如果前面的比较
+相等，就会调用后面的决定排序，可以一直往后面调用，类似数据库的一级排序，二级排序，并且更加灵活
+	要颠倒任何比较器，可以使用reversed
+
+	NavigableSet(Map)可以很方便的根据元素大小进行操作，比如获取所有比某个值小的集合，获取所有
+比某个值大的集合，获取比某个值大的最小值，返回递增、递减迭代器，删除最大的，删除最小的，获取某个
+范围的，这个接口被TreeSet和TreeMap实现了，它同时也是SortedSet子接口
+
+DateTime：
+	所有java.time对象都是不可变对象
+	Instant：一个瞬间
+	Duration：两个瞬间之间的时间
+	java的时间会在每天正午与官方时间准确匹配
+	原点：规定为1970年1月1日，
+
+Duration可以使用toMinutes,toMillis,toDays等得到各种时间单位
+
+Duration对象会在内部存储多个值，秒值由一个long保存，纳秒由另外一个int保存
+
+Instant和Duration还可以使用各种plus和minus，可以直接操作自己相同的对象，也可以根据指定的时间单
+位来进行加减操作，比如plus或minus毫秒，小时，天等等
+
+Duration还能与指定long类型相乘或相除得到一个新的Duration
+
+Instant是绝对时间，能在时间线上找到对应的位置，可是大多数情况下都只需要相对时间，比如说今天9点，
+明天13点(可能只包含日期或只包含时间)，这时候就要用Local时间了，可选的有LocalDate，LocalTime，
+LocalDateTime，都能通过对应的静态of和now方法产生对应的对象
+
+两个瞬时点之间的持续时间用Duration表示，而两个本地日期持续时间对应的对象就是时段：Period，因此
+很多本地时间方法能接受Period作为参数
+
+	可以用各种plusXxx和minusXxx来把当前对象向前或向后调整，单位有天、星期、月、年，比如
+pulsDays，可以在当前的时间增加天数，返回一个新的天数
+
+	使用withXxx来把对应的月份与年份修改为指定的值，还可以用withDayOfMonth来把保留最小单位
+月份，比如2001-11-13，就只保留2001-11，然后把天数改为指定的值，如果使用withDayOfYear，就只保留2001
+，月份和天全部置为最小，然后把天数改为对应的值
+
+	使用getDayofXxx，可以获得在月份中的天数、年份天数，星期几等信息
+	
+	使用lengthOfXxx，可以获得当月的长度、当年的长度
+
+	使用getMonth和getMonthValue来获得一个月份和月份的枚举值，getYear获得年份值
+
+	isBefre,isAfter来判断是否在指定的时间之前或之后
+
+	isLeapYear判断是否为闰年
+	
+	until能返回两个本地日期之间的Period	
+
+	对视时间操作来说，比如1月31号plus一个月，这时候不会抛出异常，而是返回该月的最后一个有效
+日期，也就是2月28或29号
+
+	如果只想要指定年月，或者月日，这时候可以用MonthDay和YearMonth和Year类来描述部分日期
+
+日期调节器：
+	使用LocalDate方法的with，需要传递一个TemporalAdjusters对象，这个对象能指定上一个周几或者
+下一个周几，使用next和previous，传递DayOfWeek枚举，返回符合条件的LocalDate，还可以使用nextOnSame
+和previousOnSame，这两个方法如果当天符合情况的话，就会返回当前对象，如果直接用next，会忽略当天
+
+	dayOfWeekInMonth(n ,DayOfWeek)。返回某月的第几个指定的星期枚举
+	
+	lastInMonth(DayOfWeek)返回最后一个指定的星期枚举
+
+	还可以通过一系列的last、first方法来获取当月、下月、上月、当年、下年、上年的第一天和最后一天
+
+	还可以自己实现TemporalAdjuster，然后用LocalDate.with来实现转换(参数需要自己强转为LocalDate)
+，或者使用TemporalAdjusters.ofDateAdjuster(不需要强转)
+
+LocalTime：
+	本地时间的puls和minus操作会按照1天24小时循环
+
+	除了有常用的加减，指定时间单位加减，修改指定时间单位，获取指定时间单位比较，比较是之前
+之后，还可以通过toSecondOfDay和toNanoOfDay获得午夜(00:00:00)到当前对象的秒数和微妙数，是对象当
+天的午夜到对象的时间，也就是往前算
+
+ZonedDateTime：
+	包含了时区信息的DateTime，创建可以用now,of等方法创建，也可以使用Instant和LocalDateTime
+跟ZoneId创建，ZoneId是包含了时区信息的类型，ZonedDateTime的方法跟LocalDateTime的方法大同小异
+
+夏令时：
+	夏令时是某些国家地区在某段时间里面会把时间加一个小时，到了一定的时间后再减一个小时，因
+此如果用了该国家地区的时区，那么就要当心夏令时的变化，因为有时候会莫名其妙的多了一个小时或少了
+一个小时
+
+以前旧版本的时间类型有很多都可以转成Instant或者LocalDateTime类型，或者把Instant和LocalDateTime
+转成旧版本的时间类型，而且旧版本的DateFormat也能转为Java1.8的DateTimeFormat类型，或者反向转换，
+新版本的都不会对旧代码进行操作，转换操作的方法都是在旧版本的代码里面
+
+
+
+
