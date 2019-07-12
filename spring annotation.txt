@@ -36,7 +36,7 @@ protected Object initializeBean(final String beanName, final Object bean, RootBe
 addBeanPostProcessor注册到BeanFactory
 
 	AOP的Bean用了一个后置处理器,这个后置处理器在创建任何Bean之前都会调用before方法,尝试返回一个对象,如果没返回,
-就继续用常规方法创建Bean,如果返回了,就使用返回的Bean,AOP就是用了这个InstantaitionBeanPostProcessor,在任何Bean创建的
+就继续用常规方法创建Bean,如果返回了,就使用返回的Bean,AOP就是用了这个InstantiationBeanPostProcessor,在任何Bean创建的
 时候都尝试返回一个代理对象
 
 	每个bean都会进入AOP的后置处理器,获取所有的增强器(也就是所有的增强方法),然后用所有的增强器去匹配Bean,如果表
