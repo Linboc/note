@@ -1,0 +1,133 @@
+
+对于每个请求，servlet会为其完成以下3个操作：
+
+	1、创建一个request对象，servlet会把有可能用到的信息填充到request对象，如参数、头、cookie、查询字
+符串、URI等，request对象是javax.servle.ServletRequest接口的示例
+
+	2、创建一个response对象，response对象是javax.servlet.ServletResponse接口的实例
+	
+	3、调用Servlet的service()方法，将request和response对象作为参数传入
+
+
+JavaWeb服务器的运行：
+
+	Web服务器也成为超文本传输协议(HTTP)服务器，基于Java的Web服务器会使用两个重要的类：java.net.Socket
+和java.net.ServerSocket类，并通过发送HTTP消息进行通信
+
+	HTTP：
+		HTTP是一种基于“请求-响应”的协议
+
+	一个HTTP请求包含以下三个部分：
+
+		1、请求方法 统一资源标识符(URI) 协议/版本
+		    示例：POST /examples/default.jsp HTTP/1.0
+		    请求方法会出现在请求的第一行
+		    HTTP/1.1支持7种请求方法：GET、POST、HEAD、OPTIONS、PUT、DELETE、TRACE
+
+		    URI指定Internet资源的完整路径，URI通常会被解释为相对于服务器根目录的相对路径，
+		因此它总是以“/”开头，统一资源定位符(URL)实际上是URI的一种类型
+
+		    URL和URI的区别，URI是唯一地标识了一个资源，而URL是为资源给定了一个唯一的定位，比如
+		https://www.jianshu.com/index.html就是标志了index.html的定位，所以它是一个URL，而URL是URI
+		的一种类型，因此它也算一个URI，因为通过这个定位也能唯一的标识这个资源，总结：URI就是能唯
+		一地标识资源，不管用什么方式，能做到就是一个URI，而URL是一种实现，用定位的方式做到了唯一
+		的标识资源
+
+		    协议版本指明了当前请求使用的HTTP版本
+				
+		2、请求头
+
+		    请求头包含的信息类似于key:value的方式，示例：
+			Connection: Keep-Alive
+			Host: localhost
+			Conten-Length: 33
+			Accept: text/plain; text/html
+			User-Agent: Mozilla/4.0 (compatible; MSIE 4.01; Windows 98)
+		    请求头包含客户端环境和请求体相关的信息。例如浏览器语言、请求体长度等，多个请求体直接
+		用换行符隔开
+
+		3、请求体
+	
+		    示例：agsnkjbdjkbk什么乱七八糟的都可以有
+		    请求头和请求体之间有一个空行，这个空行告诉HTTP服务器请求体从哪里开始
+
+	一个HTTP响应也分为三个部分：
+
+		1、协议 状态码 描述
+		    示例： HTTP/1.1 200 OK
+		    
+		2、响应头
+
+		    也和请求类似示例：
+			Server: Microsoft-IIS/4.0
+			Date: Mon, 5 Jan 2004 13:13:33 GMT
+			Content-Type: text/html
+			Content-Length: 112
+
+		3、响应体
+		    示例：<html><body>hello world</body></html>
+	
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+注意：
+
+	写服务器遇到的深坑：
+	
+	1、在header里写Content-Lenght的时候，可以写少，可以不写，但是不能写多，如果写多了，浏览器就会认为
+数据没有读完，一直读，导致内容无法展示，而写少了会有什么影响还不知道，目前少了数据写少了也能完全展示，可
+能是因为目前的数据一次性就读出来了，如果一次读不出来，而浏览器根据Content-Lenght认为已经读完了，可能就不
+会再读了，造成数据缺失
+
+	2、超级坑，由于socket在close之后read才会返回-1，因此这里会一直阻塞，直到刷新页面才会继续，因此前
+面第二次刷新才会打印数据，因为客户端主动关闭了连接，因此也会返回-1；而并且不会输出数据是因为，客户端在刷
+新页面后跳出了read循环，可是连接都关闭了这时候服务器在输出客户端也收不到，因此不会有输出。书上贼的很，就
+读了一次1024字节的数据，而我根据以往的读取经验直接写了个循环一直读，自己坑自己。
+	解决途径：1、约定结束标识
+		  2、设置超时时长
+		  3、在request的header中标注好数据长度，按照这个长度来读
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

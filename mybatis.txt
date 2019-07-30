@@ -1,0 +1,253 @@
+构建一个mybatis应用：
+
+mapper.xml使用程序：
+// 获取资源输入流
+InputStream is = MybatisTest.class.getClassLoader().getResourceAsStream("mybatis-configuration.xml");
+// 获取sqlSessionFactory：
+SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(is);
+// 获取一个sqlSession,每个sqlSession都是一个连接，sqlSessionFactory是一个连接池
+SqlSession sqlSession = sqlSessionFactory.openSession();
+// 如果mapper.xml文件里面的sqlId是sqlSession里唯一的，那么可以直接用id调用，否则必须指定完整的命名空间(xml文件里面的namespace)
+//  因为statement是放在一个map里面的，这里面放了完整的命名空间+sqlId，和单独的sqlId做key，如果单独的sqlId的key重复了，这个key就会不可用
+String statement = "com.boc.mapper.sysTestMapper1.selectSysTestById";
+// 通过statement指定的sqlId，和参数执行sql
+List<SysTest> sysTests = sqlSession.<SysTest>selectList(statement, "80");
+
+ybatis-configuration.xml：
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN" "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+
+    <environments default="development">
+        <environment id="development">
+            <transactionManager type="JDBC"></transactionManager>
+            <dataSource type="POOLED">
+                <property name="driver" value="com.mysql.cj.jdbc.Driver"></property>
+                <property name="url" value="jdbc:mysql://localhost:3306/guns?serverTimezone=UTC"></property>
+                <property name="username" value="root"></property>
+                <property name="password" value="root"></property>
+            </dataSource>
+        </environment>
+    </environments>
+
+    <mappers>
+	<!-- 这里能放xml，也能放mapper接口，接口用class属性，xml用resource属性 -->
+        <mapper class="mapper.testMapper"></mapper>
+        <mapper resource="mapper/test1Mapper.xml"></mapper>
+	<!-- 指定某个包，会扫描该包下的所有.class文件，包括子包，不限定类名，只要是接口 -->
+	<package name="com.boc">
+    </mappers>
+
+</configuration>
+
+mapper.java用法：
+InputStream is = MybatisTest.class.getClassLoader().getResourceAsStream("mybatis-configuration.xml");
+SqlSessionFactory sqlSessionFactory = new SqlSessionFactoryBuilder().build(is);
+SqlSession sqlSession = sqlSessionFactory.openSession();
+SysTestMapper mapper = sqlSession.getMapper(SysTestMapper.class);
+System.out.println(mapper.list());
+注意，需要在配置文件中指定<mapper>标签的class属性为对应的mapper接口
+他们最终都会成为这种格式：com.boc.mapper.sysTestMapper1.addSysTest，接口用包名，xml用namespace，放进同一
+个map里面，因此它们要唯一，也就是同一个mapper，方法名不能和sqlId一样
+
+主键自动注入：
+	要使用自增主键自动注入，需要在insert标签里面使用useGeneratedKeys="true"，keyProperty="aaa"来开启
+注入和指定主键，一定要是insert标签，前面明明看到代码里就是这两个属性，在select标签试了半天报错
+
+使用${}可以用sql注入，里面的sql语句会解析，${}里面的属性必须明确指定，比如map里面的key，如果传实体类，就
+可以直接使用属性，多个属性可以一直用.调用，如果传简单类型(int, double)，那么${}里面只能写value，使用${}
+还可以直接饮用属性文件中的值，mybatis的属性文件肯定能用，spring的不确定
+
+使用#{}不能sql注入，里面只能是参数，sql不会再解析，#{}里面的属性可以不明确，比如传入一个int，里面只要不是
+空的，写什么都行，如果传实体类，就可以直接使用属性，多个属性可以一直用.调用
+
+别名：
+	mybatis对常用的类型有默认的别名，比如String，Data，BigDecimal等，它们的别名都是全小写，对于基本数
+据类型的别名，都是前面加_，比如int的别名是_int
+<typeAliases>
+    <typeAlias type="java.util.ArrayList" alias="arraylist"></typeAlias>为指定类型配置别名
+    <package name="entities"></package>		为一整个包的类配置别名，使用类名的时候首字母大小写都可以
+</typeAliases>
+注意!这些标签放的顺序有要求的，不在固定位置会报错，比如typeAliases在config标签里面是在某个特定的位置，比
+如typeAliases标签里面的ypeAlias标签要在package标签的前面
+
+动态sql标签：
+
+	<if test="username != null"></if>：如果username这个参数不为空，就拼接上if标签里面的sql，里面的条
+件可以用and、or
+
+	<where><if></if></where>：如果where标签里面有返回值，比如if成功返回，就会拼接上一个where，如果where
+里面返回的内容是以and 或 or开头的，就会剔除掉
+	
+	<set>：在进行update操作的时候使用，作用跟where一样，set的时候逗号是个问题，可以用<trim>标签判断前
+面如果不是set的话，就在当前的属性前面加一个','
+
+
+	<choose>：		跟switch类似
+		<when test="">	when的用法跟if类似
+		<when test="">
+		<otherwise>	作用跟default类似
+
+	<trim prefix="where" prefixOverrides"and | or">：如果这个标签前面是where的话，就去掉这个标签里前
+面的and或者or
+
+	<trim prefix="set" suffixOverrides",">：如果这个标签前面是set的话，就去掉这个标签里后面的','
+
+	<sql id='sql01'>a,b,c</sql>：代码片段，可以抽取出来做公共代码，可以内嵌其它标签
+
+	<include refid="sql01">：引用sql片段
+
+	<foreach collection="ids" item="id" open="id in(" close=")" separator=",">#{id}</foreach>：
+		collection：进行foreach的属性
+		item：存储每次foreach的值
+		open：foreach开始时拼接的字符串
+		close：foreach结束时拼接的字符串
+		separator：每次foreach之间拼接的字符串
+	结果：id in (id, id. id...)
+
+Mapper接口与xml文件的映射：
+
+	只要把mapper.java和mapeer.xml放在同一个目录下，mybatis就会自动把接口映射到xml文件，映射规则是，把
+类名中的.转/，后面加上.xml，比如：com.boc.UserMapper，转成com/boc/UserMapper.xml，需要注意的是，maven打包
+时不会自动把maven打包进targer文件夹，因此可能无法映射到.xml文件，可以通过配置maven打包时也打包.xml文件，
+或者自己手动加进编译后的资源目录
+
+一对一：
+    <resultMap id="roleMap" type="TestRole">
+	<!-- 定义当前返回类型的属性关联数据库字段 -->
+        <id column="role_id" property="roleId"></id>
+        <result column="role_name" property="roleName"></result>
+
+        <!-- 定义外部属性对应关联类型，并定义它的属性关联数据库字段 -->
+        <association property="user" javaType="User">
+            <id column="user_id" property="userId"></id>
+            <result column="user_name" property="userName"></result>
+        </association>
+    </resultMap>
+
+一对多：
+    <resultMap id="roleMap" type="TestRole">
+        <id column="role_id" property="roleId"></id>
+        <result column="role_name" property="roleName"></result>
+
+        <!-- 与上面不同的是用了collection标签 -->
+        <collection property="users" ofType="TestUser">
+            <id column="user_id" property="userId"></id>
+            <result column="user_name" property="userName"></result>
+        </collection>
+    </resultMap>
+
+多对多：	
+	跟一对多一样，取决的接口返回值是什么，如果需要返回一个对象，就是一对一，需要返回一个集合就是多对
+多
+
+	并且association和collection标签都有select属性，可以直接引用其它的sqlId去查询数据自己填充，而不用
+一个sql返回所有数据
+
+	如果用了一对一，就只能返回一条数据，因为会使用selectOne()方法，返回多条会报错；
+	一对多也一样，一对应的表的数据也只能有一条，联表查询之后同一条记录展示多行也只算一条；
+	多对多的话则无所谓，哪怕返回的是一对一的数据也能兼容，mybatis判断多对多核一对一的依据就是mapper接
+口的返回值是不是list，如果直接用statement来调用mapper.xml的话，应该是靠selectList和selectOne来判断的
+
+懒加载：
+
+config文件中的配置：
+    <settings>
+        <!-- 是否开启懒加载 -->
+        <setting name="lazyLoadingEnabled" value="true"/>
+        <!-- 这个属性如果为true，那么在加载同一层级的属性的时候会加载同一层级的所有属性，也就是说比如A对象下面有两个懒加载属性
+        ，那么调用属性1就会同时加载两个属性，如果属性1下面还有一个懒加载属性，这个属性不会被加载，因为它是下一层级，也就是说，
+        在获取某个属性的懒加载对象的时候，会加载它的所有直接属性，为false的时候调用什么才会加载什么 -->
+        <setting name="aggressiveLazyLoading" value="false"></setting>
+    </settings>
+
+<fetchType>：更加细粒度的懒加载配置
+	只能在<collection>和<association>标签中使用，fetchType有两个值：eager、lazy，值为eager的时候，上
+级的pojo加载时他也会加载，为lazy的时候，需要调用才会加载
+
+xml中的写法：
+	为<collection>或者<association>指定一个select属性，这个属性要指定一个sqlId，可以是其它文件的，不
+过要加完整的命名，当前文件直接指定id就可以了，然后指定column属性，这个属性会决定把当前对象的什么值传入给
+select的sql里面，还有一个ofType，还能加一个fetchType，不过是可选的，如果满足懒加载的条件，就会调用select
+的sql，然后传入column，并把结果注入到property属性中，懒加载的其它基本跟非懒加载的collection一样，不过加了
+select和column属性，还有一个可选的fetchType属性，还有collection本来要自己映射属性字段，懒加载就交给select
+属性的sql去映射了，只要指定返回的类型就行了
+
+
+	懒加载的逻辑：如果该对象还有可懒加载属性，并且不是调用finalize方法的话，就会进行下一步判断，否则
+就直接跳过，不进行懒加载，下一步判断会判断调用的方法是不是hashCode、equals、toString、clone或者aggressive
+为true，这个就是配置文件里面的aggressiveLazyLoading，只要这个为true或者调用那几个方法，就会调用loadAll，
+由于每次判断的懒加载器都是当前对象的，因此就算loadAll也只会加载当前懒加载器里面的所有属性，所以才会aggressiveLazyLoading
+为true就会每次只加载当前这一层，如果为false则进入下一个判断：如果调用的方法是set开头的话就会把那个懒加载
+属性给删了，也就是那个属性在set之后在调用也不会进行加载了，如果调用的方法是get或者is开头的话，就会判断懒
+加载map里是否还有这个属性，如果有就对这个属性进行加载，并删除这个加载属性，否则啥也不干
+
+缓存：
+
+一级缓存：
+	一级缓存默认开启
+
+	一级缓存在每次执行写入操作的时候清除，清除的范围是一个sqlSession
+
+	sqlSession里面有个executor对象，每个executor对象都是在openSqlSession时new的，因此不会受到其它sqlSession
+所影响，这个对象里有个localCache属性，放的就是一级缓存，每次新的查询结果都会放进里面，旧的查询会先从里面
+取，没有才会查询，写入操作就会清空这个缓存
+
+	
+
+二级缓存;
+	在配置文件中启动二级缓存
+	<settings>
+	    <setting name="cacheEnabled" value="true"/>
+	</settings>
+	
+	在对应的xml文件使用二级缓存，缓存范围是namespace
+	<cache></cache>
+	cache还可以指定type来指定实现缓存功能的类，需要实现Cache接口，mybatis的默认实现是：org.apache.ibatis.cache.impl.PerpetualCache
+
+	使用二级缓存可以自己去实现缓存方式，比如序列化后保存在数据库，不过这样就需要让pojo实现Serializable
+
+	二级缓存中，如果某个sqlSession提交了，那么和它同一个namespace的缓存都会被清空
+
+	在<select>标签中可以设置useCache属性来决定是否使用二级缓存，如果useCache为false，则每次都会去查数
+据库。还有flushCache
+
+注意!：
+	二级缓存需要sqlSession在commit之后才会有sqlSession的缓存值，因为在进行close的时候也会执行commit，
+因此close也会生效，具体是进行commit之后，就把sqlSession局部的缓存值给一个放进一个属性中，那个属性可能是
+sqlSessionFactort中唯一的
+
+	关于sqlSession：
+		每个sqlSession都是sqlSessionFactory在openSqlSession的时候创建的，并且每个sqlSession创建的
+	时候都会创建一个新的事务对象，sqlSession在执行sql的时候，都会用事务获取一个连接，如果这个事务已经
+	有连接了，那么就用旧的连接，如果没有连接就创建一个新的连接，因此每个sqlSession都有一个自己的连接
+
+	获取新连接的代码在：SimpleExecutor类中的doQuery方法中，在调用prepareStatement方法里
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
