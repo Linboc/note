@@ -67,21 +67,78 @@ JavaWeb服务器的运行：
 		3、响应体
 		    示例：<html><body>hello world</body></html>
 	
+	把自己写的Request和Response实现ServletRequest和ServletResponse接口，然后在调用Servlet的service方
+法的时候传进去，这样有个风险，因为传入的对象可以向下转型成Request和Response，而这两个对象中有一些方法并
+不想让其它人调用，如parse和sendStaticResource方法，这时候用了外观模式，新建两个类RequestFacade和ResponseFacade
+，他们也分别实现了ServletRequest和ServletResponse接口，并且它们的构造器需要一个参数，分别是ServletRequest
+和ServletResponse接口的对象，其实传入的就是Request和Response对象，并把这个对象设为私有，他们只有ServletRequest
+和ServletResponse接口的方法，外部每次调用它们的方法它们都会去用内部保存的那个变量去调用相关的方法，这样就
+能做到保护parse和sendStaticResource方法了，外部无法调用，向下转型也只能转成Facade类
 
+StringManage：
 
+	Tomcat处理错误消息的方法是将错误消息存储在一个个properties文件中，并在程序出现错误的时候调用对应
+的属性，这样把错误的提示信息放在properties文件中，方便管理，并且这些properties还是分包存储的，对应类的错
+误文件都放在它的包下面，可以看到Tomcat很多包下面都有LocalStrings.properties文件，这就是它的错误消息文件了
+，并且还可以在调用的时候传参数来达到动态消息的目的，示例代码：
 
+	//获取HTTPServer.class包下的LocalStrings.properties文件，当然还可以通过传包名来获取，还可以根据语
+	//言分不同文件，在文件名后面加"_"再加上语言名称，StringManager会用本地的默认语言去获取该文件，StringManager
+	//对象是单例的，只有第一次获取在缓存中找不到才会去创建新的对象，缓存结构是一个HashTable
+	StringManager manager = StringManager.getManager(HTTPServer.class);
 
+	//第一个参数是要在该文件中获取的属性，后面的是可变参数，可以通过{0}、{1}...这种方式来插入参数，这
+	//种动态参数是StringManager来处理的，把原始数据取出来，再自己根据参数进行格式化
+	//比如：dataSourceLinkFactory.badWrapper=Not a wrapper for type {0}，结果就是Not a wrapper for type aaa
+	manager.getString("dataSourceLinkFactory.badWrapper", "aaa");
 
+	关于不同多语言的LocalStrings.properties，由于StringManager会通过Locale.getDefault去获取默认的语言
+环境，比如是中国，就会去找LocalStrings_zh_ch.properties，找不到就去找通用的LocalStrings.properties，会优
+先使用符合环境的，如果需要切换环境，就用Locale类的静态方法setDefault就可以了，通过这种方式实现多语言的错
+误提示
 
+	Tomcat通过这种方式进行提示信息的统一处理，并通过StringManager对象对这些信息进行操作
 
+第三章简单服务器的执行流程：
+	Bootstrap调用Connector，然后每一个Connector进来都调用Processor去创建Request和Response对象，并且从
+InputStream中解析各种资源填充进对象里，如果请求的是Servlet，Processor就创建Servlet对象去调用service方法，
+静态资源就直接返回
 
+HTTP1.1的3个新特性：
 
+	持久连接：
 
+	    在HTTP1.1之前，无论浏览器何时连接到Web服务器，当服务器将请求的资源返回后，就会断开与浏览器的
+连接。但是网页通常包含一些其它资源，比如图片、文件、applet等。因此，当请求一个页面时，浏览器还要下载这些
+资源，如果每个不同的资源文件都用不同的连接进行下载的话，处理过程会很慢。这就是HTTP1.1引入持久连接的原因，
+使用持久连接后，当下载了页面后，服务器不会立即关闭连接，它会等待Web客户端请求被该页面所引用的所有资源，这
+样一来，页面和页面所引用的资源都会使用同一个连接来下载，考虑到建立/关闭HTTP连接是一个系统开销很大的操作，
+使用同一个连接来下载会为Web服务器、客户端和网络节省很多时间和工作量
+	如果使用HTTP1.1，就会默认使用持久连接。也可以在请求头中加显式地指定使用：connection: keep-alive
 
+	块编码：
 
+	    由于要使用一个连接发送多个资源，而客户端不知道每个资源从哪里开始到哪里结束，因此HTTP1.1使用了
+块编码，来指明字节码会分块发送，对于每个块，最前面是块的长度，以16进制表示，然后是一个\r\n字符，然后是块
+的内容，客户端不用管这个块的内容有多少，只要按照给定的长度读，读完之后就开始第二个块的长度读取，然后再读
+\r\n，接着一直读完第二个块的长度，如果读到某个块的长度是0，那就说明这个事务已经完成，举个例子：
 
+	1A\r\n				//说明这个块有26个字节
+	aabb123654789zxcvasqwrgsz	//读完26个字节就开始准备下个块
+	3\r\n				//第二个块有3个字节
+	321				//读完第二个块，开始第三个
+	0\r\n				//说明已经没了，事务结束
 
+	    HTTP1.1的每个持久连接可能要按照请求的顺序去返回数据，否则就会把请求和响应的资源搞混，既然要
+	保持顺序那每个持久连接就要用单线程了，这就是很多网站的资源时由上而下地一个个刷新出来的原因？
+	    HTTP1.1可以用一个特殊的请求头“transfer-encoding”来指明字节流会分块发送
 
+	状态码100：
+
+	    客户端如果准备发送一个较大的资源给服务器，而不确定服务器是否会接受，如果直接发送，而服务器却
+拒收时，可能会造成较大的浪费，因此客户端可以在向服务器发送请求体之前发送一个请求头：Expect: 100-continue
+，若服务器确认可以接收并处理该请求，就会发送如下响应头：HTTP/1.1 100 Continue，注意返回的内容要加上CRLF字
+符，客户端收到这个响应头之后就可以开始发送剩下的数据了，服务器只要继续读取输入流的内容就行了
 
 
 
@@ -105,7 +162,7 @@ JavaWeb服务器的运行：
 		  2、设置超时时长
 		  3、在request的header中标注好数据长度，按照这个长度来读
 
-
+	CRLF是回车换行的意思
 
 
 
