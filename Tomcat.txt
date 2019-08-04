@@ -142,6 +142,110 @@ HTTP1.1的3个新特性：
 
 Container接口：
 
+	所有的servlet容器必须要实现Container接口，Catalina中一共有4种类型的setvlet容器接口，它们都继承了Container：
+	    Engine：表示整个Catalina servlet引擎
+	    Host：表示包含有一个或多个Context容器的虚拟主机
+	    Context：表示一个Web引用，可以包含多个Wrapper
+	    Wrapper：表示一个servlet
+	这几个容器由上而下，每个上级都能包含多个下级，由于Wrapper是最底层的容器，它无法包含子容器
+
+	每种容器都有一个标准实现类，比如Engine接口的实现类就是StandardEngine，其它几个的命名规则也一样，由于每个实
+现类都间接实现了Container接口，因此Container接口由ContainerBase抽象类实现了，这样4种容器的实现类只要继承ContainerBase
+类，就不用各自重复实现Container接口的方法了
+
+	Container接口的几个常用方法：
+	    adChild(Container child)：添加一个容器
+	    removeChild(Container child)：删除一个容器
+	    findChild(String name)：根据name查找某个容器
+	    findChildren()：返回所有的容器
+
+	容器可以包含一些支持的组件，如载入器、记录器、管理器、领域和资源等，这些组件Container接口都提供了get和set
+方法让它们与容器相关联，比如setManager、getManager、setResources、getResources等，并且Tomcat管理员可以通过编辑配置
+文件(server.xml)来决定使用哪种容器。通过引入容器中的管道(pipeline)和阀(valve)的集合实现
+
+管道Pipeline与Valve阀：
+
+	管道和阀适用于所有的servlet容器
+	
+	一个管道包含该servlet容器将要调用的任务，而阀则是管道在执行要调用的具体任务，一个管道中有多个阀，管道就像是
+过滤器链，而阀就是一个个过滤器，管道调用第一个阀，阀则调用它的下一个阀，在servlet容器的管道中，有一个基础阀，基础阀
+总是最后一个执行，基础阀与其他阀是分开的，管道可以添加任意个数量的阀，他们放在同一个集合，而基础阀则放在额外的属性
+
+	在HttpProcessor，会调用一个Container.invoke(req, resp)方法，这一步就是调用该容器的管道，而管道会去调用第一
+个阀，并把Request、Response和管道对象一起传过去，在第一个阀调用完之后，会调用它的下一个，其实就是用指针指向集合中
+的某个下标，一但到达最后一个元素，再调用的话就会调用基础阀
+
+	前面说过，几种容器都会继承ContainerBase类来减少来自Container接口的重复代码，如果调用这个类的invoke方法，它
+就会执行pipeline的invoke方法，而pipeline = StandardPipeline(this)，而StandardPipeline类的invoke方法则是new 一个它的
+内部类StandardPipelineValveContext，并执行它的invokeNext方法，这个方法就会调用它所属外部对象的valves属性的第一个valve
+，然后执行valve的invoce方法，并且把自身传过去，这样每个valve执行结束后都调用它的invokeNext方法就会执行每一个阀了
+	流程：创建一个Container，用它的addValve方法添加阀，当HttpProcessor执行container.invoke的时候就会执行该容器
+pipeline对象的invoke方法，而这个方法会执行第一个阀的invoce，并把自身传过去，只要后面的valve每次都会调用它的invokeNext
+方法，他就会执行valves集合中的每一个阀，并且在valves执行到最后一个元素之后执行基础阀basic对象的invoke方法
+
+	管道(实现了Pipeline)是容器的属性，而阀(valve)又是管道的属性，而阀容器(ValveContext)也是管道里的对象，用来
+实现每个阀调用的流程，上面那个StandardPipelineValveContext，就是一个阀容器，调用第一个，然后把自己穿进去，然后每个
+阀再调用阀容器的invokeNext，让阀容器来保证执行顺序
+
+	管道的几个相关接口：
+
+	    Pipeline：
+		管道接口，定义了一些管理阀的方法，比如阀的增删改查
+
+	    Valve：
+		阀接口，有getInfo()和invoke(Requser, Response, ValveContext)方法
+
+	    ValveContext：
+		阀上下文接口，是管道用来执行阀的具体逻辑实现类，有getInfo(返回的是管道的info)和invokeNext方法
+
+	    Contained：
+		该接口的实现类可以通过它的方法与某个servlet容器关联，可以在在容器添加Valve的时候，判断他如果是Contained
+	的子类，就把当前的容器调用它的setContained方法传进去，它有getContainerd和setContainer方法	    
+
+Mapper：
+	Mapper是映射器接口，
+	
+
+Wrapper接口(容器)：
+	每个Wrapper容器都包含一个Servlet对象
+
+Request、Response:
+	HttpRequestImpl继承了HttpRequestBase，而HttpRequestBase实现了ServletRequest、Request、HttpRequest、HttpServletRequest
+等接口其中ServletRequest和Reques是RequestBase实现的，了HttpRequestBase只是及继承了RequestBase，目前服务器中的HttpConnector
+类的createRequest方法只会创建HttpRequestImpl类的对象，Response也一样创建一个HttpResponseImpl类的对象，体系跟Request
+一样，在Valve中的invoke方法传递的都是Request和Response类型
+
+Context接口(容器)：
+	Context容器可以包含多个Wrapper容器，也就是包含多个Servlet对象，在启动的时候把Wrapper容器加入Context容器的
+集合中作为子容器，并且在添加的时候把Context容器加入Wrapper容器的父容器中，这些方法Container接口都提供了
+
+Lifecycle接口：
+	Lifecycle接口是Tomcat中代表生命周期的接口，主要方法有start和stop方法，新的版本加了init和destory和getState、
+getStateName等方法，还有addLifecycleListener、findLifecycleListeners、removeLifecycleListener等侦听器方法，这些方法
+主要是让生命周期对实现了LifecycleListener侦听器接口的组件进行事件通知，增删查方法通常是固定的，一般通过LefecycleSupport
+类的对象来实现就可以了，直接在Lifecycle实现类中创建一个LefecycleSupport对象，在内部使用这个对象调用相关方法就行了
+
+	相关的类有LifecycleListener、LifecycleEvent，LifecycleListener是侦听器接口，只要实现了这个接口的实例都可以
+用容器的addLifecycleListener方法添加到容器中，容器发布事件的时候就会遍历所有的侦听器接口的lifecycleEvent方法，并把
+发布的事件对象传进去，而LifecycleEvent类就是事件类，要发布事件就要创建LifecycleEvent对象，并把相关信息放进去，比如
+事件类型、事件数据、发布事件的生命周期对象等
+
+	而LefecycleSupport则实现了了Lefecycle与生命周期事件相关的几个常用方法
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
