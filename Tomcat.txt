@@ -140,6 +140,41 @@ HTTP1.1的3个新特性：
 ，若服务器确认可以接收并处理该请求，就会发送如下响应头：HTTP/1.1 100 Continue，注意返回的内容要加上CRLF字
 符，客户端收到这个响应头之后就可以开始发送剩下的数据了，服务器只要继续读取输入流的内容就行了
 
+Servlet容器：
+
+	Tomcat中有4种类型的容器，分别是：Engine、Host、Context、Wrapper
+	    Engine：表示整个Catalina servlet引擎
+	    Host：表示包含有一个或多个Context容器的虚拟主机
+	    Context：表示一个Seb应用程序，一个Context包含多个Wrapper
+	    Wrapper：表示一个独立的servlet
+	    它们都用接口表示，都继承了Container接口
+
+	它们的继承关系：
+	    4个接口继承自Container接口，然后每个接口有一个Standard实现类比如Engine的实现类就是StandardEngine
+	，由于它们有一个共同的接口Container，为了减少重复代码，就创建了一个ContainerBase抽象类，实现了Container
+	接口的常用方法，这样4个Standard实现类只要继承ContainerBase类就不用重复写来自Container接口的方法了
+
+	子容器：
+	    每个容器可以有0个或多个低层级的子容器，一个Engine可以包含多个Host，一个Host可以包含多个Context
+，一个Context可以包含多个Wrapper，Wrapper由于是最低级，因此它无法包含子容器
+	可以通过Container接口的addChild(Container child)方法来添加子容器
+	可以通过Container接口的removeChild(Container child)方法删除子容器
+	可以通过findChild(String name)方法来查找子容器
+	可以通过Container[] findChildren()方法来获取所有子容器	
+
+	    容器可以包含一些支持的组件，如载入器、记录器、管理器、领域和资源等，这些组件Container都提供了
+	get和set方法将这些组件与容器相关联
+
+	    Container接口的设计可以在部署应用时，Tomcat管理员可以通过编辑配置(server.xml)文件来决定使用哪
+	种容器。这是通过引入容器中的管道(pipeline)和阀(valve)的集合实现的。
+
+
+
+
+
+
+
+
 
 
 
