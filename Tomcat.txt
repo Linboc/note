@@ -260,9 +260,41 @@ getStateName等方法，还有addLifecycleListener、findLifecycleListeners、removeLife
 
 	而LefecycleSupport则实现了了Lefecycle与生命周期事件相关的几个常用方法
 
-Logger接口：
-	Logger是Tomcat中的日志组件接口，
+日志记录器：
 
+	Logger接口：
+	    Logger是Tomcat中的日志记录器接口
+
+	Tomcat提供了3种日志记录器，分别是FileLogger、SystemErrorLogger、SysytemOutLogger，他们都继承了LoggerBase类
+，而LoggerBase类实现了Logger接口，在Tomcat5中还实现了Lifecycle和MBeanRegistration接口，LoggerBase类有一个抽象方法log
+没有实现，这个方法需要子类来实现
+
+	verbosity：日志的等级，默认是ERROR，只有传入的日志等级的值小于当前日志等级才会执行对应方法，等级值越小错误
+等级越高
+
+SystemOutLogger：
+	它重载的log方法就是使用System.out.prinln(msg)把传入的参数输出
+
+SystemErrLogger：
+	它重载的log方法就是使用System.err.prinln(msg)把传入的参数输出
+
+FileLogger： 
+	它重载的log方法每次打印日志都会获取最新的日期，如果date对象里保存的日期已经不是最新日期了，就关闭旧的文件流
+，并更新date对象，打开新的流，新的文件流名称是prefix + date + suffix，boolean变量timestamp则是决定了是否在打印日志
+时带上时间戳
+	prefix和suffix属性，用来在生成文件日志时作为文件名的前后缀，date对象则记录了当前的日期，directory对象记录了
+日志生成的文件夹
+	它还实现了Lifecycle接口，并且针对PropertyChangeSupport对象，每次修改属性都会调用该属性侦听器的firePropertyChange
+方法，把修改的属性名称、旧属性新属性传过去，并通知所有的到侦听器
+	生命周期则在启动时把标志位started设置为true，并发布启动事件，在停止时发布停止事件，把标志位started设置为false
+，关闭输出流
+	使用方式，request和response对象可以获取到连接器，在创建连接器HttpRequestImpl对象时会调用它的setConnector方
+法，而HttpProcessor对象也会通过构造器把连接器传进去，通过连接器可以获取到servlet容器，而容器里面就有getLogger方法
+可以获取到日志记录器，可以通过这种方式使用日志记录器，不过如果给用户传一个HttpServletRequest对象，并且实际对象还是
+个外观类，用户怎么获取到日志记录器就是个问题了
+
+
+载入器：
 	Java的类载入器：
 	    java的类载入器有3种：
 		引导类载入器：用于引导启动Java虚拟机，使用本地代码实现，调用javax.exe时就会启动引导类载入器，引导类
