@@ -323,11 +323,37 @@ java.lang.Object类，并将之实例化，这样自定义的java.lang.Object就不会被载入了
 	    2、为了缓存已经载入的类
 	    3、为了实现类的预载入，方便使用
 
+Loader接口：
+	Loader接口一般跟一个Context容器配合，连接器会执行到Context容器invoke方法，直到调用管道的基础阀，Context容器
+使用Mapper映射器找到Wrapper容器之后，执行Wrapper容器的invoke方法，Wrapper容器会执行它的管道，最后会执行它的基础阀，
+这个基础阀会调用getLoader方法获取Loader对象，然后用Loader对象获得类加载器，获取的过程就是如果本容器的loader对象为空
+就去父容器获取，一直往上。
+	获取的类加载器其实是用它的loaderClass属性指定的类名创建一个对象， 目前是WebappClassLoader类，这个类是Tomcat
+自定义的类加载器类，它继承了java.net.URLClassLoader类，并实现了Reloader和Lifecycle接口，这个类就是用来加载类的，而
+Loader接口的实例，也就是WebappLoader类，它是直接被容器管理的一个Tomact加载器组件，它的声明周期start方法中做以下几
+件事：
+	1、发布启动事件
+	2、设置启动标志位
+	3、创建类加载器(就是内部真正加载类的classLoader对象)，并给其设置容器的resource和debug等相关属性
+	4、把当前的所有已存在仓库加到classLoader中
+	5、把容器的仓库(jar包和自己写的class文件)复制到servlet的仓库中
+	6、保存所有类加载器(当前的和3个父的类加载器)的子路径字符串，并把这个字符串设置到servletContext的Attribute中
+	7、如果使用了System.getSecurityManager()的话就设置访问权限，就是用classLoader对象设置某些路径的读写删权限
+	    这样servlet使用这个classLoader就不能直接操作相关的资源了，只能访问指定的目录，比如/WEB-INF/classes/和/WEB-INF/lib/等
+	8、调用classLoader的生命周期start方法
+	9、如果开启了自动重新加载，也就是reloadable为true，就开一个线程就每隔checkInterval(本类一个属性)秒去调用类
+	    加载器的modified方法检查一次path数组路径下的最后一次修改时间是否和保存起来的时间不一致，如果不一致就会
+	    调用容器的reload方法进行冲加载
 
+	classLoader会在每次找到资源的时候把它缓存起来，这样下次再去调用就会先去本地缓存找，如果没有就去上一层缓存找
+如果都没有才调用系统的类载入器对类进行载入，在WebappClassLoder中会用resourceEntries对象保存类缓存，如果都没有找到
+就会抛出ClassNotFoundException异常
 
-
-
-
+Session管理组件：
+	
+Manager接口：
+	这个接口表示Session管理器，Session管理器必须要与一个Context相关联，Session管理器负责创建、更新、销毁Session
+对象，当有请求时，要会返回一个有效的Session对象
 
 
 
