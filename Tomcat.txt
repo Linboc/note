@@ -355,6 +355,17 @@ Manager接口：
 	这个接口表示Session管理器，Session管理器必须要与一个Context相关联，Session管理器负责创建、更新、销毁Session
 对象，当有请求时，要会返回一个有效的Session对象
 
+Session接口：
+	每一个Session实例都代表一个Session，，Session接口在catalina中的标准实现类是StandardSession类，同样，Tomcat
+不会直接把Session实例给Servlet实例使用，而是使用了一个StandardSessionFacade的外观类来给Servlet对象使用，他们都实现
+了HttpSession接口，而StandardSession还实现了catalina的Session接口
+	Session对象存在于Session管理器中，也就是Manager中，可以用setManager方法将Session实例和Session管理器相关联，
+Session对象有一个唯一的标识符，可以通过setId和getId来访问Session 标识符，getLastAccessedTime方法用来判断一个Session
+对象最后一次被访问的时间，通过这个时间判断其有效性，通过setValid和getValid访问有效性，每次访问Session实例都会调用
+access方法修改Session对象的最后访问时间，getSession可以返回HttpSession对象，通过expire方法可以将Session对象设置为
+过期
+	StandardSession类的构造器必须要有一个Manager实例，因此Session对象必须与某个Manager实例关联
+
 
 
 
