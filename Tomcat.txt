@@ -260,12 +260,100 @@ getStateName等方法，还有addLifecycleListener、findLifecycleListeners、removeLife
 
 	而LefecycleSupport则实现了了Lefecycle与生命周期事件相关的几个常用方法
 
+日志记录器：
+
+	Logger接口：
+	    Logger是Tomcat中的日志记录器接口
+
+	Tomcat提供了3种日志记录器，分别是FileLogger、SystemErrorLogger、SysytemOutLogger，他们都继承了LoggerBase类
+，而LoggerBase类实现了Logger接口，在Tomcat5中还实现了Lifecycle和MBeanRegistration接口，LoggerBase类有一个抽象方法log
+没有实现，这个方法需要子类来实现
+
+	verbosity：日志的等级，默认是ERROR，只有传入的日志等级的值小于当前日志等级才会执行对应方法，等级值越小错误
+等级越高
+
+SystemOutLogger：
+	它重载的log方法就是使用System.out.prinln(msg)把传入的参数输出
+
+SystemErrLogger：
+	它重载的log方法就是使用System.err.prinln(msg)把传入的参数输出
+
+FileLogger： 
+	它重载的log方法每次打印日志都会获取最新的日期，如果date对象里保存的日期已经不是最新日期了，就关闭旧的文件流
+，并更新date对象，打开新的流，新的文件流名称是prefix + date + suffix，boolean变量timestamp则是决定了是否在打印日志
+时带上时间戳
+	prefix和suffix属性，用来在生成文件日志时作为文件名的前后缀，date对象则记录了当前的日期，directory对象记录了
+日志生成的文件夹
+	它还实现了Lifecycle接口，并且针对PropertyChangeSupport对象，每次修改属性都会调用该属性侦听器的firePropertyChange
+方法，把修改的属性名称、旧属性新属性传过去，并通知所有的到侦听器
+	生命周期则在启动时把标志位started设置为true，并发布启动事件，在停止时发布停止事件，把标志位started设置为false
+，关闭输出流
+	使用方式，request和response对象可以获取到连接器，在创建连接器HttpRequestImpl对象时会调用它的setConnector方
+法，而HttpProcessor对象也会通过构造器把连接器传进去，通过连接器可以获取到servlet容器，而容器里面就有getLogger方法
+可以获取到日志记录器，可以通过这种方式使用日志记录器，不过如果给用户传一个HttpServletRequest对象，并且实际对象还是
+个外观类，用户怎么获取到日志记录器就是个问题了
 
 
+载入器：
+	Java的类载入器：
+	    java的类载入器有3种：
+		引导类载入器：用于引导启动Java虚拟机，使用本地代码实现，调用javax.exe时就会启动引导类载入器，引导类
+	    载入器从哪些库中搜索类取决于JVM和操作系统
 
+		扩展类载入器：载入标准扩展目录中的类，只要将JAR文件复制到扩展目录中就能被扩展类载入器搜索到，扩展目
+	    录依赖于JDK的供应商，Sun公司的JVM的标准扩展目录是/jdk/jrd/lib/ext
 
+		系统类载入器：默认的类载入器，它会搜索环境变量CLASSPATH中指明的路径和JVR文件
 
+		以上的载入器是父子继承关系，引导载入器-扩展载入器-系统载入器，系统载入器是最下层的
 
+	JVM使用的载入器取决于类载入器的代理模型，代理模型会先调用系统类载入器，系统类载入器不会立即载入某个类，它会
+把这个类交给父载入器载入，它的父载入器会继续把这个类给它的父载入器载入，直到最高级的引导类载入器，如果父载入器找到
+了就用父载入器的，否则会回到下一层载入器去载入，一直往下，如果到最下级的载入器还是没找到这个类，就会抛出ClassNotFoundException
+异常。这么做是为了解决类载入器过程中的安全性问题，比如安全管理器可以限制某个类对某个路径的访问，然而JVM是信任java.lang.Object
+类的，它不会监视这个类的活动，允许它做任何事，如果恶意用户也编写了一个java.lang.Object类，并且被载入了，那么安全管
+理就会被轻易绕过，而使用代理模型，这个类会被一直上交给引导类载入器去载入，而引导类载入器会搜索其核心库，找到标准的
+java.lang.Object类，并将之实例化，这样自定义的java.lang.Object就不会被载入了
+
+	因此如果有两个类的全类名一样，那么会使用哪个类取决于哪个类所在的类载入器级别更高，更高级别的载入器找到了一
+个类，就不会去子载入器载入了
+
+	可以通过继承抽象类java.lang.ClassLoader类编写自己的类载入器，而Tomcat要使用自定义类载入器的原因有以下几点：
+	    1、为了在载入类中指定某些规则
+	    2、为了缓存已经载入的类
+	    3、为了实现类的预载入，方便使用
+
+Loader接口：
+	Loader接口一般跟一个Context容器配合，连接器会执行到Context容器invoke方法，直到调用管道的基础阀，Context容器
+使用Mapper映射器找到Wrapper容器之后，执行Wrapper容器的invoke方法，Wrapper容器会执行它的管道，最后会执行它的基础阀，
+这个基础阀会调用getLoader方法获取Loader对象，然后用Loader对象获得类加载器，获取的过程就是如果本容器的loader对象为空
+就去父容器获取，一直往上。
+	获取的类加载器其实是用它的loaderClass属性指定的类名创建一个对象， 目前是WebappClassLoader类，这个类是Tomcat
+自定义的类加载器类，它继承了java.net.URLClassLoader类，并实现了Reloader和Lifecycle接口，这个类就是用来加载类的，而
+Loader接口的实例，也就是WebappLoader类，它是直接被容器管理的一个Tomact加载器组件，它的声明周期start方法中做以下几
+件事：
+	1、发布启动事件
+	2、设置启动标志位
+	3、创建类加载器(就是内部真正加载类的classLoader对象)，并给其设置容器的resource和debug等相关属性
+	4、把当前的所有已存在仓库加到classLoader中
+	5、把容器的仓库(jar包和自己写的class文件)复制到servlet的仓库中
+	6、保存所有类加载器(当前的和3个父的类加载器)的子路径字符串，并把这个字符串设置到servletContext的Attribute中
+	7、如果使用了System.getSecurityManager()的话就设置访问权限，就是用classLoader对象设置某些路径的读写删权限
+	    这样servlet使用这个classLoader就不能直接操作相关的资源了，只能访问指定的目录，比如/WEB-INF/classes/和/WEB-INF/lib/等
+	8、调用classLoader的生命周期start方法
+	9、如果开启了自动重新加载，也就是reloadable为true，就开一个线程就每隔checkInterval(本类一个属性)秒去调用类
+	    加载器的modified方法检查一次path数组路径下的最后一次修改时间是否和保存起来的时间不一致，如果不一致就会
+	    调用容器的reload方法进行冲加载
+
+	classLoader会在每次找到资源的时候把它缓存起来，这样下次再去调用就会先去本地缓存找，如果没有就去上一层缓存找
+如果都没有才调用系统的类载入器对类进行载入，在WebappClassLoder中会用resourceEntries对象保存类缓存，如果都没有找到
+就会抛出ClassNotFoundException异常
+
+Session管理组件：
+	
+Manager接口：
+	这个接口表示Session管理器，Session管理器必须要与一个Context相关联，Session管理器负责创建、更新、销毁Session
+对象，当有请求时，要会返回一个有效的Session对象
 
 
 
