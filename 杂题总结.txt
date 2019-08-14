@@ -114,3 +114,44 @@ https://open.weixin.qq.com/connect/oauth2/authorize½Ó¿ÚÓÐ³É¹¦»Øµ÷£¬²»¹ýÆ½Ì¨Õâ±ß²
 Ä¿ÀïµÄ´úÂë¼ÓÁËÒÀÀµÒ²ÕÒ²»µ½£¬ÒòÎªÎÞ·¨½âÎö¡£Èç¹ûÐèÒªmavenÄÜÕÒµ½ËüµÄ´úÂë£¬ÄÇ¾ÍÒª°Ñ°ü´ò³ÉÔ­Ê¼µÄmaven jar°ü£¬
 Ö»ÐèÒªÔÚspring-boot-maven-plugin²å¼þµÄ±êÇ©ÀïÃæ¼ÓÒ»¸ö<configuration>£¬²¢°ÑËüµÄ<classifier>µÄÖµÉèÎªexec£¬Õâ
 Ñùspring boot²å¼þÔÚ´òSpringBoot¿ÉÖ´ÐÐjar°üµÄÊ±ºòÒ²»áÒ»Æð°ÑÔ­Ê¼jar°ü·ÖÀë³öÀ´£¬maven¾ÍÄÜÕý³£ÒýÓÃÁË
+
+	avue¼ÓÁËslot="search"µÄtemplateÖ®ºó²Å»á³öÏÖÄÇ¼¸¸öÐ¡Í¼±ê£¬±ÈÈçË¢ÐÂ¡¢×Ö¶ÎÒþÏÔºÍÍ¼±êÒþÏÔ
+
+	SQL ServerµÄTimeStamp²¢²»ÊÇ¼ÇÂ¼Ê±¼äÈÕÆÚµÄ£¬¶øÊÇµ¥´¿µÄ¼ÇÂ¼Ò»¸ö±íÀïÃæÃ¿Ìõ¼ÇÂ¼µÄ°æ±¾£¬ËüÔÚÒ»ÕÅ±íÀïÖ»
+ÄÜÓÐÒ»ÁÐ£¬²¢ÇÒ²»ÄÜÏÔÊ¾µÄÖ¸¶¨£¬Ö»ÄÜÓÃÄ¬ÈÏÖµ£¬Ò²¾ÍÊÇSQL Server·ÖÅä£¬Ã¿Ò»´Î¶Ô¼ÇÂ¼µÄÐÞ¸Ä»òÐÂÔö¶¼»á¶ÔÕâÐÐ¼ÇÂ¼
+µÄtimestampÁÐ½øÐÐ×Ô¶¯µÝÔö
+
+	ÔÚÊ¹ÓÃÅú´¦ÀíµÄÊ±ºò£¬mybatisÓÐÒ»¸öKetGenerator£¬×÷ÓÃÊÇ»ñÈ¡Ã¿¸ö²åÈëÖµÊ±×Ô¶¯Éú³ÉµÄÖ÷¼ü£¬¶øÅú´¦ÀíÊÇ²»
+ÄÜÁ¢¼´»ñÈ¡·µ»ØÖµµÄ£¬Òò´Ë¾Í»á³öÏÖ±¨´í£¬²»ÄÜÔÚÅú´¦ÀíÊ±»ñÈ¡·µ»ØÖµ£¬Èç¹ûÓÃmybatis puls£¬ÔÚÖ÷¼ü×Ö¶Î×¢½â°ÑIdType
+ÉèÖÃÎªinput¾ÍÐÐÁË
+
+	ÔÚvueÖÐ£¬Ê¹ÓÃwatchÕìÌýÊôÐÔ£¬ÓÐÊ±ºòÕìÌý²»µ½£¬±ÈÈçµÚÒ»´ÎÕìÌý²»µ½£¬ºóÃæµÄ¾Í¿ÉÒÔ£¬ÕâÊÇÒòÎªÕìÌýÃ»ÓÐÁ¢
+¼´Ö´ÐÐ£¬ÐèÒª°ÑÕìÌýÆ÷µÄimmediateÊôÐÔÉèÖÃÎªtrue£¬ÕâÊ±ºòÕìÌý±äÁ¿µÄÓï·¨¾Í²»ÄÜÐ´³ÉÕâÑùÁË£º
+value(val) {		¶øÊÇÒªÐ´³ÉÕâÑù£º	value: {
+    show = val;					    immediate: true,
+}						    handler(val) {
+						        show = val;
+						    }
+						}
+	µÚÒ»ÖÖÐ´·¨¸ü¼Ó¼ò½à£¬²»¹ý²»Ö§³Ö¸ü¶àµÄÊôÐÔ£¬µÚ¶þÖÖÐ´·¨Ö§³ÖÐÞ¸ÄÕìÌýÆ÷µÄ¶à¸öÊôÐÔ£¬Í¨¹ýÐÞ¸ÄÕìÌýÆ÷µÄimmediate
+ÊôÐÔÎªtrue¾Í¿ÉÒÔÈÃÊôÐÔÔÚÐÞ¸ÄÊ±Á¢¼´»Øµ÷ÕìÌýÆ÷
+
+	VueÖÐÊôÐÔÇ°Ãæ¼Ó:¾ÍÊÇÒýÓÃÊôÐÔ£¬¼Ó@¾ÍÊÇÒýÓÃ·½·¨
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
