@@ -411,6 +411,12 @@ FileStore：
 JDBCStore：
 	由于使用JDBC进行持久化，因此需要调用setDriverName和setConnectionURL方法来设置驱动和连接URL来连接数据库
 
+安全性：
+
+	领域：
+
+
+
 
 
 
