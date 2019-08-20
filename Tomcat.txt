@@ -413,7 +413,37 @@ JDBCStore：
 
 安全性：
 
-	领域：
+	领域Realm：
+	    领域对象是用来对用户进行身份验证的组件，它会对用户输入的用户名和密码进行有效性判断。领域通常与一个Context
+	容器相关联，一个Context只能关联一个领域对象。
+	    领域对象保存了所有有效的用户名和密码，这些数据在Tomcat中默认存储在tomcat-user.xml文件中，也可以用其它领
+	域对象的实现来使用其它资源验证用户身份，例如使用关系型数据库
+	    在Catalina中，领域对象是Realm接口的实例有几个重载的authenticate方法用来验证身份，还有Container的set和get
+	，hasRole等方法，Reaml接口的基本实现是RealmBase抽象类
+
+	    Tomcat会使用一个验证阀来调用Realm接口的authenticate方法进行验证，如果验证不通过，这个阀就不会调用后续的
+	阀，realm包提供了4个实现，分别是MemoryRealm、JDBCRealm、JNDIRealm、UserDatabaseRealm，默认使用的是MemoryRealm
+	，它会在第一次被调用时去读取tomcat-user.xml中的内容
+
+
+	主体Principal：
+	    主体在Catalina中的实现是GenericPrincipal类，这个类必须和一个领域对象相关联，并且必须拥有用户名和密码，
+	还有一个可选的角色列表，可以调用hasRole方法传入一个字符串来检查该主体是否拥有指定角色，主体就是一个用户
+
+
+	登陆配置LoginConfig：
+	    登陆的配置信息放在LoginConfig里面，它是一个final类，其中包含一个领域对象的名字，还有验证方法的名字，这
+	决定了使用哪个领域对象的哪个验证方法进行验证，验证方法必须是BASIC、DIGEST、FORM、CLIENT-CERT之一，在实际部
+	署中，Tomcat会读取web.xml文件中login-config标签的内容创建一个LoginConfig对象
+
+
+
+
+
+
+
+
+
 
 
 
