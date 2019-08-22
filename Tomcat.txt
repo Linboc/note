@@ -433,13 +433,26 @@ JDBCStore：
 
 	登陆配置LoginConfig：
 	    登陆的配置信息放在LoginConfig里面，它是一个final类，其中包含一个领域对象的名字，还有验证方法的名字，这
-	决定了使用哪个领域对象的哪个验证方法进行验证，验证方法必须是BASIC、DIGEST、FORM、CLIENT-CERT之一，在实际部
-	署中，Tomcat会读取web.xml文件中login-config标签的内容创建一个LoginConfig对象
+	决定了使用哪个领域对象的哪个验证方法进行验证，验证方法必须是BASIC、DIGEST、FORM、CLIENT-CERT之一，这和验证
+	器的几个实现一一对应，在实际部署中，Tomcat会读取web.xml文件中login-config标签的内容创建一个LoginConfig对象，
+	在它的loginPage和errorPage属性中还分别存储了登录页面和错误页面的URL
 
+	Authenticator验证器：
+	    验证器是Authenticator接口的实例，Authenticator接口本身没有声明方法，只是起到了一个标记的作用，这样其它
+	组件就可以使用instanceof关键字检查某个组件是不是一个验证器
+	    Catalina提供了一个验证器的基本实现：AuthenticatorBase类，除了实现验证器接口，它还继承了ValveBase类，也
+	就是说AuthenticatorBase类还是一个阀。
+	    在catalina.authenticator包下还有很多实现类，包括：
+		BasicAuthenticator类：支持基本的身份验证
+		FormAuthenticator类：基于表单的身份验证
+		DigestAuthenticator类：基于信息摘要的身份验证
+		SSLAuthenticator，对于SSL进行身份验证
+		NonLoginAuthenticator类：Tomcat用户没有指定验证方法时，使用这个类进行身份验证，它只检查安全限制
 
-
-
-
+	    验证器的工作主要是对用户进行身份验证，AuthenticatorBase类的invoke方法会调用领域的authenticate的抽象方
+	法，具体的实现依赖Realm的子类
+	    StandardContext类使用一个ContextConfig类来对StandardContext实例进行设置，这些设置包括一个验证器类
+	
 
 
 
