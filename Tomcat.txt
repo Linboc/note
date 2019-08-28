@@ -433,8 +433,65 @@ JDBCStore：
 
 	登陆配置LoginConfig：
 	    登陆的配置信息放在LoginConfig里面，它是一个final类，其中包含一个领域对象的名字，还有验证方法的名字，这
-	决定了使用哪个领域对象的哪个验证方法进行验证，验证方法必须是BASIC、DIGEST、FORM、CLIENT-CERT之一，在实际部
-	署中，Tomcat会读取web.xml文件中login-config标签的内容创建一个LoginConfig对象
+	决定了使用哪个领域对象的哪个验证方法进行验证，验证方法必须是BASIC、DIGEST、FORM、CLIENT-CERT之一，这和验证
+	器的几个实现一一对应，在实际部署中，Tomcat会读取web.xml文件中login-config标签的内容创建一个LoginConfig对象，
+	在它的loginPage和errorPage属性中还分别存储了登录页面和错误页面的URL
+
+	Authenticator验证器：
+	    验证器是Authenticator接口的实例，Authenticator接口本身没有声明方法，只是起到了一个标记的作用，这样其它
+	组件就可以使用instanceof关键字检查某个组件是不是一个验证器
+	    Catalina提供了一个验证器的基本实现：AuthenticatorBase类，除了实现验证器接口，它还继承了ValveBase类，也
+	就是说AuthenticatorBase类还是一个阀。
+	    在catalina.authenticator包下还有很多实现类，包括：
+		BasicAuthenticator类：支持基本的身份验证
+		FormAuthenticator类：基于表单的身份验证
+		DigestAuthenticator类：基于信息摘要的身份验证
+		SSLAuthenticator，对于SSL进行身份验证
+		NonLoginAuthenticator类：Tomcat用户没有指定验证方法时，使用这个类进行身份验证，它只检查安全限制
+
+	    验证器的工作主要是对用户进行身份验证，AuthenticatorBase类的invoke方法会调用领域的authenticate的抽象方
+	法，具体的实现依赖Realm的子类
+	    StandardContext类使用一个ContextConfig类来对StandardContext实例进行设置，这些设置包括一个验证器类
+	
+	    在启动context容器的时候把realm对象关联到容器中，然后连接每次被访问的时候都会调用领域对象的authenticate
+	方法进行校验，realm对象内部具体的实现逻辑交给用户，可以从数据库中或者配置文件中读取用户，如果访问
+	这个方法校验成功，就会把找到的用户与其角色信息封装成一个Principal对象返回去，否则返回null
+
+StandardWrapper：
+
+	Tomcat中的servlet的调用流程：
+	    1、连接器接收到新连接
+	    2、连接器创建request和response对象
+	    3、连接器调用StandardContext实例的invoke()方法
+	    4、StandardContext实例调用自己管道的invoke()方法，StandardContext实例管道的基础阀是
+		StandardContextValve，因此会调用StandardContextValve实例的invoke()方法
+	    5、StandardContextValve实例的invoke()方法通过映射器Mapper获取相应Wrapper实例，并调用它的
+		invoke()方法
+	    6、Wrapper的实现类一般是StandardWrapper，它的invoke()方法会调用其管道的invoce()方法
+	    7、StandardWrapper实例调用自己管道的invoke()方法，StandardContext实例管道的基础阀是
+		StandardWrapperValve，因此会调用StandardWrapperValve实例的invoke()方法
+	    8、StandardWrapperValve实例的invoke()方法调用allocate()方法获取servlet实例
+	    9、allocate()调用laod()方法载入相应servlet类，如果已经载入则无需重复载入
+	    10、load()方法调用servlet实例的init方法
+	    11、StandardWrapperValve用反射创建servlet实例，并并调用它的service()方法
+	    
+	StandardContext和StandardWrapper的基础阀都是在创建对象的时候在构造器里面添加的
+
+	SingleThreadModel：
+	    
+	    servlet类可以实现javax.servlet.SingleThreadModel接口，这样的servlet类也称为SingleThreadModel
+	(STM)servlet类，根据Servlet规范，实现此接口的目的是保证servlet实例一次只处理一个请求
+
+	    如果Servlet类实现了这个接口，则可以保证不会有两个线程同时执行该Servlet实例的service()方法，这
+	一点由Servlet容器通过控制对单一servlet实例的同步访问实现，
+
+
+
+
+
+
+
+
 
 
 
