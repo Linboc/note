@@ -602,10 +602,44 @@ StandardWrapper：
 	FilterMap转成FilterDef再转成ApplicationFilterConfig
 
 StandardContext：
+	
+	StandardContext的配置是在发布开始事件的时候由侦听器进行配置的，侦听器在配置好StandardContext之后，会把它的
+configured属性设置为true
+
+	StandardContext构造器：
+	    添加基础阀StandardContextValve，并把自身传入到nameingResources的container中
+
+	start()：
+	    1、发布启动前事件
+	    2、如果resources为null，则设置默认的resources：由docBase后缀决定FileDirContext或WARDirContext
+	    3、如果loader为null，则这只默认的loader：WebappLoader
+	    4、如果manager为null，则设置默认的manager：StandardManager
+	    5、如果useNaming为true，就增加一个NamingContextListener侦听器
+	    6、增加默认的servlet映射器：org.apache.catalina.core.StandardContextMapper
+	    7、如果本类的组件实现了生命周期接口，就调用它们的start()方法
+	    8、为所有实现了生命周期的Mapper调用start()方法，每个协议版本都有不同的Mapper
+	    9、为所有实现了生命周期接口的子容器调用start方法
+	    10、如果管道实现了生命周期接口，就调用它的start()方法
+	    11、发布启动事件（监听器会执行一些配置操作）
+	    12、如果session管理器实现了生命周期接口，就调用它的start()方法
+	    13、实例化所有的侦听器
+	    14、实例化所有的过滤器
+	    15、根据wrapper容器的loadOnStartup属性的顺序，然后调用wrapper的load()方法，这个方法会载入servlet类和对象
+	    15、发布启动后事件
+
+	invoke()：
+	    1、一直循环判断paused属性是否为true，如果为true就说明应用程序在重载，知道为false才跳出循环
+	    2、执行管道的invoke()方法
+	    3、tomcat5中将1放到了ContainerBase中执行了
+	在新版本的tomcat中，不会再调用contarner的invoke()方法了，而是直接调用连接器-容器-管道-第一个阀(有其它阀就
+返回其它阀，没有就返回基础阀)-invoke()方法，也就是直接调用连接器里的容器的阀的invoke()方法
+
+	StandardContextMapper：
+		StandardContextValve用来匹配Wrapper容器的映射组件
 
 
-
-
+	新版本的request和wrapper匹配是使用org.apache.catalina.mapper.Mapper类的public void map(Context context
+, MessageBytes uri,MappingData mappingData)方法来进行匹配的，会把匹配到的wrapper放进mappingData的wrapper属性中
 
 
 
