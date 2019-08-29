@@ -146,7 +146,7 @@ Servlet容器：
 	    Engine：表示整个Catalina servlet引擎
 	    Host：表示包含有一个或多个Context容器的虚拟主机
 	    Context：表示一个Seb应用程序，一个Context包含多个Wrapper
-	    Wrapper：表示一个独立的servlet
+	    Wrapper：表示一个独立的servlet(可能同一个servlet有多个实例：STM servlet)
 	    它们都用接口表示，都继承了Container接口
 
 	它们的继承关系：
@@ -483,18 +483,88 @@ StandardWrapper：
 	(STM)servlet类，根据Servlet规范，实现此接口的目的是保证servlet实例一次只处理一个请求
 
 	    如果Servlet类实现了这个接口，则可以保证不会有两个线程同时执行该Servlet实例的service()方法，这
-	一点由Servlet容器通过控制对单一servlet实例的同步访问实现，
+	一点由Servlet容器通过控制对单一servlet实例的同步访问实现，为了提高执行性能，servlet容器会创建多个
+	STM servlet实例，如果servlet实例需要访问静态变量或类之外的其它共享资源的话，还是有可能发生同步问题
 
+	    由于SingleThreadModel会使servlet程序员误以为实现了该接口的servlet就是多线程安全你的，因此这个
+	接口已经弃用了，但是还会提供支持
 
+	    对于没有实现SingleThreadModel接口的servlet类，StandardWrapper只会载入该servlet一次，并对之后
+	对这个servlet的请求都返回同一个实例，因为它假设该servlet类的service()方法在多线程环境中是线程安全
+	的，如果有必要，由servlet程序员来负责处理同步的问题
 
+	    而对于STM servlet类，StandardWrapper实例必须保证每个时刻只能有一个线程在执行STM servlet类的
+	service()方法，如果只有一个STM servlet实例，那么每个servlet将同时只能处理一个请求，为了更好的性能
+	，StandardWrapper实例会维护一个STM servlet实例池，其实就是一个Stack
 
+	    获取非STM servlet的步骤：
+		1、判断该servlet是否STM类
+		2、如果不是STM类则判断StandardWrapper的instance属性是否为null
+		3、如果不为null就返回instance
+		4、如果为null就实例化一个servlet，然后放进instance属性中
+		5、第4步使用单实例同步懒加载的方式，外面判断，然后用this加锁，里面再判断
+		
+	    获取STM servlet的步骤：
+		1、如果上面的没有发生return就说明这是一个STM servlet
+		2、如果当前总servlet数量少于正在使用的数量，就一直进行分配，如果总servlet数量已经达到maxInstances
+		    了，那就进行阻塞，直到有某个servlet执行完毕进行回收才会唤醒，继续分配，如果确定有空闲
+		    servlet，就从instancePool中pop出一个servlet返回
+		3、所有的servlet都保存在Stack类型的instancePool属性中，里面的所有servlet都是空闲的
+		4、每创建一个新的servlet，StandardWrapper对象的nInstances属性就+1
+		5、每分配出一个servlet，countAllocated都会+1
+		    总的STM servlet部分的逻辑就是，如果当前没有可用servlet就一直创建，如果已经到了可创建
+		的最大数目，则阻塞，等待有servlet回收，一旦有可用的就出栈返回，判断可不可用的标准就是当前名
+		总servlet数目是否比正在使用的servlet大
 
+	创建servlet实例的步骤：
+	    1、如果当前类的actualClass(目标servlet全类名)为空，并且jspFile不为空，那就去父容器(Context)中
+		找到一个名称为jsp的Wrapper子容器,获取它的servletClass，否则就用当前Wrapper的servletClass
+	    2、如果isContainerProvidedServlet(actualClass)返回true，就是用容器的ClassLoader，这样就能访问
+		Catalina的内部数据了
+	    3、实例化该servlet类
+	    4、同isServletAllowed(servlet)判断该servlet是否可允许载入，这个方法判断，如果这个servlet类是
+		ContainerServlet类的子类，那就必须是catalina的InvokerServlet类或者Context容器的getPrivileged
+		返回true，如果满足就返回true，否则返回false,返回false就抛异常
+	    5、如果这个servlet是catalina包中的servlet，那么会把当前的StandardWrapper放进servlet的wrapper
+		属性中
+	    6、然后就发布servlet初始化事件，然后调用servlet的init(servletConfig)方法，如果该servlet的jspFile
+		为true，就会直接调用它的service()方法
+	    7、如果该servlet是一个STM servlet，则判断servletPool是否为空，如果为空则为它创建一个Stack
+	    8、记录日志
+	    9、返回servlet实例
 
+	ServletConfig：
+	    servlet的init方法需要传入一个ServletConfig实例，这个ServletConfig其实就是StandardConfig本身，
+	它同时实现了ServletConfig接口、Wrapper接口、Container接口、Lifecycle接口和Pipeline接口，不过后面
+	3个接口都是通过继承ContainerBase抽象类来实现的，并且ContainerBase已经实现了除了getInfo之外的所有
+	方法，StandardWrapper不会直接将自身传给init()方法，而是将用StandardWrapperFacade包装过的对象给init()
 
+	    getServletContext()：
+		它会返回StandardWrapper的父容器的servletContext属性，如果StandardWrapper没有父容器就返null
 
+	    getServletName()：
+		返回servlet类的名字
 
+	    getInitParameter(String name)
+		WtandardWrapper的初始化参数存储在一个HashMap类型的parameters属性中，这个方法就是从这个变
+	    量中get一个值
 
+	    getInitParameterNames()
+		返回parameters的keys，包装成一个枚举类型Enumeration类，这个类就两个方法hasMoreElements和
+	    nextElement
+	
+	    StandardWrapper类的父容器必须是Context的实现类，因为它的setParent会判断如果传入的Container不
+	是Context的子类就会抛出异常
 
+	StandardWrapperFacade：
+	    由于StandardWrapper实例会调用servlet类的init方法，而它又想隐藏自己的大部分公开方法，因此使用
+	这个类进行隐藏，StandardWrapperFacade也实现了ServletConfig接口，它的构造器需要一个StandardWrapper
+	实例，然后每个实现都会使用StandardWrapper实例调用对应的方法
+	    除了getServletContext()方法，这个方法会判断如果ServletContext是catalina包下的ApplicationContext
+	类的实例的话，就会返回一个ApplicationContextFacade外观类
+
+	StandardWrapperValve：
+	    
 
 
 
