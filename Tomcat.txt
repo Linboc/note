@@ -635,11 +635,18 @@ configured属性设置为true
 返回其它阀，没有就返回基础阀)-invoke()方法，也就是直接调用连接器里的容器的阀的invoke()方法
 
 	StandardContextMapper：
-		StandardContextValve用来匹配Wrapper容器的映射组件
+	    StandardContextMapper是StandardContextValve用来匹配Wrapper容器的映射组件
 
+	StandardContextMapper：
+	    StandardContextMapper是tomcat4中用来匹配请求和wrapper容器的，在ContainerBase的start()中会调用addDefaultMapper()
+	方法，它会调用子类的这个方法，子类指定了mapper类是StandardContextMapper，然后这个context容器的映射器就会实
+	例化为这个类，在后面匹配servlet的时候就会使用这个类的map方法，它会用请求的url去匹配servlet名称对应的映射，
+	一但匹配到某个映射，就会去找这个映射对应的servlet名称(也是wrapper容器名称)，然后用这个名称去返回对应的wrapper
+	容器，如果没匹配到就返回null
 
 	新版本的request和wrapper匹配是使用org.apache.catalina.mapper.Mapper类的public void map(Context context
-, MessageBytes uri,MappingData mappingData)方法来进行匹配的，会把匹配到的wrapper放进mappingData的wrapper属性中
+, MessageBytes uri,MappingData mappingData)方法来进行匹配的，会把匹配到的wrapper放进mappingData的wrapper属性中,这个
+方法有多个重载，分别对应了除了wrapper之外的所有容器
 
 
 
