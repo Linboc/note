@@ -115,7 +115,8 @@ https://open.weixin.qq.com/connect/oauth2/authorize½Ó¿ÚÓÐ³É¹¦»Øµ÷£¬²»¹ýÆ½Ì¨Õâ±ß²
 Ö»ÐèÒªÔÚspring-boot-maven-plugin²å¼þµÄ±êÇ©ÀïÃæ¼ÓÒ»¸ö<configuration>£¬²¢°ÑËüµÄ<classifier>µÄÖµÉèÎªexec£¬Õâ
 Ñùspring boot²å¼þÔÚ´òSpringBoot¿ÉÖ´ÐÐjar°üµÄÊ±ºòÒ²»áÒ»Æð°ÑÔ­Ê¼jar°ü·ÖÀë³öÀ´£¬maven¾ÍÄÜÕý³£ÒýÓÃÁË
 
-	avue¼ÓÁËslot="search"µÄtemplateÖ®ºó²Å»á³öÏÖÄÇ¼¸¸öÐ¡Í¼±ê£¬±ÈÈçË¢ÐÂ¡¢×Ö¶ÎÒþÏÔºÍÍ¼±êÒþÏÔ
+	avue¼ÓÁËslot="search"µÄtemplate£¬²¢ÇÒÕâ¸ötemplate±êÇ©ÔÚavue-curd±êÇ©µÄÏÂ¼¶²Å»á³öÏÖÄÇ¼¸¸öÐ¡Í¼±ê£¬
+±ÈÈçË¢ÐÂ¡¢×Ö¶ÎÒþÏÔºÍÍ¼±êÒþÏÔ
 
 	SQL ServerµÄTimeStamp²¢²»ÊÇ¼ÇÂ¼Ê±¼äÈÕÆÚµÄ£¬¶øÊÇµ¥´¿µÄ¼ÇÂ¼Ò»¸ö±íÀïÃæÃ¿Ìõ¼ÇÂ¼µÄ°æ±¾£¬ËüÔÚÒ»ÕÅ±íÀïÖ»
 ÄÜÓÐÒ»ÁÐ£¬²¢ÇÒ²»ÄÜÏÔÊ¾µÄÖ¸¶¨£¬Ö»ÄÜÓÃÄ¬ÈÏÖµ£¬Ò²¾ÍÊÇSQL Server·ÖÅä£¬Ã¿Ò»´Î¶Ô¼ÇÂ¼µÄÐÞ¸Ä»òÐÂÔö¶¼»á¶ÔÕâÐÐ¼ÇÂ¼
@@ -146,6 +147,9 @@ value(val) {		¶øÊÇÒªÐ´³ÉÕâÑù£º	value: {
 »á³öÏÖ²»Ö¸¶¨µÄÇé¿ö£¬ÒòÎªdicData¶¼ÊÇÅäºÏtypeÒ»ÆðÊ¹ÓÃµÄ£¬±ÈÈçÑ¡ÔñÆ÷£¬¿ÉÊÇÓÐÊ±ºòÈç¹ûÖ»ÐèÒª²é¿´£¬²»ÐèÒª±à¼­£¬
 ¾Í²»»á¼Ótype£¬¾Í»á³öÏÖÕâ¸öÎÊÌâ
 
+	ÔÚIDEAÀïÏîÄ¿¿ÉÒÔ±àÒë³É¹¦£¬ÔÚJenKinsÀï»áÊ§°Ü£¬Ä¿Ç°Åöµ½µÄÇé¿öÊÇ£¬µ¼ÈëÁËÄ³¸ö°ü£¬¿ÉÊÇÕâ¸ö°üÏÂÃæÃ»ÓÐÈÎ
+ºÎÀà£¬Ê¹ÓÃ±ÈÈçimport java.util.*;ÕâÖÖ·½Ê½£¬È»ºóutilÕâ¸ö°üÏÂÃ»ÓÐÈÎºÎÀà(²»°üÀ¨ËüµÄ×Ó°ü)£¬¾Í»á±àÒëÊ§°Ü£¬Ëµ
+ÕÒ²»µ½java.utilÕâ¸ö°ü
 
 
 

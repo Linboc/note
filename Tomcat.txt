@@ -604,7 +604,16 @@ StandardWrapper：
 StandardContext：
 	
 	StandardContext的配置是在发布开始事件的时候由侦听器进行配置的，侦听器在配置好StandardContext之后，会把它的
-configured属性设置为true
+	configured属性设置为true，在tomcat9中，又ContextConfig对Context进行配置，如果检测到启动时间是配置
+开始，就会对Context进行配置
+
+	下面是Context容器发布configure_start事件后ContextConfig会执行的代码片段：
+	for (FilterDef filter : webxml.getFilters().values()) {
+            if (filter.getAsyncSupported() == null) {
+                filter.setAsyncSupported("false");
+            }
+            context.addFilterDef(filter);
+        }
 
 	StandardContext构造器：
 	    添加基础阀StandardContextValve，并把自身传入到nameingResources的container中
@@ -644,9 +653,62 @@ configured属性设置为true
 	一但匹配到某个映射，就会去找这个映射对应的servlet名称(也是wrapper容器名称)，然后用这个名称去返回对应的wrapper
 	容器，如果没匹配到就返回null
 
-	新版本的request和wrapper匹配是使用org.apache.catalina.mapper.Mapper类的public void map(Context context
+	新版本的映射组件是使用org.apache.catalina.mapper.Mapper类的public void map(Context context
 , MessageBytes uri,MappingData mappingData)方法来进行匹配的，会把匹配到的wrapper放进mappingData的wrapper属性中,这个
 方法有多个重载，分别对应了除了wrapper之外的所有容器
+
+	重载：
+	    StandardContext使用了reloadable属性来指明该应用程序是否启用重载功能，当启用了重载功能后，，当
+	web.xml文件发生变化或者WEB-INF/classes目录下的文件被重新编译后，应用程序就会重载
+
+	    StandardContext的重载功能是通过它的载入器实现的，它的载入器实现类是WebappLoader，这个类实现了
+	Loader接口，它的setContainer()方法将WebappLoader对象与StandardContext类关联，这个方法会把Context
+	容器的reloader属性传给它的reloader属性，因此它的这个属性是和容器一样的，如果启动了重载，它会用另
+	外一个线程检查WEB-INF目录中的所有类和JAR文件的时间戳，如果与最后一次修改的时间不一致就会重新加载
+
+	    在tomcat4中setContainer()方法会顺便判断传入的容器是不是Context容器，如果是，并且reloader属性
+	为true就启动重载线程，如果reloader属性为false就打断线程；如果旧的reloader属性和新的一致，就啥也
+	不用做，在这期间还有属性侦听器事件发布，在9.0.21版本setContext()方法不会再启动或打断线程了
+
+	backgroundProcess()：
+	    在Tomcat4中，Context容器运行需要其它组件的支持，比如Session管理器，Loader载入器，这些组件都会
+	自己启动一个线程执行一些后台任务，比如Session管理器的Session对象过期时间，Loader的自动重载等功能
+	，为了节省资源，在Tomcat5中，所有的后台处理共享同一个线程，若某个组件或者servlet容器需要周期性执
+	行一个操作，只需要将代码写到其backgroundProcess()方法中就行了，在StandardContext的backgroundProcess()
+	方法会调用所有组件的backgroundProcess()方法
+
+	    9.0.21版本的tomcat中，这个方法会在Context容器的start()方法被调用时，启动一个线程不断地调用该
+	容器与其子容器的backgroundProcess()，然后被调用的容器再调用自己组件的backgroundProcess()方法，该
+	线程使用java的任务调度类ScheduledExecutorService不断调用ContainerBase的内部类ContainerBackgroundProcessor
+	的run方法来执行
+
+	    然后在WebappLoader的backgroundProcess()方法里，会判断如果reloader && modify()，如果返回true就
+	调用重载方法reload()
+
+Host容器：
+	如果想在同一个Tomcat上部署多个Context容器的话，就需要使用Host容器了
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
