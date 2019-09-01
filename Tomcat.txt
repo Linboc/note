@@ -246,6 +246,8 @@ Request、Response:
 Context接口(容器)：
 	Context容器可以包含多个Wrapper容器，也就是包含多个Servlet对象，在启动的时候把Wrapper容器加入Context容器的
 集合中作为子容器，并且在添加的时候把Context容器加入Wrapper容器的父容器中，这些方法Container接口都提供了
+	一个ServletContext会与一个Context容器相关联，相当于每个Context容器都有一个独立的ServletContext保存在它的context
+变量中，它是ApplicationContext类型
 
 Lifecycle接口：
 	Lifecycle接口是Tomcat中代表生命周期的接口，主要方法有start和stop方法，新的版本加了init和destory和getState、
@@ -688,14 +690,46 @@ StandardContext：
 Host容器：
 	如果想在同一个Tomcat上部署多个Context容器的话，就需要使用Host容器了
 
+	我觉得Eclipse里用的Tomcat用的就是Host容器，它会为每一个web应用配置一个路径，每一个web应用都是一个Context容
+器，根据第一级路径找到对应的Context容器，再用后面的路径找Wrapper容器，它也有一个map方法传入uri去返回一个Context容
+器，不过在新版本的Tomcat中，这些工作统一交给Mapper类去做了，会在传入的容器中找到匹配的子容器，把他们放到传入的mappingData
+中去，这个对象可以存储除了Engine之外的所有容器，因为Engine是最高级别的容器，不会被其它容器所映射
 
+	在StandardHost中，除了会在构造器中添加一个StandardHostValve基础阀之外，还会在start()方法中添加连个阀，分别
+是ErrorDispatcherValue和ErrorReportValve，它们都会直接把管道链放过去，然后在管道执行完之后，会判断是否有异常信息，
+如果有的话，并且isCommited返回false，就用response输出一些异常信息
 
+	StandardHostMapper：
+	    ContainerBase类会调用addDefaultMapper方法，这个方法会获取mapperClass变量来创建一个映射器，由于StandardHost
+	类指定了mapperClass属性为StandardHostMapper，因此这个容器的映射器就是StandardHostMapper，这个映射器的map方
+	法会调用host容器的map()方法，host容器的map()方法就是不断去掉最后一个/之后的内容，然后匹配子容器id，如果匹配
+	到了就返回匹配到的Context容器
 
+	StandardHostValve：
+	    StandardHost的基础阀，它的invoke()方法会调用host容器的map取匹配请求的uri，如果没匹配到就直接返回，匹配
+	到了就保存这个Context容器，然后尝试获取这个请求的sessionId，如果获取到了就去session管理器中找这个session,
+	如果存在就并可用就更新它的状态，分别会更新isNew=false(这说明了这个session不是这一次新创建的）、上一次访问时
+	间和最后一次访问时间，最后会执行找到的context容器的invoke()方法
 
+	上面说的host容器的map方法需要传两个参数：request和update，这个方法定义在ContainerBase中，然后在这个map()中
+又会去调用容器的Mapper组件的map()方法，这Mapper组件里面又会去调用与它关联的host容器的map()实现，这个map()就只需要
+一个uri字符串就可以了
 
+	Tomcat4必须要有一个Host容器，因为在ContextConfig类使用ApplicationContext解析web.xml的时候会获取Context容器
+的父容器的信息，如果Context没有父容器就会出现异常，否则除非自己实现一个ContextConfig类，不过在新版本中没发现这样的
+代码，甚至在ContextConfig类都没发现对ApplicationConfig的直接引用
 
+Engine容器：
+	
+	StandardEngine：
+	    StandardEngine同样会在构造器加一个基础阀：StandardEngineValve，它的addChild()方法只能添加Host容器，如果
+	是非Host容器会抛异常，而它的setParent()方法调用直接会抛异常，以为它已经是最顶级的容器了
 
+	StandardEngineValve：
+	    它会调用StandardEngine容器的map()方法返回一个Host容器，然后调用Host容器的invoke()方法
 
+服务器组件和服务组件：
+	
 
 
 
