@@ -729,13 +729,76 @@ Engine容器：
 	    它会调用StandardEngine容器的map()方法返回一个Host容器，然后调用Host容器的invoke()方法
 
 服务器组件和服务组件：
+
+	服务器组件：org.apache.catalina.Server接口
+	    Server接口的实例表示Catalina的整个servlet引擎，囊括了所有的组件，它使用了一种统一的方法来启动
+	和关闭整个系统，而不用分别对连接器和容器启动和关闭了
+
+	    使用服务器组件时，它会启动其中所有的组件，然后就无期限的等待关闭命令，如果连接进来的socket发
+	送了SHUTDOWN字符串，他就会关闭服务器并关闭所有组件，不过我看StandardServer的代码在停止后似乎没有
+	关闭其他组件
+
+	    shutdown属性保存了发送给Server实例关闭系统的命令，port属性定义了服务器组件会从哪个端口获取关
+	闭命令，addService()方法为服务器添加组件，removeService()方法删除服务组件，findServices()返回所有
+	服务器组件，initialize()方法包含在系统启动前执行的代码，所以服务器组件是启动一个单独的服务器来获
+	取关闭指令的，默认端口号是8005
+
+	StandardServer：
+	    StandardServer是Server接口的标准实现，该类中的许多方法都与server.xml文件中的服务器配置有关
 	
+	    它有4个与生命周期有关的方法，分别是initialize()、start()、stop()、await()
+		initialize()：
+		    这个方法就是执行所有服务组件的initailize()方法，它有一个initailized属性来防止服务器组
+		件被初始化两次，如果initailized属性等于true就会抛出异常
+	
+		start()：
+		    跟initialize()方法类似，调用所有服务组件的start()方法，并且用一个started属性保证不会
+		多次启动
+
+		stop()：
+		    也一样，调用所有服务组件的stop()方法，并且用一个started属性保证不会多次关闭
+
+		await()：
+		    await()会创建一个ServerSocket对象，监听8005端口，并在while循环中调用它的accept()方法
+		，当在指定端口上接受到消息时，会比较收到的消息是否和关闭命令一样，如果一样跳出whilt循环，
+		并关闭ServerSocket
+
+	Service接口：
+	    Service接口代表服务组件
+
+	StandardService：
+	    StandardService是Service接口的标准实现，它的initialize()方法用于初始化添加到其中的所有连接器，
+	此外它的start()方法也可以启动连接器和容器，而stop()则停止所有连接器和容器
+	    在Tomcat9中，它的initialize()和start()方法放在了ContainerBase类中，这个类会调用子类的initInternal()
+	和startInternal()方法，它会在两个方法中启动和初始化容器、执行器、映射侦听器、连接器，而stopInternal()
+	则会停止这些组件
+
+	    StandardService有连接器和servlet容器，其中servlet容器只有一个，连接器则可以有多个，多个连接器
+	可以为多种不同请求协议提供服务，比如分别处理HTTP和HTTPS请求，而Tomcat9中还加了映射器、执行器，并
+	且限定了容器必须是Engine容器
+
+	    setContainer()方法会关闭旧容器，启动新容器，然后发布属性改变事件，不过旧的版本考虑到改变新容
+	器后，Service里连接器的关联连接器就不匹配了，会把所有连接器的容器重新设置，而新版本没有这一步，新
+	版的连接器不关联容器了，直接关联一个Service对象，通过Service来关联实例，只要修改Service对象的容器
+	就等于修改连接器的容器
 
 
+	    addConnerctor()方法会添加一个连接器，并调用它的init()和start()方法，Tomcat9中就只调用start()
+	方法了
 
+	    removeConnerctor()方法跟addConnerctor()类似，不过调用的方法变成了stop()方法
+	
+	它有3个与生命周期有关的方法，分别是start()、stop()、initialize()，这三个方法在上面介绍过了
+	    
+	    使用了Server和Service之后，容器和连接器的启动停止就交给Server来做了，在Server的ServerSocket接
+	收到停止命令之后，就会关闭ServerSocket，并在Bootstrap调用Server的stop()方法
 
+	    SpringBoot使用Tomcat类的getServer()方法获取一个StandardServer，这个方法会把Server的port设置为
+	-1，因此这个停止服务器不会启动
 
-
+Digester库：
+	
+	Digester是一个开源库，它可以将XML文档中的元素转换成Java对象
 
 
 
