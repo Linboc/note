@@ -800,12 +800,107 @@ Digester库：
 	
 	Digester是一个开源库，它可以将XML文档中的元素转换成Java对象
 
+	    Digester调用一些add方法都是添加一些规则，这些规则都是Rule接口的实现类，Digester会在遇到一些标签时，按
+	照顺序调用这些标签的所有规则，比如如果先addObjectCreate，然后再addSetProperties，就会先创建对象，然后设置
+	属性
+	
 
+	Digester有4个重载方法可以定义标签和类的映射关系，分别是：
+	    addObjectCreate(String pattern, Class class)
+		把pattern标签和class相关联
+	    addObjectCreate(String pattern, String className)
+		把pattern标签和className指定的全类名对应的类相关联
+	    addObjectCreate(String pattern, String className, String attributeName)
+		把pattern标签和它的attributeName属性指定的类相关联，如果这个属性不存在，则使用className，className
+	    可以为null，这个属性是一个默认值
 
+	addSetProperties(String pattern)：
+	    这个方法可以指定为某个模式注入属性，比如addSetProperties(pattern)，如果碰到了这个标签，就会把这个标签
+	的属性用set方法注入到java对象中，如果属性不存在则报错
 
+	addCallMethod(String pattern, String methodName)：
+	    这个方法会使遇到与该规则相关联的模式时调用内部栈最顶端对象的某个方法，注意，这里调用的是模式对应的对象
+	，不是规则，如果有多个标签，也就是多个对象，则用最顶端的一个对象
 
+	    虽然书上一直在说有一个栈保存所有规则，不过在添加规则的时候我只看到了一个HashMap和一个ArrayList，HashMap
+	的key是pattern，value是一个Rule集合，也就是一个标签可以有多个规则，还有一个rules，保存了所有规则，必过在
+	Digester确实有一个ArrayStack<Object> stack属性的栈，在调用Rule的begin和end方法时才会使用，应该是用来保存标
+	签层级信息的
+	
+	addSetNext(String pattern, String method)
+	    这个方法会指定，这个标签对应的对象会调用父对象的哪个方法把自己加进父对象中，将它们关联起来，比如是a/b
+	，代表了a标签下的b标签，然后addB代表了a标签的addB方法，然后就会调用a.addB(b)把他们关联起来，这里的a和b标签
+	会转成他们前面addObjectCreate()方法所指定的类的实例
 
+	validating：
+	    这个属性指明了是否要对XML文档进行有效性验证，默认值为false
 
+	    最后调用Digester的parse方法，传入一个File，就能返回一个第一个addObjectCreate()的对象了,需要注意的是，
+	调用子标签需要父标签/子标签，如果是子子标签，就是：父标签/子标签/子子标签
+
+	Rule：
+	    那几个add方法最终都会调用addRule()方法，将所有的模式与规则的关系保存起来
+
+	RuleSet：
+	    RuleSet可以封装Digester那一堆add、set方法，只要某个类继承了RuleSet类。其实继承RuleSetBase就行了，因为
+	这个类有个getNamespaceURI()方法默认实现了，剩下的addRuleInstances()方法会把Digester对象传进来，然后把那一
+	堆add、set放在这里就能封装起来了，只需要使用digester.addRuleSet()方法，在这里面就会调用addRuleInstances(this)
+	方法，最终效果也一样，不过把复杂的映射封装在了RuleSet实现类中，接着digester.parse()就能返回对象了
+	
+	ContextConfig：
+	    对于StandardContext容器，必须有一个监听器负责帮它设置configured变量为true，否则它无法启动，因为它在start()
+	方法中发布配置开始事件后，会判断configured是否为true，如果不是则抛异常
+
+	start()：
+	    在ContextConfig收到启动事件时执行start()方法，start方法会执行两个类：
+		defaultConfig()：
+		    它会取到System.getProperty("catalina.base")路径下的conf/web.xml文件的输入流，然后用Digester.push
+		把Context容器传进去，接着调用Digester的parse()方法把输入流传进去，就完成了解析，虽然会返回一个对象
+		，不过由于它注入属性的是自己传入的Context，因此已经持有这个对象了
+	
+		applicationConfig()：
+		    这个方法与defaultConfig类似，不过它读取的文件是ServletContext资源路径下的/WEB-INF/web.xml文件，
+		也就是说，如果这个资源存在，就会覆盖前面conf/web.xml的配置
+
+	    上面的两个配置程序都是用了由createDigester()方法创建的Digester对象，这个方法会在Digester创建好后用addRuleSet
+	方法添加一个Tomcat定义好的WebRuleSet实例，这个类的addRuleInstances()方法定义了整个Context容器所需的标签和属
+	性映射规则
+
+	Tomcat8.5.31：
+	    webConfig：
+		它有两个xml文件需要配置：
+		    globalWebXml：
+			如果StandardContext.getDefaultWebXml()为空的话就使用：conf/web.xml,而路径则是它的getCatalinaBase()
+		    方法返回的文件对象路径
+		    hostWebXml
+			如果Context容器的父容器不为空并且是Host的话，就调用Host.getConfigBaseFile()方法，然后获取
+		    它的路径，和web.xml.default一起创建一个文件对象，如果为空就返回null
+
+		上面两个配置都有缓存它们的修改时间，如果上次配置时的修改时间跟这次一样，就不会重新解析配置，而是直
+	    接返回
+
+			不过最终进行配置的还是通过getContextWebXmlSource()方法获取的ServletContext下的资源/WEB-INF/web.xml
+		    文件，解析后会把所有属性都放到WebXml实例中，然后使用configureContext(WebXml webXml)方法一项项
+		    地去设置Context容器的属性
+
+	    如果Context容器的getIgnoreAnnotations()方法返回false的话，就执行下面的配置方法
+		applicationAnnotationsConfig：
+		    这个方法简单粗暴，直接WebAnnotationSet.loadApplicationAnnotations(context)，然后这个里面是3行
+			loadApplicationListenerAnnotations(context);
+			loadApplicationFilterAnnotations(context);
+			loadApplicationServletAnnotations(context);
+		    这几个方法分别会对Context容器里面定义的侦听器、过滤器和Servlet进行注解解析，每个类只要能被类加
+		载器加载，都会调用以下几个方法：
+		    loadClassAnnotation(context, clazz);
+		    loadFieldsAnnotation(context, clazz);
+		    loadMethodsAnnotation(context, clazz);
+		    这几个方法的作用就是判断这个类、类的字段、类的方法上面有没有Servlet相关的注解，如果有的话，比如
+		是Resource注解，就把它的value值挨个添加进context.getNamingResources()属性里面，它的value属性是个数
+		组，所以会循环添加，会判断如果是基础数据类型就包装后放进addEnvironment()方法，如果是javax.xml.rpc.Service
+		类型，就放进addService()方法，如果是javax.jms.Queue或javax.jms.Topic就放进addMessageDestinationRef()
+		如果都不是就放进addResourceEnvRef()，这里只列举了部分注解，感兴趣可以去看WebAnnotationSet.addResource
+
+	
 
 
 
