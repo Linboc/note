@@ -900,6 +900,35 @@ Digester库：
 		类型，就放进addService()方法，如果是javax.jms.Queue或javax.jms.Topic就放进addMessageDestinationRef()
 		如果都不是就放进addResourceEnvRef()，这里只列举了部分注解，感兴趣可以去看WebAnnotationSet.addResource
 
+关闭钩子：
+	
+	很多应用需要在用户关闭应用程序时做一些清理工作，但是用户有时不会按照推荐的方法关闭应用程序，比如
+Tomcat的Server对象启动时，调用start()方法，然后逐个调用各个组件的start()方法，停止时也需要这样调用stop()
+方法，如果直接在运行过程中关闭控制台，可能会发生一些意想不到的事
+
+	Java提供了一种优雅的方法可以在关闭过程，这样就能在关闭过程执行一些代码了
+	
+	在java中虚拟机会对两类事件进行相应，然后执行关闭操作：
+	    调用System.exit()方法或者最后一个非守护进程线程退出时，程序正常退出
+	    用户突然强制虚拟机中断运行，例如按CTRL+C或者直接关闭Java程序
+
+	在虚拟机执行关闭操作时，会经过以下两个阶段：
+	    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	
 
 
