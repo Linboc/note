@@ -959,16 +959,60 @@ Tomcat启动：
 	    它的main()方法会创建几个类加载器，然后把级别最高的类加载器用反射传入Catalina.setParentClassLoad()中，
 	然后用反射调用有参数版Catalina.load()方法，并把自己main()方法传进来的的args[]传过去，最后调用start()方法
 
+	    在它的静态初始化块中，如果catalina.base和catalina..home为null，就使用user.dir作为它们的路径，
+	并创建相应的catalinaBaseFile和catalinaHomeFile，然后反把系统变量的那两个变量设置为user.dir，如果
+	不为空就使用指定的
+
 	批处理：
-
-
-
-
-
-
-
-
-
+	    批处理文件的后缀名必须为.bat，
+	
+	命令：
+	    rem：
+		用于注释
+	    pause：
+		用于暂停，并提示用户按某个键，程序就会继续运行
+	    echo：
+		用于在DOC控制台显示一段文本，比如echo Hello World
+	    环境变量：
+		如果要使用环境变量，就在环境变量前后加上%，比如echo %OS%输出操作系统的名字
+	    echo off：
+		防止将批处理文件中的具体命令输出，不过echo off本身还是会输出
+	    @echo off：
+		和echo off类似，不过连echo off本身都会隐藏
+	    set：
+		设置用户定义的环境变量，在批处理中设置的环境变量是临时的，在批处理执行结束就会摧毁，使用：
+	        set THE_VAR=hello，echo %THE_VAR%
+	    label：
+		使用冒号设置一个标签，然后将标签传递给goto命令，这样就会跳转到标签指定的位置比如：:start
+	    goto;
+		强制批处理跳转到指定标签所在的位置执行：
+		echo start
+		goto end
+		echo runing
+		:end
+		echo end
+		上面的例子就会跳过runing的部分，直接start就到end了
+	    if：
+		执行条件测试：
+		if %myVar%==3 echo hello：如果%myVar%等于3，就输出hello
+		exist：if exist c:\temp\myFile.txt goto start：如果myFile.txt存在，就跳转到start标签
+		not：not可以对条件取反，比如if not %myVar%==3 echo hello就是%myVar%不等于3条件才成立
+	    接收参数：
+		可以给批处理传递参数，批处理文件中用%1、%2来决定引用第几个参数，比如批处理文件名是test.bat
+		，使用test hello调用它，那么echo %1就会输出hello
+	    检测是否附带参数：
+		使用if "%1"==""，这样如果没有参数的话条件就会成立
+	    shift：
+		将参数向后移动一位，会将%2的参数给%1，%3的参数给%2，%1的参数给%0，现在%3的参数就失效了
+	    call：
+		用来调用另一条命令：call goto end
+	    setLocal：
+		修改环境变量的值，只在当前脚本中有效
+	    endLocal：
+		将setLocal修改的值改回原来的
+	    start：
+		打开一个新控制台，比如start "title" goto start，为新控制台指定一个名字，并传入一条要控制
+		台执行的命令
 
 
 
