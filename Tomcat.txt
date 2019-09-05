@@ -973,12 +973,14 @@ Tomcat启动：
 		用于暂停，并提示用户按某个键，程序就会继续运行
 	    echo：
 		用于在DOC控制台显示一段文本，比如echo Hello World
+	    @echo：
+		隐藏当前执行的指令
+	    echo off：
+		防止将批处理文件中的具体命令输出，不过echo off本身还是会输出,对整个批处理生效
+	    @echo off：
+		和echo off类似，不过连echo off本身都会隐藏,对整个批处理生效
 	    环境变量：
 		如果要使用环境变量，就在环境变量前后加上%，比如echo %OS%输出操作系统的名字
-	    echo off：
-		防止将批处理文件中的具体命令输出，不过echo off本身还是会输出
-	    @echo off：
-		和echo off类似，不过连echo off本身都会隐藏
 	    set：
 		设置用户定义的环境变量，在批处理中设置的环境变量是临时的，在批处理执行结束就会摧毁，使用：
 	        set THE_VAR=hello，echo %THE_VAR%
@@ -1013,8 +1015,24 @@ Tomcat启动：
 	    start：
 		打开一个新控制台，比如start "title" goto start，为新控制台指定一个名字，并传入一条要控制
 		台执行的命令
+	    %nx0：
+		文件的文件名+后缀名
+	    %~f0：
+		当前批处理的绝对路径
+	    cls：
+		清屏命令
+	    1>nul：
+		加在指令后面可以屏蔽操作成功显示的信息，但是报错信息还是会出现，1代表正常输出
+	    2>nul：
+		加在指令后面可以屏蔽操作失败显示的信息，但是成功信息依然会出现，2代表错误输出，总的来说就是标准错
+		误(2)输出(>)到nul
+	    1>nul 2>nul：
+		无论操作是否成功都不会显示信息
 
-
+	startup.bat：
+	    找到CATALINA_HOME下的\bin\catalina.bat，然后去执行%CATALINA_HOME%\bin\catalina.bat start args，
+	最终会去执行catalina.bat start [给它传什么参数它就给catalina.bat传什么参数]，所以它就是很单纯的找到并启动
+	catalina.bat，跟直接启动catalina.bat并无区别
 
 
 
