@@ -1005,7 +1005,7 @@ Tomcat启动：
 	    检测是否附带参数：
 		使用if "%1"==""，这样如果没有参数的话条件就会成立
 	    shift：
-		将参数向后移动一位，会将%2的参数给%1，%3的参数给%2，%1的参数给%0，现在%3的参数就失效了
+		将参数向前移动一位，会将%2的参数给%1，%3的参数给%2，%1的参数给%0，现在%3的参数就失效了
 	    call：
 		用来调用另一条命令：call goto end
 	    setLocal：
@@ -1033,6 +1033,100 @@ Tomcat启动：
 	    找到CATALINA_HOME下的\bin\catalina.bat，然后去执行%CATALINA_HOME%\bin\catalina.bat start args，
 	最终会去执行catalina.bat start [给它传什么参数它就给catalina.bat传什么参数]，所以它就是很单纯的找到并启动
 	catalina.bat，跟直接启动catalina.bat并无区别
+
+	Shell：
+	    shell脚本的扩展名可有可无，但最常用的扩展名是.sh
+	    bash scriptName：
+		执行scriptName脚本
+	    sh scriptName
+		执行scriptName脚本
+	    #：
+		注释当前行的内容，#也能出现在一行的中间，注释在它后面的所有字符
+	    clear：
+		清空屏幕
+	    echo：
+		输出字符
+	    exit：
+		退出当前脚本，通常后面会跟个状态值，0代表正常退出，非0代表异常退出
+	    .：
+		调用函数或执行脚本，比如：. ./test.sh会调用当前目录下test.sh脚本
+	    变量：
+		变量名必须以字母、数字或下划线开头：myVariable=tootsie，等号前后不能有空格，区分大小写，如果右边为
+		空或者""，这个则变量为null
+	    $：
+		使用变量，比如：$myVariable
+	    expr：
+		表达式计算，表达式和expr必须用`包起来，比如sum=`expr 100 + 200`
+	    系统变量：
+		HOME：当前用户主目录，PWD：用户所在的当前目录，PATH：将会在哪些地方查找命令，比如windows的环境变量
+	    特殊表达式：
+		`uname`：不需要expr命令，可以返回操作系统的名字，`dirname /home/t1.sh`：返回目标文件的目录：/home
+	    参数：
+		使用$1返回传入脚本的第一个参数，$2返回第二个，$#返回参数的数量，$@返回所有参数，$0返回调用的命令
+	    shift：
+		将参数向前移一位，跟windows一样
+	    if ... fi：
+		进行判断条件是否成立
+		if 
+		[ "$1"=1 ]; then echo 参数1等于1
+		[ elif "$1"!=1 then echo 参数1不等于1 ] 
+		[ else echo 都不成立 ] 
+		fi
+		注意，[]里面左右都必须有空格，用双引号把$1括起来可以防止解释器在发现脚本没有参数后抛出异常
+	    测试选项：
+		-f file：file存在时为true
+		-r file：file可读时为true
+		-z string：如果string是空字符串时为true
+		-n string：如果string不是空时为true
+		-h variable：某个变量是否存在
+		string1 = string2：string1等于string2时为true
+		string1 != string2：string1不等于string2时为true
+	    for：
+		for i in 1 2 3
+		do
+		    echo i
+		done
+		in右边放一个集合，可以是$@
+	    while：
+		num=1
+		while [ $num -lt 3 ];
+		do
+		  echo interation $n
+		  n=$((n + 1))
+		done
+		-lt是小于等于，以上的代码会输出，interation 1-3
+	    case：
+		case "`uname`" in
+		    OS400*) echo 这是os400系统;;
+		    GYGWIN*) echo 这是gygwin系统;;
+		    LINUX*) echo 这是lunux系统;;
+		    *) echo 这是未知系统
+		esac
+		以上，case之后的的变量是用来匹配的，*)用来隔开每个待匹配值和要知悉执行的指令，;;代表每个匹配点要执行的
+		指令结的束标识符，最后一个空的*)代表上面全都没匹配上的默认选项
+	    输出重定向：
+		可以用>将输出重定向到文件中，比如：echo hello > myFile.txt，将hello输出到myFile中，1>&2会把标准输出
+		上的错误消息重定向到标准错误中，2>&1会把标准错误的小心重定向到标准输出，1是标准输出的信息，2是标准
+		错误的信息，&1是标准输出，&2是标准错误
+	    条件执行：
+		&&、||，&&是前面的为true或者返回状态0才会执行后面的，||是前面的为false或者返回非0状态才会执行后面
+		的，因为&&必须要两个true，第一个不为true后面的就没意义了，||只要任意一个为true就行了，所以只有第一
+		个不为true才会执行后面的
+
+部署器：Deployer：
+	在Tomcat中，部署器和一个Host实例关联，用来创建一个StandardContext实例，并将实例关联到Host实例中，创建的实
+例会随其父容器启动，部署器也可以用单单独启动和关闭Context实例
+
+	
+
+
+
+
+
+
+
+
+
 
 
 
