@@ -1114,21 +1114,52 @@ Tomcat启动：
 		个不为true才会执行后面的
 
 部署器：Deployer：
+
 	在Tomcat中，部署器和一个Host实例关联，用来创建一个StandardContext实例，并将实例关联到Host实例中，创建的实
 例会随其父容器启动，部署器也可以用单单独启动和关闭Context实例
 
+基本流程：
+	在catalina中的createStartDigester方法中会加一个HostRuleSet，它会为host添加一个HostConfig类的侦听器，这个侦
+听器会在侦听到容器启动时调用它的start()方法，这个方法会在进来时判断，如果发布事件的容器是StandardHost的话，就会调用
+	setCopyXML(((StandardHost) host).isCopyXML());			部署时是否要将XML文件复制到CATALINA_BASE/conf下
+        setDeployXML(((StandardHost) host).isDeployXML());		是否要部署一个Context实例的描述文件
+        setUnpackWARs(((StandardHost) host).isUnpackWARs());		是否将WAR文件的Web应用程序解压
+        setContextClass(((StandardHost) host).getContextClass());	创建Context容器时，使用哪个Context容器实现类
+，然后会调用deployApps()方法
+
+	deployApps()会调用3个方法：
+
+	    deployDescriptors()：
+		去$CATALINA_BASE/conf/engine_name/host_name下的文件夹下中找到所有的xml文件，然后将这些xml文件用digester
+	    解析成Context对象，并将这个Context容器加入host容器中，还进行一些基础配置，比如加个ContextConfig侦听器
+
+		
+	    以下两个部署方法里使用的文件是经过filterAppPaths方法过滤的，似乎可以配置正则来排除不想要的文件
+	    deployWARs()：
+		去$CATALINA_BASE/webapp下找到所有的war文件，把它转成JarFile，然后用里面的META-INF/context.xml文件
+	    解析成Context容器，然后又是创建好后的流程，不过因为它的配置文件在war包中，因此如果xmlInWar和copyThisXml
+	    都为true，就会把war包中的META-INF/context.xml复制到$CATALINA_BASE/conf/engine_name/host_name/war_file_name.xml
+	    里面
+
+	    deployDirectories()：
+		去去$CATALINA_BASE/webapp下找到所有的文件夹，然后在文件夹中找到META-INF/context.xml文件，如果找到
+	    就解析出一个Context容器，没找到就给个FailedContext实例，如果copyThisXml为true，就把这个配置文件复制到
+	    $CATALINA_BASE/conf/engine_name/host_name/directory_name.xml里面，最后又是创建好后的流程
+
+	    以上的所有Context都会被包装成DeployedApplication对象，然后加入deployed集合中，它是一个ConcurrentHashMap
+	，这个对象还包含了资源上一次修改时间，资源(Context)名称等待
+
+动态部署：
+	在启动Host容器的时候，它会调用start()父类的方法，这个方法会调用startInternal()，而这个方法会调用super.startInternal()
+，这个方法会启动一个线程不断执行Host容器与其子容器的backgroundProcessor()方法，执行间隔由backgroundProcessorDelay
+属性决定，这个方法StandardHost没有实现，默认实现是在ContainerBase中，这个方法在最后一行发布一个Lifecycle.PERIODIC_EVENT
+事件，周期性事件，而HostConfig在侦听这个事件之后会执行check()方法，这个方法会把被修改过的部署相关文件从deployed集合
+中删掉，并对其相关数据进行清除，然后再调用deployApps()方法重新进行部署，对于每个配置文件，如果它的文件名已经存在deployed
+或者host容器中，就不会进行重新部署
+	其中判断文件最后修改时间是否与缓存中修改时间的一致是使用checkResources()方法完成的
+
+Deploy接口：
 	
-
-
-
-
-
-
-
-
-
-
-
 
 
 
