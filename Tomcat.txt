@@ -684,8 +684,11 @@ StandardContext：
 	线程使用java的任务调度类ScheduledExecutorService不断调用ContainerBase的内部类ContainerBackgroundProcessor
 	的run方法来执行
 
-	    然后在WebappLoader的backgroundProcess()方法里，会判断如果reloader && modify()，如果返回true就
+	    比如在WebappLoader的backgroundProcess()方法里，会判断如果reloader && modify()，如果返回true就
 	调用重载方法reload()
+
+	    比较神奇的是，host容器启动会启动一个backgroundProcess()线程，每一个context也会启动一个，并且host容器还
+	会调用context容器的，也就是说每个context除了自己调用自己的，还会被host容器调用
 
 Host容器：
 	如果想在同一个Tomcat上部署多个Context容器的话，就需要使用Host容器了
