@@ -1162,7 +1162,10 @@ Tomcat启动：
 	其中判断文件最后修改时间是否与缓存中修改时间的一致是使用checkResources()方法完成的
 
 Deploy接口：
-	
+	这个接口和它的实现类StandardHostDeployer在新版本的Tomcat中不存在，不过它们干的活好像都跟deployDescriptor()、
+deployWAR()、deployDirectorie()这几个方法差不多，注意，这几个方法跟上面不同，上面方法名带s的是扫描整个文件夹所有的
+相关文件或者文件夹来创建Context容器，而这几个方法是上面的方法扫描到所有相关文件后另外开线程去执行解析每个具体文件
+或文件夹，把他们转成容器
 
 
 
