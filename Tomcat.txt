@@ -1178,8 +1178,69 @@ ManagerServlet的doGet方法中找到相关实现
 Containerservlet接口：
 	实现了这个接口的servlet在创建时会为他设置一些容器，比如调用它的setWrapper方法传入Wrapper容器
 
-	
+基于JXM对Tomcat进行管理：
 
+JXM：
+	jmx是java管理扩展规范，它提供了比ContainerServlet接口更灵活的方法来管理Tomcat，许多服务器都使用JMX技术来管
+理各自的资源，如Tomcat、JBoss、JONAS等
+	如果一个Java对象可以被一个遵循JMX规范的管理器管理，那么这个对象称为一个可由JMX管理的资源，想要成为一个可以
+由JMX管理的资源，就要创建一个MBean(Manage Bean)对象
+	MBean服务器保存了程序中注册的所有MBean，因为MBean对象会注册到MBean服务器中，管理应用程序通过MBean服务器来
+访问其它的MBean实例
+	管理应用程序类似于Web浏览器，MBean服务器类似于servlet服容器，MBean服务器提供了客户端，也就是管理应用程序，
+来访问被它托管的资源，其中的MBean实例类似于servlet类，Web浏览器无法直接访问servlet，必须通过servler容器才可以，所
+以浏览器通过访问MBean服务器来访问MBean实例
+	一共有4种类型的MBean：标准类型、动态类型、开放类型、模型类型
+	JMX规范分为3层：设备层、代理层、分布式服务层，MBean服务器就是代理层，MBean是设备层，分布式服务层在将来的版
+本会涉及
+	设备层规范定义了如何编写MBean，代理层规范定义了MBean服务器的标准，MBean服务器和它代理的MBean通常处于同一个
+JVM中
+	由于JMX规范附带了一个MBean服务器的参考实现，因此不需要自己编写MBean服务器
+
+MBeanServer：
+	MBean服务器是MBeanServer接口的实例，要创建一个MBeanServer实例只需调用它的createMBean()方法就可以了，要给
+    MBean服务器注册一个MBean，只需要调用registerMBean()方法
+
+    registerMBean()：
+	注册一个MBean，需要一个对象和一个ObjectName实例，ObjectName实例和HashMap的key类似，它可以唯一的标识一个MBean
+    实例，这个方法返回一个ObjectInstance实例，这个类封装了一个MBean实例的对象名称和它的类名
+
+    queryNames()：
+	该方法返回一个ObjectName集合，需要一个ObjectName和QueryExp实例，queryExp用来指定过滤条件，如果为null则不进
+    行过滤
+
+    queryMBeans()：
+	该方法返回一个ObjectInstance集合
+
+    get/setAttribute()：
+	用来获取或设置已注册的MBean实例的属性
+
+    可以通过MBeanServer接口的invoke()方法调用已注册的MBean实例的任何方法
+
+ObjectName：
+	ObjectName类似于MBean服务器中的key，它用来唯一的标识一个MBean实例，ObjectName由两部分组成，域和键值对，域
+是一个字符串，键值对可以有多个，键不能包含：=,;*?等符号，并且每个键只能出现一次，其中域和键值对用分号分割，键值对
+之间用都好分割，键和值用等号分割，比如：myDomain:type=Car,color=blue
+	
+标准MBean：
+    使用：
+	1、使用MBeanServerFactory.createMBeanServer()创建一个MBeanServer
+	2、使用MBeanServer.createMBean()创建一个MBean，其中需要MBean类和它的name，会自动根据MBean类去找到它的接口，
+	    在指定的MBean类下找到它的类名+MBean的接口
+	3、使用MBeanServer.setAttribute(name, attribute)来设置属性，创建attribute属性需要指定属性的名称和值
+	4、使用MBeanServer.getAttribute(name, attributeName)来获取某个属性
+	5、使用MBeanServer.invoke()执行MBean类的方法第一个属性是MBeanName，第二个是要执行的方法，第三个是方法参数
+	    数组，第四个是方法参数类型数组
+
+    使用注意：MBean读取和写入属性，会在传入的属性前面分别加get和set，也就是说不会帮你属性转大写在再加，因此要自己
+传入首字母大写的属性才可以
+    MBean会把方法分为3种类型：get、set、ops，分别是getter方法、setter方法和可操作方法，这三种方法分别存在3个map里
+面，会根据MBean接口里面的方法来填充这几个map，只要方法前缀为set，就都放进settet，为get就都放进getter，剩下的放进
+ops，而在MBeanServer执行setAttribute方法时只会去setter集合里面找对应方法，没找到就算了，get也一样，而invoke则只会
+去ops集合里面去找，如果没找到对应的方法就会报：No such xxx类似的异常，因此Invoke不是什么方法都能执行的，他只能执行
+非get、set方法
+
+模型MBean：
 
 
 
