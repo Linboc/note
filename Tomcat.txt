@@ -1241,6 +1241,34 @@ ops，而在MBeanServer执行setAttribute方法时只会去setter集合里面找对应方法，没找到
 非get、set方法
 
 模型MBean：
+    使用模型MBean需要一个ModelMBean实例，这是一个接口，在JMX的参考实现中有一个RequireModelMBean类，这个
+类的创建需要一个ModelMBeanInfo实例，ModelMBeanInfo对象描述了这个ModelMBean会将哪些构造器、属性、操作、监
+听器暴露给代理。
+    因此创建一个ModelMBeanInfo对象需要有：
+	构造器：ModelMBeanConstructorInnfo
+	属性：ModelMBeanAttributeInfo
+	方法：ModelMBeanOperationInfo
+	监听器：ModelMBeanNotificationInfo
+        等属性。
+    ModelMBeanInfo是一个接口，在JMX中它的默认实现是MBeanInfoSupport，这个类的其中一个构造器所需参数：
+	    String className,
+            String description,
+            ModelMBeanAttributeInfo[] attributes,
+            ModelMBeanConstructorInfo[] constructors,
+            ModelMBeanOperationInfo[] operations,
+            ModelMBeanNotificationInfo[] notifications
+    
+    因此创建一个模型MBean需要做很多工作，首先要创建可操作函数、属性、构造器、侦听器等实例，然后再用它们创
+建一个ModelMBeanInfo实例，然后用这个实例创建一个RequireModelMBean实例，最后调用MBeanServer.create方法把
+RequireModelMBean和ObjectName一起注册进MBean服务器中，用这种方式创建一个模型MBean非常麻烦，Apache软件基金
+会有一个Commons Modeler库，它是Jakarta项目的一部分，可以使编写模型MBean更加方便
+
+Commons Modeler：
+    用来解析xml里面的数据，并创建为MBeanServer对象，这样在程序中就能直接获取里面配置的MBean信息了
+
+使用：
+    会把所有的MBean加入MBeanUtils的MBeanServer里面，然后前台调用不同的接口就可以通过这个MBeanServer去调用
+不同的MBean的方法，比如Context的stop方法来停止不同的Context
 
 
 
