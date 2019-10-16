@@ -200,8 +200,8 @@ root账户来关机了，但某些distributions要在关机时输入root密码
     ls指令：
 	ls是list的意思，主要是显示文件与文件名相关属性
 
-	ls -al：
-	    列出所有文件的详细权限与属性，包括隐藏文件
+	ls -al params：
+	    列出所有文件的详细权限与属性，包括隐藏文件，params可以写表达式，比如file1*，就只展示file1开头的文件
 
 		第一列：权限
 		    权限一共有十个字符，比如：-rwxrwx---，第一个是文件类型，然后每三个分别是拥有者、群组和其他人的
@@ -237,7 +237,19 @@ root账户来关机了，但某些distributions要在关机时输入root密码
 
 	ls -a：显示所有文件的名称
 
+    chgr(change group)p：改变文件群组
+	chgrp [-R] group fileName，例如：chgrp test1 init.cfg，把init.cfg文件的群组改为test1，如果在chgrp后面加上
+    -R，就会进行递归变更，那么这个目录下的所有文件、目录都会成为这个群组，如果该群组不存在，就会报错误说找不到这个
+    群组，所有群组都存在/ect/group目录下，我这个版本实际上找不到该目录
+	
+    chown(change woner)：改变文件拥有者
+	chown [-R] owner:group 文件，例如：chown user1:group1 file1.txt，把file1.txt的拥有者改为user1，群组改为
+    group1，也可以只改群组，也就是不写user1，只写:group1，冒号:可以改为点.，效果一样，不过冒号不容易有用户名冲突，
+    这个同样可以加-R，效果相同
 
+	
+
+    chmod：改变文件权限
 
 
 
