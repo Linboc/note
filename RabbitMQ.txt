@@ -107,10 +107,14 @@ RabbitMQ是一个消息中间件
 	生产者投递的消息会先到交换器中，然后交换器将消息路由到一个或多个队列中，如果路由不到，或许会返回
     给生产者，或许会直接丢弃
 	RabbitMQ有4种类型的交换器，不同的类型有不同的路由策略
-	    fanout：
-	    direct：
-	    topic：
-	    headers：
+	    fanout：把所有发送到该交换器的消息路由到所有绑定的队列中
+	    direct：把消息路由到BindingKey和RoutingKey完全匹配的队列中 
+	    topic：RoutingKey可以有多个单词，每个单词用.分开，只要这些单词能被BindingKey的规则匹配就会被
+		   路由到对应的队列中，BindingKey可以使用*和#，其中*用于匹配一个单词，#匹配多个单词，同样
+		   BindingKey可以使用.来分割单词，比如a.b.c的RoutingKey可以被a.*.c和a.#的BindingKey所匹配
+	    headers：headers类型的交换器不依赖R路由键和绑定键来匹配路由消息，而是根据发送的消息内容中的
+		     headers属性进行匹配，如果消息的headers完全匹配队列和交换器绑定时指定的键值对，消息会
+		     路由到该队列，该类型的性能很差，而且不实用，所以基本不会使用
 
     路由键：RoutingKey
 	生产者将消息发给交换器的时候，一般会指定一个RoutingKey，用来指定这个消息的路由规则，这个RoutingKey
@@ -125,18 +129,133 @@ RabbitMQ是一个消息中间件
 许使用相同的BindingKey，绑定键并不是总是能生效，这依赖于交换器的类型，比如fanout类型的交换器就会无视绑定
 键而将消息路由到所有绑定到该交换器的队列中
 
-    
-    
+交换器和队列：
 
+	所有的开发工作基本都在围绕连接和信道进行，一个连接工厂能创建多个连接，一个连接能创建多个信道，但
+    是每个信道应该单独存在一个线程中，因为信道是非线程安全的，多线程情况下信道可能会出现通信帧交错
 
+交换器相关方法：
+    channel.exchangeDeclare方法：
+	交换器声明的相关参数：
+	    exchange：交换器名称
+	    type：交换器类型
+	    durable：是否持久化
+	    autoDelete：是否自动删除，当这个交换器第一次被其它交换器或队列绑定后，一旦某一时刻没有任何绑
+			定它的交换器或队列，这个交换器将会被删除
+	    internal：是否内置，内置的交换器客户端无法直接发送消息，只能被其它非内置的交换器进行路由
+	    argument：其它一些结构化参数
+	这些重载方法都会返回一个Exchange.DeclareOK，客户端在声明一个交换器之后，需要等待服务器返回这个命
+    令，如果返回则说明声明成功
+	而channel.exchangeDeclareNoWait方法则是不需要服务器返回，这个方法的返回值是void，其它的地方都和普
+    通的交换器声明方法差不多，这个方法有一个问题，那就是客户端声明一个交换器后，服务器还未完成交换器的创
+    建，客户端就马上使用交换器了，这里会发生异常，因此没有特殊的缘由不推荐使用这个方法
+	还有一个channel.exchangeDeclarePassive方法，这个方法主要用来检测交换器是否存在，只需要提供交换器
+    名称，如果存在则正常返回，不存在则抛异常
 
+    channel.exchangeDelete方法：
+	exchange：要删除的交换器名称
+	ifUnused：这个交换器是否只有在没被使用的情况下才会被删除
 
+队列相关方法：
+    channel.queueDeclare方法
+	如果直接使用channel.queueDeclare(),就会声明一个名称为随机字符的队列，这个队列只在当前应用的同一个
+    连接中可用，创建该队列的信道所属的连接下所有的信道都可共用，其它连接无法使用，并且该连接断开时该队列
+    会自动删除，这种队列也称为匿名队列，声明队列时有几个参数：
+	    queue：队列名
+	    durable：是否持久化
+	    exclusive：是否排他，排他队列只在连接内可用，连接断开时删除，即使它是持久化的，并且其他连接虽
+		       然无法使用这个排他队列，但是依然无法声明相同名称的排他队列
+	    autoDelete：是否自动删除，当这个队列第一次被消费者连接后，一旦某一时刻所有消费者都断开连接，
+			这个队列才会被删除
+	    argument：其它一些结构化参数
+    而空参数声明的队列，queue=""、durable=false、exclusive=true、autoDelete=true
 
+	如果声明的交换器或队列已存在，并且新声明的参数与前面已存在的声明参数一样，就什么都不做，并返回成
+    功，如果参数不同则抛出异常
 
+	同样，队列也有相似的queueDeclareNoWait、queueDeclarePassive、queueDelete、queueDeleteNoWait等方法
+    ，其中queueDeleteNoWait方法有ifUnused和ifEmpty参数，ifUnused参数是队列没被连接时才会删除，ifEmpty是队
+    列为空时才会删除
+	channel.queuePurge方法用来清空队列的内容
 
+队列绑定：
+	channel.queueBind和channel.queueBindNoWait方法：
+	    queue：队列名称
+	    exchange：交换器名称
+	    routingKey：路由键
+	    argument：绑定的参数
+队列解绑：
+	channel.queueUnbind方法的参数和队列绑定基本一致
 
+交换器与交换器绑定：
+	channel.exchangeBind和channel.exchangeBindNoWait，参数与队列绑定类似
 
+	交换器与交换器绑定，怎么决定绑定的交换器什么情况下把消息发给被绑定的交换器？所有都发还是根据交换
+    器名称当路由键然后根据交换器类型匹配？
 
+交换器与交换器解绑：
+	channel.exchangeUnBind参数与队列解绑类似
+
+发布消息：
+	channel.basicPublish参数：
+	    exchange：交换器名称，如果为空字符串则会发到RabbitMQ默认的交换器中
+	    routingKey：路由键
+	    props：这个对象可以设置一些属性，比如头信息、内容类型、用户id，消息id，消息超时时间等等
+	    body：消息体，byte数组
+	    mandatory：
+	    immediate：
+
+消费消息：
+	消费消息分推(Push)模式和拉(Pull)模式，推模式使用Basic.Consume，拉模式使用Basic.Get
+
+    推模式：
+	推模式可以通过订阅的方式来消费消息，比如通过实现Consumer类或DefaultConsumer类，调用Consumer相关
+    API时，不同的订阅采用不同的消费者标签来区分，就算再同一个信道中消费者也需要通过这个标签进行区分
+
+    拉模式：
+
+生产者运行流程：
+	1、生产者连接到RabbitMQ Broker，建立一个连接，开启一个信道
+	2、生产者声明一个交换器，并设置属性，比如交换器类型、是否持久化等
+	3、生产者声明一个队列并设置属性，比如是否排他、是否持久化、是否自动删除等
+	4、生产者通过路由键将交换器和队列绑定起来
+	5、生产者发送消息至RabbitMQ Broker，其中包含路由键、交换器等信息
+	6、交换器根据收到的路由键查找匹配的队列
+	7、如果找到，则将从生产者发送过来的消息存入所匹配的队列中
+    	8、如果没找到，则根据生产者的配置选择将消息丢弃或者回退给生产者
+	9、关闭信道
+	10、关闭连接
+
+消费者的运行流程：
+	1、消费者连接到RabbitMQ Broker，建立一个连接，开启一个信道
+	2、消费者向RabbitMQ Broker请求消费相应队列中的消息，可以设置相应的回调函数，以及做一些准备工作
+	3、等待RabbitMQ Broker回应并投递相应队列中的消息，消费者接受消息
+	4、消费者确认(ack)接受到的消息
+	5、RabbitMQ从队列中删除已经被确认的消息
+	6、关闭信道
+	7、关闭连接
+
+	注意：如果消费者在一个信道上订阅了一个队列，那么将无法再声明队列，必须先取消订阅，然后将信道置为
+    传输模式之后才能声明
+
+Broker：任务代理，或者服务提供方？
+
+AMQP协议：
+	
+	AMQP协议本身包括三层：
+	    Module Layer：协议的最高层，主要定义了一些供客户端调用的命令，客户端可以用这些命令实现自己的
+	业务逻辑，例如Queue.Declare声明队列或者Basic.Consume订阅队列
+	    Session Layer：协议的中间层，主要将客户端的命令发送给服务器，再将服务器的应答返回给客户端，为
+	客户端与服务器之间的通信提供可靠性同步机制和错误处理
+	    Transport Layer：协议的最底层，主要传输二进制数据流，提供帧处理、信道复用、错误检测和数据表示
+
+	    AMQP协议是应用层的协议，可以看做一系列结构化命令的集合，每个命令代表一种操作，类似于HTTP中的
+	GET、POST、PUT等方法
+
+	    RabbitMQ可以看做是AMQP协议的具体实现
+
+	
+	
 
 
 
