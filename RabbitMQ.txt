@@ -139,7 +139,7 @@ RabbitMQ是一个消息中间件
 	交换器声明的相关参数：
 	    exchange：交换器名称
 	    type：交换器类型
-	    durable：是否持久化
+	    durable：是否持久化，决定了RabbitMQ重启后是否还会存在
 	    autoDelete：是否自动删除，当这个交换器第一次被其它交换器或队列绑定后，一旦某一时刻没有任何绑
 			定它的交换器或队列，这个交换器将会被删除
 	    internal：是否内置，内置的交换器客户端无法直接发送消息，只能被其它非内置的交换器进行路由
@@ -202,17 +202,103 @@ RabbitMQ是一个消息中间件
 	    routingKey：路由键
 	    props：这个对象可以设置一些属性，比如头信息、内容类型、用户id，消息id，消息超时时间等等
 	    body：消息体，byte数组
-	    mandatory：
-	    immediate：
+	    mandatory：是否在消息无法匹配到队列时将消息返回给生产者，如果为false消息会直接丢弃
+	    immediate：如果匹配到的队列上没有消费者，就不会将消息存入该队列，如果所有匹配的队列都没有消费
+		       者，这条消息将会返回给生产者，这个参数RabbitMQ3.0移除了，理由是影响镜像队列的性能
+		       ，增加代码的复杂性，建议采用TTL和DLX替代
+
+	侦听不能被路由到任何队列的消息：channel.addReturnListener
 
 消费消息：
 	消费消息分推(Push)模式和拉(Pull)模式，推模式使用Basic.Consume，拉模式使用Basic.Get
 
-    推模式：
+    推模式(Consume)：
 	推模式可以通过订阅的方式来消费消息，比如通过实现Consumer类或DefaultConsumer类，调用Consumer相关
     API时，不同的订阅采用不同的消费者标签来区分，就算再同一个信道中消费者也需要通过这个标签进行区分
 
-    拉模式：
+	开始消费：使用channel.basicConsume方法，参数：
+	    queueName：要消费的队列名
+	    autoAck：是否自动确认消费，如果设置为false，每次接收到消息就要手动去调用basicAck方法确认
+	    consumerTag：消费者标签
+	    noLocal：是否不将同一个连接中生产的消息传给它的消费者
+	    exclusive：是否排他
+	    arguments：其它参数
+	    callback：接收到消息后回调的对象，也就是Consumer方法的实现类
+
+	客户端最多预先获取的消息数量：channel.basicQos方法，参数：
+	    prefetchCount：数量，为0则表示无上限
+	    prefetchSize：消费者能接受的总消息容量大小，单位为B，0表示无上限
+	    global：为true则计算信道上所有消费者的未处理消息之和，为false则所有消费者各自计算自己的消息
+	注意：这个方法对于拉模式(basicGet)无效，如果先设置了global为false，然后再设置true，RabbitMQ会保证
+    两者都能生效，也就是单个消费者不能超过false的限制，总的消费者不能超过true的限制
+	如果prefetchCount和prefetchSize同时设置了，那么两者会同时生效，也就是消息不能超过两者任意之一的限
+    制
+
+	消息确认：channel.basicAck方法，参数：
+	    deliveryTag：消息标签，通过回调参数的envelope.getDeliveryTag方法获得
+	    multiple：是否确认所有消息
+
+	Consumer常用的重写方法：
+	    handleShutdownSignal：当信道或连接关闭时调用
+	    handleConsumeOk：会在其他方法之前调用，传入消费者标签
+	    handleCancelOk和handleCancel：消费端在显式和隐式取消订阅时调用，显式取消：channel.basicCancel
+	，这个方法会先触发handleConsumeOk，然后是handleDelivery，最后是handleCancelOk
+	    
+    拉模式(Get)：
+	通过channel.basicGet方法单条地获取消息，返回一个GetResponese，参数：
+	    queueName：队列名
+	    autoAck：是否自动确认消费
+	GetResponse可以获取到envelope，然后根据这个对象去确认消息
+
+    区别：
+	consume会将信道置为接受模式，在这期间RabbitMQ会不断地推送消息给消费者，持续到取消队列订阅为止，当
+    然消息的数量还是会受到channel.basicQos的限制
+	get会从队列获得单条消息，而不是持续订阅，也就是每次获取都要重新get，get不应该放在一个循环中代替
+    consume，因为这样会严重影响RabbitMQ的性能
+	如果要实现高吞吐量，消费者应该使用basicConsume方法
+
+消费者的确认与拒绝：
+
+    消息确认：
+	为了保证消息从队列可靠地到达消费者，RabbitMQ提供了消息确认机制。消费者在订阅队列时，可以指定autoAck
+    参数，如果为true，RabbitMQ会将发送出去的消息置为确认，然后从内存或磁盘中删除，而不管消费者是否真正消
+    费到了这条消息，如果为false，RabbitMQ会等待消费者显式地回复确认信号，也就是调用channel.basicAck后将消
+    息打上删除标记，然后再从内存或磁盘中删除
+	如果autoAck设为false，RabbitMQ服务端中的消息会分成两个部分，一部分是等待投递，一个部分是已投递，
+    未确认。如果RabbitMQ服务器一直没收到确认信号，并且该消费者已经断开连接，那么未被确认的消息会重新进入
+    队列，等待下一个消费者
+
+    消息拒绝：
+	单条消息拒绝可调用channel.basicReject，参数：
+	    deliveryTag：消息标签
+	    request：是否将消息重新存入队列
+	批量拒绝消息可调用channel.basicNack，参数：
+	    deliveryTag：消息标签
+	    multiple：为true则拒绝编号在deliveryTag之前的所有未被确认的消息，为false则只拒绝multiple
+	    request：是否将消息重新存入队列
+	消息如果重新排队，可以选择是否重新发给相同的消费者，通过channel.basicRecover，参数：
+	    requeue：如果为false则会在消息重新排队的情况下将消息分配给上次相同的消费者，为true则可能会分
+		     配给不同的消费者
+
+连接关闭：
+    通常在信道或连接关闭的时候会调用：
+	channel.close();
+	conn.close();
+    但是信道的关闭不是必须的，因为在连接关闭的时候，属于它的信道也会自动关闭
+
+    AMQP协议中，Connection和Channel采用同样的方式来管理网络失败、内部错误和显式关闭连接，它们的生命周期：
+	Open：开启状态，代表当前对象可用
+	Closing：正在关闭，当前对象被显示地调用close方法，这样会产生一个关闭请求，并等待关闭操作完成
+	Closed：已关闭状态，当前对象已经接收到所有的内部对象已经关闭的通知，并且自身也关闭了
+    conn和channel最终都会成为closed状态，无论是程序正常关闭还是客户端异常或网络异常
+
+    可以通过为信道或连接注册关闭侦听器来监听关闭的连接或信道，相关方法：
+	channel或conn.addShutdownListener：注册侦听器
+	channel或conn.removeShutdownListener：删除侦听器
+    侦听器会在连接或信道进入Closed状态时触发，如果侦听器注册的连接或信道是已关闭状态，那么会马上触发，侦
+听器触发会回调一个ShutdownSignalException对象，这个对象的isHardError方法如果为true就是连接因为关闭，如果
+为false就是信道关闭，这关系到getReference()方法能获取到连接对象还是信道对象
+
 
 生产者运行流程：
 	1、生产者连接到RabbitMQ Broker，建立一个连接，开启一个信道
@@ -254,7 +340,315 @@ AMQP协议：
 
 	    RabbitMQ可以看做是AMQP协议的具体实现
 
+备份交换器(Alternate Exchange)，简称AE：
+	如果生产者设置了mandatory参数，那么信息未被路由将会丢失，如果设置了为true，那么需要添加ReturnListener
+    的逻辑，生产者的代码将变得复杂。如果不想丢失消息，又不想增加ReruenListener的逻辑，那么可以使用AE，未
+    被路由的消息存储在RabbitMQ中，可以在需要的时候再去处理这些消息
 	
+	可以在声明交换器的时候添加alternate-exchange参数来创建，也可以通过策略的方式实现，两者同时使用那
+    么前者会覆盖后者的设置
+
+	声明一个队列时，指定参数的key为alternate-exchange，value为备份交换器的名称，然后如果该队列出现没
+    有队列可路由时就会将消息发送给备份交换器，备份交换器会将该消息记录路由给绑定它的队列
+	
+	如果备份交换器不存在、备份交换器没绑定队列、备份交换器没匹配到任何队列，出现这几个情况都会导致消
+    息丢失，如果备份交换器与mandatory同时使用，那么mandatory参数将会失效
+
+过期时间TLL(Time to Live)：
+	有两种设置消息TTL的方法：
+	    队列设置：
+		队列中所有消息都有相同的过期时间，通过添加参数x-message-ttl实现，单位是毫秒
+	    消息设置：
+		每条消息可以有不同的过期时间，通过在channel.basicPublish的时候添加expiration参数，单位毫秒
+
+	    如果ttl为0，则表示除非消息可以马上投递给消费者，不然会立即丢弃
+	    两种一起用：以两者之间较小的数值为准
+	    两种方式删除的时机不同：队列设置的TTL由于会超时的都是队列头的，也就是先进去的，所以队列只要从
+	队列头往下删除过期消息就好了，遇到第一个不过期的后面肯定都没过期，而消息设置的TTL则是无规则的，如
+	果要一个个排查会很麻烦，因此消息设置的会在消费的时候才删除
+
+	消息一旦超过TTL值就会变成死信
+
+	队列的TTL：
+	    在声明队列时使用x-expires参数，值是超时时间，单位为毫秒，不过不能为0
+	    前提是队列没有任何消费者，也没有被重新声明，并且过期这段时间也没调用过basicGet命令
+	    RabbirMQ重启后，持久化的队列过期时间会被重新计算
+	    
+死信交换器(DLX Dead Letter Exchange)：
+
+    消息一旦变成死信，它能被重新发送到DLX交换器中，绑定到DLX的队列就称为死信队列，消息变成死信的情况：
+	1、消息被拒绝，并且request设置为false，也就是不重新加入队列
+	2、消息过期
+	3、队列达到最大长度
+
+    通过在声明队列的时候设置x-dead-letter-exchange参数来为队列添加DLX，值为交换器名，因为产生死信的几种方
+式都是在队列内发生的，因此死信要给队列设置,通过设置x-dead-letter-routing-key来指定路由给死信交换器消息的
+路由键
+
+    DLX可以在消息不能被正确消费的情况下分析私信队列中的内容来分析当时的异常情况，鸡儿改善和优化系统
+
+延迟队列：
+	AMQP协议或RabbitMQ本身不支持延迟队列，但是可以通过DLX和TTL模拟出延迟队列的功能
+
+	延迟队列通过在第一个交换器中设置队列的过期时间，等队列里的消息过期后消息就会进入死信交换器，死信
+    交换器再把延迟的消息路由到相应的队列，队列的过期时间就是延迟时间，可以声明多个队列，每个队列有不同的
+    过期时间，这样就可以达到有多种不同延迟时间消息的效果
+
+优先级队列：
+	优先级队列可以使队列内的消息具有不同优先级，优先级高的消息会优先被消费，通过在声明队列时设置x-max-priority
+   属性可以定义优先级队列，这个属性的值是数字，代表着最高能定义的优先级
+
+	使用优先级队列，通过在发布消息的时候，设置AMQP.BasicProperties.Builder实例的priority方法来设置优
+    先级，这个实例可以在发布的时候当做参数传进去，优先级最低为0，优先级最高为队列声明时指定的x-max-priority
+    属性
+
+	如果消费速度大于生产速度，并且Broker中没有消息堆积，那么优先级就没有什么意义
+
+实现RPC：
+    MQ版RPC的流程：
+	1、客户端创建一个匿名的队列(直接声明队列，不加任何参数会自动创建随机队列名)
+	2、客户端准备两个参数：replyTo(服务有结果后回调的队列，就是前面创建的匿名队列)、correlationId(标
+    记每一个请求的ID，用来区分服务回复的是哪一个请求)
+	3、将这个请求发送到服务的队列中
+	4、服务处理好请求后将结果根据replyTo发送到指定队列，并带上所处理请求的correlationId
+	5、客户端监听它创建的匿名队列，当有消息时，检查correlationId属性，如果与请求匹配，那么就是结果了
+	
+持久化：
+
+    持久化可以防备在异常情况(重启、关闭、宕机)下的数据丢失，RabbitMQ的持久化分为三个部分：交换器的持久化
+、队列的持久化和消息的持久化
+	
+    交换器的持久化：
+	交换器的持久是通过声明队列时将durable参数设置为true，如果交换器不设置为持久，那么在RabbitMQ服务重
+    启后，相关的交换器元数据会丢失，但是消息不贵丢失，只是消息不能发送到这个交换器中了，长期使用的交换器
+    建议设置为持久化
+
+    队列的持久化：
+	队列的持久化是通过在声明队列时将durable参数设置为true，如果队列不设置持久化，那么在RabbitMQ服务重
+    启后，相关队列的元数据会丢失，由于消息存储在队列中，队列没了消息当然也会丢失
+	队列的持久化能保证其本身的元数据不会丢失，但是并不能保证内部所存储的消息不会丢失
+
+    消息的持久化：
+	消息的持久化通过在发布消息时将props参数的deliveryMode属性设置为2即可实现，常用的MessageProperties.PERSISTENT_TEXT_PLAIN
+    实际上就是封装了这个属性，并设置为2，如果不设置消息的持久化，重启后消息会丢失
+
+    如果只设置队列的持久化，重启后队列虽然存在，但是队列中的消息会丢失，如果只设置消息的持久化，因为消息
+是依附队列存在的，因此队列没有了消息也会丢失，因此单单设置队列或消息的持久化显得毫无意义
+
+    可以将所有的消息都设置为持久化，但是这样会严重影响RabbitMQ的性能，因为写入磁盘的速度比写入内存的速度
+慢得多，如果可靠性不高的消息可以不采用持久化处理以提高整体的吞吐量，在设置持久化时应该在可靠性和吞吐量之
+间做一个权衡
+
+    将交换器、队列、消息都设置了持久化之后也不能百分比保证数据不丢失
+    比如在消费者这边将autoAck设置为true，如果服务器将消息发送给消费者之后就自动确认了，而消费者接受到消息
+后来不及处理就宕机了，这样 数据也算丢失，这种情况将autoAck设置为false就行了
+    还有，在持久化的消息正确存入RabbitMQ之后，还需要有一段时间才可能存入磁盘中(虽然很短)，RabbitMQ不会为
+每条消息都进行同步存盘(调用内核的fsync方法)，可能仅仅保存到操作系统的缓存中而不是物理磁盘中，如果在这段时
+间内RabbitMQ服务节点发生了宕机、重启等情况，消息还没来得及存入磁盘，这些消息将会丢失
+    这个问题可以通过RabbitMQ的镜像队列机智解决，相当于配置了副本，如果主节点挂掉了，可以自动切换到从节点
+，这样有效的保证了高可用，除非整个集群都挂掉了。虽然这样也不能完全保证消息不丢失，但是配置镜像队列的可靠
+性会高很多，在实际生产环境中的关键业务队列一半都会设置镜像队列
+    还将可以在发送端引入事务机制或者发送方确认机制来保证消息已经正确发送并存储至RabbitMQ中，前提是保证调
+用channel.basicPublish方法时交换器能将消息正确路由到相应的队列中
+
+生产者确认：
+    使用RabbitMQ的时候，消息的生产者通常不知道消息有没有正确地到达服务器，RabbitMQ针对这个问题提供了两种
+解决方式：
+	1、通过事务机制实现，相关方法：
+	    channel.txSelect：将当前信道设置成事务模式
+	    channel.txCommit：事务提交
+	    channel.txRollback：事务回滚	
+	txSelect开启事务之后，如果txCommit能提交成功，则消息一定到达了RabbitMQ中，因为提交成功是一定需要
+    服务器回应的，如果在提交之前由于异常崩溃了，可以使用txRollback方法回滚，RabbitMQ的事务机制与大多数数
+    据库中的事务不是同一个概念，这里的事务只是确保消息能正确地发送至RabbitMQ，事务机制会严重降低RabbitMQ
+    的消息吞吐量，因为事务机制在发送一条消息后使发送端阻塞，以等待RabbitMQ的回应
+
+	2、通过发送方确认机制实现，相关方法：
+	    channel.confirmSelect：将信道设置为confirm模式
+	    channel.waitForConfirms：等待RabbitMQ确认后返回，为true就是成功，重载的方法有timeout参数
+	    channel.waitForConfirmsOrDie：等待RabbitMQ确认或失败后返回，失败会抛异常，重载的方法有timeout参数
+	    channel.addConfirmListener：异步confirm方法，添加侦听器，实现成功和失败的方法让服务器回调
+	    channel.getNextPublishSeqNo：返回一个由信道自己维护的下一次发布消息时将会带上的标签
+	    生产者将信道设置成confirm(确认)模式，在该信道上发送的每一条消息都会被指派一个唯一的ID(从1开始
+	)，一旦消息被投递到所匹配的队列后，RabbitMQ就会发送一个Basic.Ack(确认)给生产者，这个Ack包含生产者
+	指派的那个ID，这使得生产者知道哪条消息已经正确到达了目的地，如果消息和队列是持久化的，那么Ack会在
+	写入磁盘后发出。如果RabbitMQ设置了channel.basicAck中的multiple参数，则表示当前这个序号之前的所有
+	消息都已经处理了
+	    发送方确认机制的好处是，生产者发送一条消息后，可以马上发送第二条，服务器反馈用异步的方式来处
+	理
+	    如果RabbitMQ因为内部的错误导致消息丢失，就会发送一条Basic.Nack命令，生产者可以在回调方法中处
+	理该命令
+	
+    发送方确认机制的两种处理方式：
+	1、批量confirm：
+	    通过channel.waitForConfirms方法，每发送一批消息后调用一次，等待服务器确认返回，如果返回true，
+	就说明成功了，如果返回false或者抛异常，那么刚才发送的消息就需要重发一遍了，也就是每次消息都要缓存
+	，实际上waitForConfirms方法也是通过异步的方式处理的，通过一个SortedSet<Long>集合来维护消息序号，
+	每次都会判断nextPublishSeqNo属性是否大于0，如果大于就往集合里加，然后+1，初始值是0，confirm就是把
+	这个值=1
+	    批量confirm如果出现连续的失败，那么效率下降会非常严重，因为每次都要重发大量消息
+
+	2、异步confirm：
+	    提供一个回调方法，服务器确认了一条或多条消息后客户端会回调这个方法进行处理
+	    通过channel.addConfirmListener方法，实现ConfirmListener类的handleAck和handleNack方法，会分别
+	在确认成功和失败时调用这个回调，传入两个参数，分别是delivertTag和multiple，前者是消息的标签，可通
+	过channel.getNextPublishSeqNo获取，后者是标识当前标签前面的所有消息的处理结果是否也相同
+
+    注意：
+	事务机制和发布确认机制是相斥的，两者不能同时开启，如果开启了其中一个又开启另外一个RabbitMQ就会报
+    错
+    
+消息分发：
+	当RabbitMQ有多个消费者时，队列的消息将会以轮询的方式发给消费者，每条消息只会发送给订阅列表中的一
+    个消费者。由于机器性能不一样或者任务不同，有些机器负责的任务比较繁重(因为不止负责处理当前这个消息)，
+    会造成某些机器任务繁重，而有些任务却进程空闲。因此需要用到channel.basicQos，限制信道上消费者所能保持
+    的最大未确认消息数量
+
+消息的顺序性：
+	消息的顺序性是无法保证的，因为有很多例外情况，比如消息被拒绝，进而重新进入队列，或者消息在confirm
+    模式下发生超时中断等情况后进行补偿发送，又或者延迟队列，这些行为都会使消息的顺序打乱，因此要保证RabbitMQ
+    的顺序应该在业务方面进一步处理，比如在消息体类添加全局标识ID来实现
+
+消息传输保障：
+    一般的消息中间件消息传输保障分为三个级别：
+	At most once：最多传输一次，消息可能会丢失，但绝不会重复传输
+	At least once：最少传输一次，消息绝不会丢失，但可能会重复传输
+	Exactly once：恰好传输一次，消息肯定会传输一次，且仅传输一次
+    最多一次是生产者随意发布，消费者随意消费，当然这样难以避免消息丢失
+    最少一次是生产者使用事务机制或发布确认机制，然后用备份交换器，消息队列都持久化，并且消费者不开autoAck
+    恰好一次是RabbitMQ目前无法保障的，因为如果在生产的时候或者消息确认的时候发生网络异常，这时候客户端或
+服务器就会进行重复生产或不会对消息确认删除，前者造成多次生产后者造成多次消费
+    目前大多数主流的消息中间件都没有消息去重机智，也不保障恰好一次。因此去重一般在客户端实现，比如引入全
+局ID，借助redis等其他产品进行去重
+
+RabbitMQ管理：
+	
+	每一个RabbitMQ服务器都能创建虚拟的消息服务器，称之为虚拟主机，简称vhost。
+	每一个vhost本质上都是一个独立的小型RabbitMQ服务器，拥有自己独立的交换器、队列以及绑定关系，并且
+    有自己独立的权限。vhost就像是虚拟机和物理服务器一样，他们各个实例间提供逻辑上的分离，将同一个RabbitMQ
+    中的多个客户区分开，米面了队列和交换器等命名冲突。vhost之间是绝对隔离的，这样既保证了安全性又确保了可
+    移植性。如果RabbitMQ达到了一定的规模，可以对业务功能、场景进行区分，并为之分配独立的vhost。
+
+	用户连接服务器的时候必须指定一个vhost。RabbitMQ创建的默认vhost是“/”，这个vhost默认的用户名与密
+    码都是guest，为了安全和方便，建议重建一个新用户来访问。
+
+    创建新的vhost：
+	rabbitmqctl add_vhost {vhost_name}：用来添加新的vhost，vhost名称为vhost_name所指定参数
+	
+    查看所有vhost的信息：
+	rabbitmqctl list_vhosts [name] [tracing]：查看vhost的相关信息，这两个参数是固定并可选的，加了哪个
+    就会显示哪个信息
+	
+    删除vhost：
+	rabbitmqctl delete_vhost {vhost_name}：删除指定的vhost_name，删除vhost之后，其下所有的队列、交换
+    器、绑定关系、用户权限、参数和策略等信息都会被删除
+
+	RabbitMQ中，创建一个用户时，用户通常会被指派给至少一个vhost，并且只能访问被指派的vhost内的队列、
+    交换器和绑定关系，RabbitMQ中的权限是在vhost级别对用户授权，因此用户只能在对他进行授权了的vhost上访问
+
+    授权：
+	rabbitmqctl set_permissions [-p vhost] {user} {conf} {write} {read}：
+	    vhost：用户可访问的vhost名称
+	    user：为哪个用户授权
+	    conf：用户在哪些资源上有可配置权限的正则，也就是队列交换器的删除创建之类
+	    write：用户在哪些资源上拥有可写权限的正则，也就是发布消息
+	    read：用户在哪些资源上拥有可读权限的正则，也就是读取消息和清空队列
+	    某些行为需要同时具备可配置、可读和可写，比如死信交换器和备份交换器的声明
+	    示例：rabbitmqctl set_permissions -p vhost2 root "^queue.*" ".*" "./"：让root用户配置vhost2中
+	queue开头的资源，并读写任意资源
+
+    清除权限：
+	rabbitmqctl clear_permissions [-p vhost] [username]：禁止用户访问某个vhost
+
+    查看权限：
+	rabbitmqctl list_permissions [-p vhost]：显示该vhost的权限信息
+	rabbitmqctl list_user_permissions {username}：显示用户的权限信息
+
+    rabbitmqctl是用来管理RabbitMQ中间件的命令行工具，它通过连接各个RabbitMQ节点来执行所有操作，标准语法：
+	rabbitmqctl [-n node] [-t timeout] [-q] [command] [command options...]
+	[-n node]：默认是rabbit@hostname,hostname是主机名，这个主机名指向RABBITMQ_NODENAME参数
+	[-q]：开启quiet模式，可以屏蔽一些消息的输出，默认不开启
+	[-t timeout]：操作超时时间，单位为秒，只适用于list_xxx类型的命令，默认无穷大
+	
+    创建用户：
+	rabbitmqctl add_user {username} {password}：创建用户名并指定密码
+
+    修改密码：
+	rabbitmqctl change_password {username} {newpassword}：修改该用户的密码为指定密码
+	
+    清除密码：
+	rabbitmqctl clear_password {username}：清除完密码之后用户就无法再通过密码登录了
+
+    验证用户：
+	rabbitmqctl authenticate_user {username} {password}：验证用户密码是否匹配
+
+    删除用户：
+	rabbitmqctl delete_user {username}：删除指定用户
+
+    查看所有用户：
+	rabbitmqctl list_users：会显示用户名称和角色
+
+    设置用户角色：
+	rabbitmqctl set_user_tags {username} {tags}：为指定用户设置角色，多个角色之间用逗号隔开，每次重新
+    设置都会覆盖上次的设置，如果不填写tags，那么角色就会为空
+
+	用户角色分类：
+	    none：无任何角色，新建用户都是这个
+	    management：可以访问Web管理页面
+	    policymaker：包含management的所有权限，并且能管理策略和参数
+	    monitoring：包含management的所有权限，并且可以看到所有连接、信道及节点信息
+	    administartor：代表最高权限，可以管理所有东西
+
+Web管理：
+	
+	由于rabbitmqctl工具不太友好，RabbitMQ开发团队开发了RabbitMQ management插件，这个插件同样是Erlang
+    语言编写的，并且与RabbitmQ服务运行在同一个Erlang虚拟机中
+	RabbitMQ management插件可以提供Web管理界面来管理虚拟主机、用户、队列、交换器、绑定关系、策略、参
+    数等，还能监控RabbitMQ服务的状态和数据统计
+
+	RabbitMQ提供了很多插件，默认存放在$RABBITMQ_HOME/plugins目录下，.ez为后缀的文件就是RabbitMQ的插件
+    
+    插件相关指令：
+	rabbitmq-plugins [-n node] [command] [options]：rabbitmq-plugins指令的基本语法
+
+	rabbitmq-plugins enable [plugin-name]：启动指定插件
+
+	rabbitmq-plugins disable [plugin-name]：关闭指定插件
+
+	rabbitmq-plugins list：查看插件的使用情况
+
+	rabbitmq-plugins enable rabbitmq_management：启动Web管理插件，同时还会隐式启动其它相关插件
+
+    在启动Web管理插件后，再重启RabbitMQ服务就能通过localhost:15672来访问Web管理界面了，localhost只能通过
+guest用户访问，如果通过指定ip访问，那么登录的用户必须具有非node权限，Web管理界面同样能做到管理用户、队列
+、交换器等功能，管理是指增删改查等
+
+    如果出现登录Web管理界面出现没有内容，只有页面头，可以尝试清空浏览器缓存
+
+应用管理：
+
+    用于管理整个rabbitmq服务器，比如停止服务器进程等
+
+	rabbitmqctl stop [pid_file]：停止RabbitMQ的虚拟机和RabbitMQ服务应用，pid_file是通过rabbitmq-server
+    命令启动RabbitMQ服务时创建的，默认情况下放于Mnesia目录中，可以通过RABBITMQ_PID_FILE这个环境变量去修改
+    存放路径。如果指定了pid_file，就需要等待pid_file里指定的pid进程结束。如果使用rabbitmq-server -detach
+    来启动RabbitMQ，则不会生成pid_file文件
+
+	rabbitmqctl shutdown：停止RabbitMQ的虚拟机和服务应用。这个命令会一直阻塞到Erlang虚拟机进程退出。
+    如果RabbitMQ没有成功关闭会返回一个非0值。与stop不同的是它不需要指定一个pid_file
+    
+	rabbitmqctl stop_app：只停止RabbitMQ服务应用，Erlang虚拟机依然保持运行
+	
+	rabbitmqctl start_app：启动RabbitMQ应用
+
+	rabbitmqctl wait [pid_file]：等pid_file创建好，并且里面代表的进程启动，然后再启动RabbitMQ应用
+
+	rabbitmqctl reset：将RabbitMQ节点重置到最初的状态，将会从集群中删除此节点，从管理数据库中删除所有
+    的配置，比如用户、vhost等，删除所有持久化消息，执行这个命令之前必须先停止RabbitMQ应用
+
+	rabbitmqctl force_reset：强制重置RabbitMQ节点，无论当前管理数据库状态和集群配置。一样需要先停止
+
+	rabbitmqctl rotate_logs {suffix}：让RabbitMQ切换一个日志文件，
 	
 
 
@@ -262,131 +656,23 @@ AMQP协议：
 
 
 
-信道：
-	通过创建一个TCP连接，让所有与AMQP(高级消息队列协议)连接的的生产者和消费者都会创建一个信
-道，这些信道被AMQP管理，用信道就不用每次连接都创建一个TCP连接，而是多个连接共用一个TCP，就像光
-缆里面的多个通道一样，极大地节省了系统开销，而具体的信道管理交给AMQP
 
-生产者、消费者：
-	生产者就是发送消息的，消费者就是获取消息的，任何程序都可以既是生产者也是消费者，RabbitMQ
-就像一个中转站一样
-	
-死信：
-	当使用basic.reject并把requeue设置为false的时候，被拒绝的消息会被加入死信队列，所以死信
-就是存放那些被认为无法处理的消息队列
 
-	如果一条消息被消费者确认，那么另外一个消费者将不会收到这条消息，也就是说每条消息只能被
-消费一次，也可以在订阅后就将auto_ack设置为true，这样的话就会在接收完每条消息后自动确认，如果消
-息在接收完后，还未确认就被取消订阅或者从Rabbit断开连接，或者拒绝了消息，那么RabbitMQ就会认为这
-条消息没有被消费而发送给另一个消费者
 
-	Rabbit只有在上一条消息被确认后才会发送下一条消息，这样可以避免程序出了BUG，没有确认消息
-导致源源不断的消息发送过来
 
-AMQP命令：
-	basic.consume：自动接收模式，在消费了或拒绝了最近接收的那条消息后，就能从队列中自动接收
-下一条消息，知道取消对队列的订阅为止，如果要消息一到达就自动接收的话，那么就应该用basic.consume
 
-	basic.get：每次调用此命令，就会从队列中获取一条信息，basic.get会用basic.consume订阅消息
-，获取单条信息后并确认，再取消订阅，因此不应该用basic.get放在循环里代替basic.consume，因为这样
-会Rabbit影响性能
 
-	basic.reject：拒绝消息，如果把basic.reject的requeue设置为true的话，RabbitMQ会把消息重新
-发送给下一个消费者，如果把basic.reject的requeue设置为false的话，RabbitMQ会把消息从队列中移除，
-而不会发给其它消费者，当然，如果确认这条消息的话，也会把消息移除,不过这样不利于死信
 
-	队列是消息的容易，可以存在多个的，并且任何进程都能创建队列
 
-队列设置的参数：
-	exclusive;如果设置为true的话，队列将变成私有的，此时只有当前的应用程序才能够消费队列消
-息。当想要限制一个队列只有一个消费者的时候很有帮助，因为一个进程只会用一个TCP来创建多个信道，而
-无论是消费还是生产，都是用同一个TCP，因此只有自己可见就是只会被一个TCP消费
 
-	auto-delete：当最后一个消费者取消订阅的时候，队列就会自动移除，如果需要临时队列只为一个
-消费者服务的话，就同时使用exclusive和auto-delete，这样就只能被自己使用，并且自己取消订阅后就会
-自动移除
 
-	queue.declare：如果把queue.declare的passive选项设为true，那么如果队列存在queue.declare
-命令会成功返回，如果不存在也不会创建，而是返回一个错误
-	
-	如果新声明的队列完全匹配已存在的队列，那么Rabbit就什么都不做，并返回成功，如果只是队列
-名称匹配，参数不匹配，队列声明尝试会失败
 
-	如果生产者把消息发给不存在的队列，那么该消息会被Rabbit忽略
 
-交换器和绑定：
 
-	当要将消息投递到队列时，就要先把消息发送给AMQP交换器；当把消息发送给交换器后，消息将拥
-有一个路由键，即使是空的；队列通过路由键绑定到交换器，服务器会将该消息复制给所有与消息键匹配的
-队列，如果全都没有匹配，那么该消息会被忽略，至于怎么匹配，这取决于匹配规则
 
-绑定(交换器的路由键匹配规则)：
-	direct：默认交换器，用对列名做键，会根据消息的键来把消息投递给对应键的队列
 
-	fanout：将收到的消息广播到绑定的队列上，当发送一条消息到fanout交换器时，它会把消息投递
-给所有附加在此交换器上的队列
 
-	topic：可以通过通配符来匹配，比如：log.*.msg，匹配前缀为log.，后缀为.msg的任何键，"*"将
-"."视为分隔符，也就是说"*"如果遇到"."的话将不能继续通配，而如果键为"#"的话，将匹配所有键
 
-vhost：
-	
-	vhost(虚拟机)，是在RabbitMQ服务器里面运行的，一个RabbitMQ服务器里面有多个vhost，并且它
-们互相隔离，vhost1的交换机无法把消息绑定到vhost2的队列
 
-vhost的创建：
-	vhost是AMQP种唯一无法通过AMQP协议创建的单元，需要通过RabbitMQ的安装路径下的sbin中的
-rabbitmqctl工具来创建，运行rabbitmqctl add_vhost[vhost_name]就可以创建一个vhost，运行
-rabbitmqctl  list_vhosts则能知道特定Rabbit服务器上运行着哪些vhosts
-
-消息的持久化：
-
-	消息在服务器崩溃后将会丢失，如过想要服务重启后重新创建队列或者交换器，并且回复数据，那
-么需要几个设置：
-	1、把消息的投递模式设置为2(持久模式)
-	2、发送到持久化交换器
-	3、到达持久化队列
-	持久化队列和持久化交换器可以通过把普通的队列和交换器的durable属性设置为true来获得
-
-	消息持久化后：交换器会不会把消息写入日志
-	交换器持久化后：在收到消息后写入日志文件
-	队列持久化后：消息被消费前交换器不会把写入的消息移除
-
-	持久性消息回复方式：将消息写入磁盘中的一个持久化日志文件，如果要发送消息给持久化交换器
-的话，那么服务器会将消息先写入日志文件后才会发送给交换器，如果之后持久化交换器没有把消息发送给
-持久化队列，那么就会把这条消息从持久化日志中移除，并无法恢复，因为正常的逻辑来说不进入持久化队
-列就说明消息不需要持久化，那为什么不在发送给持久化队列时再持久化？因为一条消息可能需要发送给多
-个队列，如果发送给持久化队列再写入日志，那么同一数据会被多次写入，因此在持久化交换器之前写入才
-合理
-
-	一旦消费(消费指接受并确认)了一条持久性消息，RabbitMQ会在持久化队列中把这条消息标识为等
-待垃圾收集
-
-	如果RabbitMQ重启的话，服务器会自动重建持久化过的交换器和队列，并绑定它们，重新把持久化
-日志中的消息发送到何时的队列或者交换器上，这取决于Rabbit服务器宕机的时候，消息处在哪个环节
-
-	持久化是很消耗性能的，使用持久化而导致消息吞吐量降低至少10倍的情况并不少见
-
-	如何保证消息发送成功？生产者发送消息后，等待消费者反馈消息，如果长时间没有反馈，则重发
-
-AMQP信道的事务：
-	
-	在把信道设置成事务模式后，通过信道发送一些想要确认的消息，其后跟着多条命令，如果第一条
-消息发送成功的话，那么随后的命令都会被执行，如果发送失败，其后的命令将不会执行
-	那么怎么确定第一条消息发送成功了呢？这个时候可以让生产者监听信道，应用程序在收到消息后
-反馈消息是否接收成功，不过这样会使生产者和应用发生同步
-
-	使用事务需要注意，事务不但会降低大约2~10倍的消息吞吐量，而且会使生产者和应用程序产生同步
-
-发送确认模式：
-	将信道设置成confirm模式，一旦进入confirm模式，只能通过重新创建信道来关闭该设置
-
-	设置confirm模式后，所有在信道发布的消息都会被指派一个唯一的ID号(从1开始)；一旦消息被投
-递给所有匹配的队列后，信道会发送一个包含唯一ID的发送确认模式给生产者应用程序，使得生产者知晓消
-息成功到达目的队列如果消息和队列是持久化的，那么包含唯一ID的确认模式消息会在消息写入磁盘后发出
-，如果因为Rabbit内部错误导致消息丢失，Rabbit会发送一条nack(未确认)消息来说明消息丢失
-
-	confirm因为是回调模式，因此不会产生同步，同时由于没有回滚的概念，因此对Rabbit代理服务器
-的性能影响几乎可以忽略不计
 
 
