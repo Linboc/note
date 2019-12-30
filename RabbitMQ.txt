@@ -648,10 +648,20 @@ guest用户访问，如果通过指定ip访问，那么登录的用户必须具有非node权限，Web管理界面
 
 	rabbitmqctl force_reset：强制重置RabbitMQ节点，无论当前管理数据库状态和集群配置。一样需要先停止
 
-	rabbitmqctl rotate_logs {suffix}：让RabbitMQ切换一个日志文件，
+	rabbitmqctl rotate_logs {suffix}：让RabbitMQ切换一个日志文件，如果指定suffix，RabbitMQ会将原来的
+    日志文件追加到文件名为“原日志文件名+suffix”的文件中，然后删除原日志文件，接着创建一个与原日志文件名
+    相同的文件，用来记录新的日志。如果原日志文件本来就不存在，就会重新创建。如果不指定suffix，则日志文件
+    只会重新打开，而不进行文件轮换
+	总的来说就是将旧日志内容切换到新日志里，然后创建新文件存放新日志
 	
+	rabbitmqctl hipe_compile {directory}：RabbitMQ会用HIPE(high performance Erlang)编译自己的部分代码
+    ，保存到{directory}指定的目录中。如果这个目录不存在则会自己创建。并且会删除这个目录中原有的所有.beam
+    后缀的文件，这个后缀是Erlang编译后的格式。如果要使用预编译，则需要设置RABBITMQ_SERVER_CODE_PATH这个环
+    境变量来指定高性能编译调用的路径
 
-
+集群相关指令：
+	
+	
 
 
 
