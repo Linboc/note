@@ -1262,8 +1262,33 @@ set -option：控制指令的输入/输出环境
     示例：find /home -name .bashrc > list_right 2> list_error，由于find下的/home中有其它用户的目录，因此搜索非自己
 目录时会报错，搜索自己目录时则不会报错，因此搜索自己目录的内容放到list_right中，搜索其他人的错误信息放到list_error
 
+    黑洞装置：
+	/dev/null：这个目录会吞掉任何导向这个目录的信息，如果将错误信息导向它，就能达到忽略错误信息的目的了
 
+    将正确与错误的数据写入同一文件：
+	不能使用find /home -name .bashrc > list 2>list，这种写法会导致错误与正确的数据交叉写入，造成次序的错乱
+	应该使用：
+	    find /home -name .bashrc > list 2>&1
+	    或
+	    find /home -name .bashrc &> list
+	这会将错误与正确的信息同时导向list文件
 
+    2>&1：
+	将错误输出的信息转到标准输出去
+    1>&2：
+	将标准输出的信息转到错误输出去
+
+        比如：cat file 2> /dev/null 1>&2：这样会让错误消息输出到黑洞装置，正确消息输出到错误消息，最终也去黑洞，所
+    以页面就会为空
+
+    文件写入：
+	cat > catfile：cat打开一个待输出的文件，这样会让终端变为可输入状态，输入的内容会放入catfile文件中，按下^d
+    键结束输入
+	cat > catfile < ~/.bashrc：cat准备打开一个待输出的文件，在同时又输入了文件，将~/.bashrc文件的内容输入到
+    catfile中
+
+	cat > catfile << "eof"：读取程序的输入内容，一但某次输入是eof(这个是可改的)，就会结束输入，并且把前面的内
+    容输出到catfile中，内容不包含eof，如果想要输入的内容不触发结束，可以让内容写成"eof"，加了双引号就不会触发结束
 
 
 
