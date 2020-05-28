@@ -1,1 +1,2 @@
-linux、mq、nginx、sql优化、jvm、数据结构和算法、高并发、深入spring cloud
+linux、rocket mq(rabbit mq)、nginx、sql优化、jvm、数据结构和算法、高并发、深入spring cloud、spring cloud alibaba、
+zookeeper、spring security、spring data jpa、dubbo

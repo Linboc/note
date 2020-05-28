@@ -151,12 +151,19 @@ value(val) {		而是要写成这样：	value: {
 何类，使用比如import java.util.*;这种方式，然后util这个包下没有任何类(不包括它的子包)，就会编译失败，说
 找不到java.util这个包
 
+	写日期格式的时候，如果写大写YYYY，则会计算这一周所在的年份，比如今天是周一，周一是2019，周日刚好2020，那么
+一周是周日开始，周六结束，因此YYYY会返回2020，哪怕今天是2019，因此如果要获得今天的年份的话，应该用yyyy
 
+	maven的project标签报Inspects a Maven model for resolution problems.因为父项目的版本问题，原本是spring boot
+starter parent 2.2.4.RELEASE，换成2.1.5.RELEASE就正常了
+	
+	方法参数是byte，写0会报错，说需要byte实际给了个int；因为可能会同时存在参数byte跟int的方法，所以编译器不会
+把0像赋值一样自动转成byte，这样会造成歧义，因此形参的byte类型一定要明确定义成byte，而赋值则能自动转换，因为赋值时
+明确声明了需要的类型
 
-
-
-
-
+	spring data jpa用@Query注解出现：org.hibernate.hql.internal.ast.QuerySyntaxException: unexpected token: ON near line 1, column 93
+异常，语句执行过没问题，检查不出其它问题，网上说是hql不支持左连接或ON，实际上把nativeQuery = true就不会出问题了，
+难道是这样就不会使用hql？不能理解
 
 
 

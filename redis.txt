@@ -251,7 +251,7 @@ Redis命令：
 	键的过期时间(过期就是删除的意思)：
 		persist key-name：移除键的过期时间设置
 
-		ttl key-name：查看键距离过期时间还有多少秒,如果已过期返回-1
+		ttl key-name：查看键距离过期时间还有多少秒,如果无过期时间返回-1
 
 		expire key-name seconds：指定键在seconds秒后过期
 

@@ -661,12 +661,55 @@ guest用户访问，如果通过指定ip访问，那么登录的用户必须具有非node权限，Web管理界面
 
 集群相关指令：
 	
+	这部分等看了第7章集群部分后再补充
+
+服务端状态：
+
+	rabbitmqctl list_queues [-p vhost] [infoItem...]：查看所有队列，如果显示的奇怪可能是因为没有任何队列
+	    -p vhost：vhost代表不同的虚拟主机，如果不填这个选项默认为/
+	    infoItem：代表要显示的属性，如果不填默认为队列名称和消息个数，可选属性如下：
+		name：队列名称
+		durable：是否持久化
+		auto_delete：是否自动删除
+		arguments：队列参数
+		policy：队列上的策略名称
+		pid：队列关联的Erlang进程的ID
+		owner_pid：处理排他队列连接的Erlang进程ID，如果队列是非排他，此值为空
+		exclusive_consumer_pid：订阅到此排他队列的消费者相关信道关联的Erlang进程ID，如果队列是非排他，此值为空
+		exclusive_consumer_tag：订阅到此排他队列的消费者的consumerTag，如果队列是非排他，此值为空
+		messages_ready：准备发送给客户端的消息个数，不包括已发送未被应答的
+		messages_unacknowledged：已发送给客户端未被确认的消息个数
+		messages：准备发送给客户端和未应答消息的总和，也就是总消息数目，发送完未被应答就暂时不会再次发送
+		messages_ready_ram：在内存中messages_ready消息的个数
+		messages_unacknowledged_ram：在内存中messages_unacknowledged的个数
+		messages_ram：内存中消息的总数
+		messages_persistent：队列中持久化消息的个数，非持久化队列是0
+		messages_bytes：队列中所有消息大小的总和，不包括消息属性和其它开销
+		messages_bytes_ready：准备发送给客户端的消息大小总和
+		messages_byes_unacknowledged：发送给客户端未被应答的消息大小总和
+		messages_bytes_ram：内存中的messages_bytes
+		messages_bytes_persistent：队列中持久化的messages_bytes
+		disk_reads：队列启动后从磁盘中读取该队列的消息总次数
+		disk_writes：队列启动开始向磁盘队列写消息的总次数
+		consumer：消费者数目
+		consumer_utilisation：队列中的消息能立刻投递给消费者的比率，介于0和1之间，受网络和Basic.Qos的影响
+		memory：与队列相关的Erlang进程所消耗的内存直接数，包括栈、堆和内部结构
+		slave_pids：如果队列是镜像的，列出所有slave镜像的pid
+		synchronised_slave_pids：如果队列是镜像的，列出所有已经同步的slave镜像的pid
+		state：队列状态，正常状态是running，如果队列正常同步数据可能会是syncing，MsgCount状态，如果队列所在
+		       节点掉线了，则显示为down
+
+	rabbitmqctl list_exchanges [-p vhost] [infoItem...]：返回交换器的详情，vhost默认为/，
+		-p vhost：显示vhost的交换器
+		name：交换器的名称
+		type：交换器类型
+		durable：是否持久化
+		auto_dalete：是否自动删除
+		internal：是否内置
+		arguments：其它结构化参数
+		policy：交换器上的策略名称
 	
-
-
-
-
-
+	
 
 
 
