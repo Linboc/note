@@ -165,9 +165,12 @@ starter parent 2.2.4.RELEASE，换成2.1.5.RELEASE就正常了
 异常，语句执行过没问题，检查不出其它问题，网上说是hql不支持左连接或ON，实际上把nativeQuery = true就不会出问题了，
 难道是这样就不会使用hql？不能理解
 
+	spring data jpa的更新操作，使用@Modifying注解后，数据不会更新，sql没问题，代码也执行正常，
+把它的clearAutomatically = true之后就可以了，猜测是clearAutomatically会在执行之后自动清除相关属性，依
+稀记得事务在清除的时候回顺便提交
 
+	spring security，如果加了token，那么就无法访问开放接口，因为开放接口是匿名接口，非匿名无法访
+问
 
-
-
-
-
+	idea中的tomcat在控制台输出乱码有可能是tomcat的配置问题，用了9x的版本有乱码，没找具体配置，
+换了个8x就正常了
