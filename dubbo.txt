@@ -625,6 +625,7 @@
 
     RPC上下文是一个hreadLocal的临时状态记录器，当收到RPC请求，或发起RPC请求时，RpcContext的状态都会变化，比如A调B
 ，B再调C，那么A调B时是RPC上下文记录的是A调B的信息，B调C后记录的是B调C的信息，可以通过RpcContext的静态方法获取信息
+，RpcContext是线程绑定的，保存在attachment中的值将会在一次完整的远程调用中持续传递
 
 
 隐式参数：
@@ -911,15 +912,59 @@ beanName为nofify的bean的invoke方法
         类型，默认为javascript
 
             "script://0.0.0.0/com.foo.BarService?category=routers&dynamic=false&rule=" URL.encode("(function route(invokers) { ... } (invokers))")
+        例如：(写在上面的URL.encode里面)
+	function route(invokers) {
+	    var result = new java.util.ArrayList(invokers.size());
+	    for (i = 0; i < invokers.size(); i ++) {
+	        if ("10.20.153.10".equals(invokers.get(i).getUrl().getHost())) {
+	            result.add(invokers.get(i));
+	        }
+	    }
+	    return result;
+	} (invokers)）; // 表示立即执行方法
+
+    标签路由规则：
+        dubbo调用能够根据请求携带的tag标签只能地选择对应tag的服务提供者进行调用。应用未装配tag属
+    性或服务提供者未设置tag属性，都将被认为是默认的应用，如果调用无法匹配提供者，将会使用这些默
+    认的应用
+
+        给消费者设置标签，消费者的标签每次的有效期是一次请求：
+            RpcContext.getContext().setAttachment("tag", "red")
+
+        给提供者设置标签，一直有效：
+            1、装配标签路由器：
+	@Bean
+            	public ApplicationConfig applicationConfig() {
+                	ApplicationConfig applicationConfig = new ApplicationConfig();
+                	applicationConfig.setName("provider-book");
+                	applicationConfig.setQosEnable(false);
+                	// instruct tag router
+                	Map<String,String> parameters = new HashMap<>();
+                	parameters.put(Constants.ROUTER_KEY, "tag");
+                	applicationConfig.setParameters(parameters);
+                	return applicationConfig;
+           	}
+            2、设置具体标签：
+	@Bean
+	public ProviderConfig providerConfig(){
+	    ProviderConfig providerConfig = new ProviderConfig();
+	    providerConfig.setTag("red");
+	    return providerConfig;
+	}
+
+        request.tag=red 时优先选择 tag=red 的 provider。若集群中不存在与请求标记对应的服务，可以
+    降级请求 tag=null 的 provider，即默认 provider
+
+        request.tag=null 时，只会匹配 tag=null 的 provide。携带标签的请求可以降级访问到无标签的服
+    务，但不携带标签/携带其他种类标签的请求永远无法访问到其他标签的服务
+
+    2.7.x版本的路由规则增加了一些可选参数，并且配置方式更加灵活，基本的使用方式保持不变
 
 
+配置规则：
 
-
-
-
-
-
-
+    配置规则是dubbo设计的无需重启应用的情况下，动态调整RPC调用行为的一种能力，2.7.0版本开始支
+持从服务和应用两个粒度来天真动态配置
 
 
 
