@@ -218,6 +218,9 @@ ZooKeeper CLI：
 
 
 zookeeper API：
+
+    注意！所有监听的节点都是一次性的，一旦某个节点被触发了监听器，如果还想继续监听就要重新设置节点监听
+
     zookeeper API的核心是ZooKeeper类，它提供了在其构造函数中连接zookeeper集合的选项，具有以下方法：
         connect：连接到zookeeper集合
         create：创建znode节点
@@ -227,6 +230,48 @@ zookeeper API：
         getChildren：获取指定znode的子节点
         delete：删除指定znode与其所有子节点
         close：关闭连接
+
+        new ZooKeeper：
+            connectString：host:port
+            sessionTimeout：超时时间，单位毫秒
+            watcher：监听器实现(函数式接口)，触发时会传入一个监听器事件，如果同一ZooKeeper对象的其他监听
+        的地方不传监听器，那么就会用这个监听器
+
+        创建znode：zk.create
+            path：znode路径
+            data：znode的数据
+            acl：要创建节点的访问控制列表，就是可以被执行哪些指令，比如读写删查等等，ZooDefs.Perms包含了
+        几个常用的权限标识，ZooDefs.Ids包含了一些常用的acl列表，每个ACL都需要一个权限和一个ID对象，分别
+        代表着哪个ID匹配哪个权限，可以同时使用多个ACL
+            creawteMode：节点类型，有四种，临时或持久，每种又分为顺序和非顺序，枚举类型
+            return：返回创建的节点名称
+
+        检查znode的存在：zk.exists
+            path：znode的路径
+            watcher：是否监听指定znode
+            return：stat元数据
+
+        获取数据：zk.getData
+            path：路径
+            watcher：监听器
+            stat：znode的元数据，如果传了这个对象就会把目标节点的元数据填充进来，如果传null则不填充
+            return：byte[]，节点的数据
+
+        设置数据：zk.setData
+             path：znode路径
+             data：数据
+             version：要修改znode的版本，可通过get的时候传入的stat或者exists返回的stat获取，有点像乐观锁
+             return：stat元数据
+             
+        获取子节点：zk.getChildren
+            path：znode路径
+            watcher：监听器，需要监听器时大多都有boolean的重载，如果传false跟监听器传null一样，传true则是
+          默认监听器
+            return：子节点list
+
+        删除znode：zk.delete
+            path：znode路径
+            version：要删除znode的版本号
 
 
 
