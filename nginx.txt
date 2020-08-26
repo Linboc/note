@@ -180,7 +180,8 @@ tab分隔
         nginx.conf中的配置信息，根据逻辑上的意义对它们进行分类，分成多个作用域，或者说上下文
         当前nginx支持的几个指令上下文：
             main：
-                nginx运行时与具体业务(http或email服务)无关的参数，比如工作进程数，运行的身份等
+                nginx运行时与具体业务(http或email服务)无关的参数，比如工作进程数，运行的身份等，在配置文件
+            中的所有配置都被在main上下文包含
             http：
                 与http服务相关的一些配置参数，比如是否使用keep-alive，是否使用gzip进行压缩等
             server：
@@ -190,11 +191,83 @@ tab分隔
             mail：
                 实现email相关代理时，共享的一些配置项
 
+    不同的上下文可以出现包含的情况，比如http里面包含多个server上下文
 
 
+nginx的模块化结构：
+
+    nginx将各功能模块组织成一条链，当请求到达的时候，请求依次经过这条链上的部分或全部模块进行处理。每
+个模块实现特定的功能。例如：请求解压缩模块，实现SSI的模块，实现与上游服务器进行通讯的模块，实现与FASTCGI
+服务进行通讯的模块
+    有两个模块比较特殊，他们居于nginx core和各功能模块的中间，这两个模块就是http和mail模块
+
+    nginx的模块可以分为以下几种：
+        event module：事件处理模块
+        phase handler：处理客户请求并产生待响应内容
+        output filter：对输出的内容进行处理
+        upstream：upstream模块实现反向代理功能，将请求转发给后端服务器，并从后端服务器读取响应发回客户端
+        load-balancer：负载均衡模块
 
 
+nginx的请求处理
 
+    nginx使用多进程模型来对外提供服务，其中一个master进程，多个worker进程，master进程负责管理nginx和
+其它worker进程。实际上所有的业务逻辑都在worker进程处理，worker进程有一个函数，执行无限循环，不断处
+理来自客户端的其你去
+
+    在响应内容产生阶段，为了给request产生正常的响应，nginx必须把这个request交给一个合适的content handler
+去处理。如果这个request对应的location在配置文件中被明确指定了一个content handle，那么nginx就通过对
+location的匹配，直接找到这个对应的handler，并把这个request交给它去处理。如果对应的location没有配置
+content handler，那么nginx会依次尝试：
+        1、如果一个location里面有配置random_index on，那么随机选择一个文件给客户端
+        2、如果一个location里面有配置index，那么发送index指定的文件给客户端
+        3、如果一个loication里面有配置autoindex on，那么就发送请求地址对应的服务端路径下的文件列表给客户端
+        4、如果这个request对应的location上游设置gzip_static on，那么就查找是否有对应的.gz文件存在，有的话
+      就发给客户端，前提是客户端支持gzip
+
+    响应内容产生完成以后，生产的输出会被传递到filter模块去处理，filter模块也和lication相关，所有的filter模块
+都被组织成一条链。输出会依次调用所有的filter，直到有一个filter模块的返回值表明已经处理完成，常见的filter：
+        1、server-side includes
+        2、XSLT filtering
+        3、图像缩放之类的
+        4、gzip压缩
+    有几个需要特别关注的filter模块，调用顺序如下：
+        1、write：输出到客户端，实际上是写到连接对应的socket
+        2、postpone：负责subrequest，也就是子请求
+        3、copy：将一些需要复制的文件或内容重新复制一份然后交给剩余的body filter处理
+
+
+nginx模块使用：
+
+    反向代理和负载均衡：
+        如果只要指向一个服务器，使用proxy_pass直接写ip端口就行了，比如：
+            server {
+                listen       80;			监听的端口
+                server_name  music.com;		访问的域名，使用这个域名请求才会来到这个server
+                location / {			访问/路径的时候使用这里的配置
+                    proxy_pass http://localhost:8027;	反向代理到跳转localhost:8027服务器
+                    index  index.html index.htm;	默认访问index.html或index.htm
+                }
+            }
+        以上配置会让nginx监听80端口，并且在访问域名为music.com的时候跳转到http://localhost:8027，如果域
+    名后面没有其他路径则访问index.html，如果有就用指定的路径
+
+        如果要使用多台服务器做负载均衡就要使用upstream了
+            server {
+                listen       80;			监听的端口
+                server_name  balanceload.test.com;	访问的域名，使用这个域名请求才会来到这个server
+                location / {			访问/路径的时候使用这里的配置
+                    proxy_pass http://balanceloadtest;	指向负载均衡的server
+                    index  index.html index.htm;	默认访问index.html或index.htm
+                }
+            }
+            upstream balanceloadtest {		负载均衡server，以下三种策略每次使用一种就行了
+					每个server代表一台要负载均衡的服务器
+                server localhost:8082;		默认轮询
+                server localhost:8083 weight=5;	weight是权重，权重越大访问几率越高
+	ip_hash;				使用ip_hash，每个客户端ip访问固定的服务器	
+            }
+        
 
 
 
