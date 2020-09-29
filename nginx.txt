@@ -268,8 +268,12 @@ nginx模块使用：
 	ip_hash;				使用ip_hash，每个客户端ip访问固定的服务器	
             }
         
-
-
+高可用：
+        如果只有一台nginx，让这台nginx转发到多台web服务器，一旦这台nginx挂了，那所有的服务就都出问题了
+，这时候就需要有多台nginx进行高可用，比如使用keepalived，keepalived主要作用就是实现VIP到本地ip映射，
+以及检测nginx的状态，把不可用的nginx剔除
+        一般keepalived会配置一个master和一个backup，一旦master不可用之后就让backup补上
+        使用了VIP(浮动IP、虚拟IP)，一般高可用集群都有使用浮动IP
 
 
 

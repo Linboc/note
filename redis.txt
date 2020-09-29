@@ -159,7 +159,7 @@ Redis命令：
 
 		zrank key-name member：返回member在有序集合中的排名
 
-		zscore key-name member：返回返回member的值
+		zscore key-name member：返回member的值
 
 		zrevrank key-name member：返回集合里的member排名，排名按照从大到小计算
 
