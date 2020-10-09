@@ -1,0 +1,285 @@
+
+    nginx是俄罗斯人编写的轻量级HTTP服务器，发音为engine X，是一个高性能的HTTP和反向代理服务器，同时
+也是一个IMAP/POP3/SMT(各种邮件协议)P代理服务器。
+
+Nginx的功能支持：
+    1、处理静态文件，索引文件以及自动索引，打开文件描述符缓冲
+    2、无缓存的反向代理加速，简单的负载均衡和容错
+    3、FastCGI(common gateway interface通用网关接口)
+    4、模块化的结构
+    5、支持SSL和TLSSNI(HTTPS相关)
+
+
+Nginx的特点：
+    1、具有很高的稳定性。Nginx官方表示保持10000个没有活动的连接，只会占2.5M内存
+    2、支持热部署。它的启动特别容易，而且可以做到长时间运行不需要重启，还能不中断服务对版本进行升级
+    3、Nginx采用master-slave模型，能够充分利用SMP的优势，能够减少工作进程在磁盘I/O的阻塞。采用select()/poll()
+  调用时，还可以限制每个进程的连接数
+    4、代码质量非常高，代码很规范，模块扩展也很容易。还有强大的upstream和filter链
+    5、Nginx采用了一些is提供的最新特性，大大提高了性能
+    
+
+Nginx的架构：
+    Nginx在启动后，在unix系统中会以daemon的方式在后台运行，后台进程中包含一个master进程和多个worker
+进程。可以看到Nginx是以多进程的方式来工作的，当然也之处多线程的方式，不过主流和默认方式还是多进程
+    master进程主要用来管理worker进程，包括：接收来自外界的信号，向各worker进程发送信号、监控worker进
+程的运行状态、当worker进程退出后(异常退出)，自动重启新的worker进程。基本的网络事件都是放在worker进程
+中来处理的。多个worker进程之间是对等的，它们共同竞争来自客户端的请求。一个请求只会在一个worker进程中
+处理，worker进程的数量可以设置，一般会设置与机器cpu的核数一致，这与Nginx的进程模型以及事件处理模型
+有关
+
+    Nginx高性能的原因是因为使用了异步非阻塞的事件处理机制。这种机制的好处是，不会导致无畏的上下文切换
+，相当于一个循环在处理不同的请求，就算是多线程也只是不同线程在竞争资源，还会导致不同线程的上下文切换
+，如此看来单线程反而能达到最高效率，毕竟如果单核cpu来看，同时也只能处理一个线程，切换来切换去也不会
+增加性能，还不如保持一个，避免了额外开销。
+
+    nginx的服务器模型对应着java中的NIO2。java模型：IO-同步阻塞，NIO-同步非阻塞，NIO2(AIO)-异步非阻塞
+
+    对一个基本的web服务器来说，事件通常有三种类型：网络事件、信号、定时器，在Nginx中网络事件通过异步
+非阻塞来解决，
+
+
+Nginx基础概念：
+
+    connection：
+        在nginx中connection就是对tcp连接的封装，而nginx中的http请求就是建立在connection之上的，所以nginx
+    不仅可以作为一个web服务器，也可以作为邮件服务器
+
+    nginx对连接的处理：
+        启动时解析配置文件，得到需要监听的端口与ip，然后再主进程里初始化好socket server，再fork出多个子进
+    程，让子进程竞争accept新的连接。此时客户端就可以向nginx发起连接了，当客户端与服务端通过三次握手建
+    立好一个连接后，nginx的某一个子进程会accept成功，得到建立好的连接的soket，然后 把socket封装成ngx_connection_t
+   结构体，与客户端进行数据交互，最后某方主动关闭连接，至此一个连接就结束了
+
+    nginx也可以作为客户端来请求其它server的数据，与其他server建立的连接也会封装成ngx_connection_t结构体
+
+    在nginx中，每个进程会有一个最大连接数，通过设置worker_connections来设置每个进程支持的最大连接数,
+每个worker进程都有一个独立的连接池，连接池的大小是worker_connections。连接池里保存的并不是真实的连
+接，它只是一个ngx_connection_t结构的数组。nginx会通过一个链表free_connections来保存所有空闲的ngx_connection_t
+，每次获取一个连接时，就从链表中获取一个，用完了再放回去
+
+    整个nginx的最大连接数应该是worker_connections * worker_processes，最大连接数 * 总工作进程
+数，如果作为反向代理服务器，最大并发数应该是worker_connections * worker_processes / 2，因为反
+向代理服务器每个并发都会与客户端和后端服务器分别建立一个连接
+
+    子进程竞争连接会导致不公平，如果某个进程得到accept的机会比较多，把空闲连接用完了，而且也无
+法把连接转交给其它进程，会导致此连接得不到处理就终止了，而有的进程有空余连接却没有处理机会，这
+很不公平。解决这个问题要先打开accept_mutex选项，只有获得了accept_mutex的进程才会去添加accept
+事件，再通过一个ngx_accept_disabled变量去控制获取互斥锁的权重，空闲连接数越少，权重越小，这
+样每次都能让空闲连接数最多的worker获取到互斥锁，进而得到accept的机会。nginx以此来控制多进程
+连接的平衡
+
+    nginx会将整个请求头都放在一个buffer里面，这个buffer的大小通过client_header_buffer_size来设置
+，如果请求头太大这个buffer装不下，那nginx就会通过large_client_header_buffers来分配一个更大的
+buffer，比如分配48k，就表示有4个8k的大小的buffer可以用，为了请求头或请求行的完整性，一个完整
+的请求头或请求行需要放在一个连续的内存里面，所以一个请求头或请求行只会放在一个buffer里。如果请
+求行大于一个buffer的大小，就会返回414错误，如果请求头大于一个buffer的大小，就会返回400错误
+
+    keepalive_timeout决定了客户端在keep-alive连接下每次请求的最长间隔时间，如果为0则代表关闭keep-alive
+，服务器对keep-alive的开启和关闭在响应头的connection里可以看出，如果为close就是关闭，为keep-alive
+就是开启
+
+nginx的基本数据结构：
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+nginx使用：
+
+    安装：直接去：http://nginx.org/en/download.html下载压缩包，windows的是zip后缀的，解压直接使用，
+Linux的是tar.gz后缀的，需要linux的安装指令
+
+    启动停止：
+        去到根目录：
+            start nginx：启动nginx，会使用子进程，因此不会占用当前命令行
+            nginx：启动nginx，在当前进程启动，因此当前命令行会一直阻塞
+            nginx -s stop：快速关闭nginx，不保存相关信息
+            nginx -s quit：平稳关闭nginx，保存相关信息
+            nginx -s reload：重新加载配置
+            nginx -s reopen：重新打开日志文件
+    nginx启动的默认端口是80，因此start nginx之后，去浏览器打开localhost就能看到Welcome to nginx的界面
+
+    注意：nginx可以多次启动，而每次运行停止指令只会关闭最后一次启动的进程(根据logs/nginx.pid文件)，因此
+就会出现关闭了服务还可以一直访问欢迎界面的情况，如果只启动一次就关闭服务就不会出现这种情况了
+
+    nginx的命令行参数：
+        -c：为nginx指定一个配置文件
+        -t：不运行，仅仅测试配置文件，nginx将检测配置文件语法的正确性并尝试打开配置文件所引用的文件
+        -v：显示nginx的版本
+        -V：显示nginx的版本，编译器版本和配置参数
+    多个参数可以同时使用，比如：nginx -t -c conf/nginx.conf，就会提示配置文件是否正确
+
+    通过系统信号控制nginx：
+        主进程可以处理的信号：
+            TERM，INT：快速关闭
+            QUIT：从容关闭
+            HUP：重载配置
+            USR1：重新打开日志文件
+            USR2：平滑升级可执行程序
+            WINCH：从容关闭工作进程
+        工作进程可以处理的信号：
+            TERM，INT：快速关闭
+            QUIT：从容关闭
+            USR1：重新打开日志文件
+
+    nginx配置符号：
+        k，K：千字节
+        m，M：兆字节
+        ms：毫秒
+        s：秒
+        m：分钟
+        h：小时
+        d：日
+        w：周
+        M：月
+        y：年
+
+nginx的配置系统：
+
+    nginx的配置系统由一个主要配置文件和一些辅助配置文件构成，都是纯文本文件，全部位于conf目录下，主要
+配置文件是nginx.conf，nginx.conf在任何情况下都会被使用
+
+    以#开头，或者前面有空格或tab然后跟着#的行都认为是注释
+
+    每个配置由配置指令和指令参数2个部分构成；配置指令是一个字符串，可以用单引号或双引号括起来，也可以
+不括，如果配置指令包含空格就一定要括起来，指令参数也就是配置值
+
+    指令参数用一个或多个空格或tab与指令分开。参数由一个或多个TOKEN串组成，多个TOKEN串之间由空格或
+tab分隔
+
+    TOKEN字符串分为简单配置项或复合配置块，复杂配置块是由大括号括起来的一堆内容
+        简单配置项：
+            error_page 500 502 503 504 /50x.html;
+                简单配置项由字符串组成，结尾由分号结束。
+        复杂配置块：
+            location / {
+                root /home/jizhao/html;
+                index index.html index.htm;
+            }
+                复杂配置块一般位于最后，包含多个简单配置项
+
+    指令上下文：
+        nginx.conf中的配置信息，根据逻辑上的意义对它们进行分类，分成多个作用域，或者说上下文
+        当前nginx支持的几个指令上下文：
+            main：
+                nginx运行时与具体业务(http或email服务)无关的参数，比如工作进程数，运行的身份等，在配置文件
+            中的所有配置都被在main上下文包含
+            http：
+                与http服务相关的一些配置参数，比如是否使用keep-alive，是否使用gzip进行压缩等
+            server：
+                http服务的若干虚拟主机。每个虚拟主机对应一个server配置项，配置项里面包含虚拟主机相关配置
+            location：
+                http服务中，某些特定的URL对应的一系列配置
+            mail：
+                实现email相关代理时，共享的一些配置项
+
+    不同的上下文可以出现包含的情况，比如http里面包含多个server上下文
+
+
+nginx的模块化结构：
+
+    nginx将各功能模块组织成一条链，当请求到达的时候，请求依次经过这条链上的部分或全部模块进行处理。每
+个模块实现特定的功能。例如：请求解压缩模块，实现SSI的模块，实现与上游服务器进行通讯的模块，实现与FASTCGI
+服务进行通讯的模块
+    有两个模块比较特殊，他们居于nginx core和各功能模块的中间，这两个模块就是http和mail模块
+
+    nginx的模块可以分为以下几种：
+        event module：事件处理模块
+        phase handler：处理客户请求并产生待响应内容
+        output filter：对输出的内容进行处理
+        upstream：upstream模块实现反向代理功能，将请求转发给后端服务器，并从后端服务器读取响应发回客户端
+        load-balancer：负载均衡模块
+
+
+nginx的请求处理
+
+    nginx使用多进程模型来对外提供服务，其中一个master进程，多个worker进程，master进程负责管理nginx和
+其它worker进程。实际上所有的业务逻辑都在worker进程处理，worker进程有一个函数，执行无限循环，不断处
+理来自客户端的其你去
+
+    在响应内容产生阶段，为了给request产生正常的响应，nginx必须把这个request交给一个合适的content handler
+去处理。如果这个request对应的location在配置文件中被明确指定了一个content handle，那么nginx就通过对
+location的匹配，直接找到这个对应的handler，并把这个request交给它去处理。如果对应的location没有配置
+content handler，那么nginx会依次尝试：
+        1、如果一个location里面有配置random_index on，那么随机选择一个文件给客户端
+        2、如果一个location里面有配置index，那么发送index指定的文件给客户端
+        3、如果一个loication里面有配置autoindex on，那么就发送请求地址对应的服务端路径下的文件列表给客户端
+        4、如果这个request对应的location上游设置gzip_static on，那么就查找是否有对应的.gz文件存在，有的话
+      就发给客户端，前提是客户端支持gzip
+
+    响应内容产生完成以后，生产的输出会被传递到filter模块去处理，filter模块也和lication相关，所有的filter模块
+都被组织成一条链。输出会依次调用所有的filter，直到有一个filter模块的返回值表明已经处理完成，常见的filter：
+        1、server-side includes
+        2、XSLT filtering
+        3、图像缩放之类的
+        4、gzip压缩
+    有几个需要特别关注的filter模块，调用顺序如下：
+        1、write：输出到客户端，实际上是写到连接对应的socket
+        2、postpone：负责subrequest，也就是子请求
+        3、copy：将一些需要复制的文件或内容重新复制一份然后交给剩余的body filter处理
+
+
+nginx模块使用：
+
+    反向代理和负载均衡：
+        如果只要指向一个服务器，使用proxy_pass直接写ip端口就行了，比如：
+            server {
+                listen       80;			监听的端口
+                server_name  music.com;		访问的域名，使用这个域名请求才会来到这个server
+                location / {			访问/路径的时候使用这里的配置
+                    proxy_pass http://localhost:8027;	反向代理到跳转localhost:8027服务器
+                    index  index.html index.htm;	默认访问index.html或index.htm
+                }
+            }
+        以上配置会让nginx监听80端口，并且在访问域名为music.com的时候跳转到http://localhost:8027，如果域
+    名后面没有其他路径则访问index.html，如果有就用指定的路径
+
+        如果要使用多台服务器做负载均衡就要使用upstream了
+            server {
+                listen       80;			监听的端口
+                server_name  balanceload.test.com;	访问的域名，使用这个域名请求才会来到这个server
+                location / {			访问/路径的时候使用这里的配置
+                    proxy_pass http://balanceloadtest;	指向负载均衡的server
+                    index  index.html index.htm;	默认访问index.html或index.htm
+                }
+            }
+            upstream balanceloadtest {		负载均衡server，以下三种策略每次使用一种就行了
+					每个server代表一台要负载均衡的服务器
+                server localhost:8082;		默认轮询
+                server localhost:8083 weight=5;	weight是权重，权重越大访问几率越高
+	ip_hash;				使用ip_hash，每个客户端ip访问固定的服务器	
+            }
+        
+高可用：
+        如果只有一台nginx，让这台nginx转发到多台web服务器，一旦这台nginx挂了，那所有的服务就都出问题了
+，这时候就需要有多台nginx进行高可用，比如使用keepalived，keepalived主要作用就是实现VIP到本地ip映射，
+以及检测nginx的状态，把不可用的nginx剔除
+        一般keepalived会配置一个master和一个backup，一旦master不可用之后就让backup补上
+        使用了VIP(浮动IP、虚拟IP)，一般高可用集群都有使用浮动IP
+
+
+
+
+
+
+
+
+

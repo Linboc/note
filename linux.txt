@@ -202,6 +202,7 @@ root账户来关机了，但某些distributions要在关机时输入root密码
 
 	ls -al params：
 	    列出所有文件的详细权限与属性，包括隐藏文件，params可以写表达式，比如file1*，就只展示file1开头的文件
+	，不过要加-d参数才能只列出当前目录下的文件
 
 		第一列：权限
 		    权限一共有十个字符，比如：-rwxrwx---，第一个是文件类型，然后每三个分别是拥有者、群组和其他人的
@@ -237,7 +238,7 @@ root账户来关机了，但某些distributions要在关机时输入root密码
 
 	ls -a：显示所有文件的名称
 
-	加了-a能显示所有的，加了-l能显示属性，-al显示所有的属性
+	加了-a能显示所有的，加了-l能显示属性，-al显示发所有的属性
 
     chgrp(change group)p：改变文件群组
 	chgrp [-R] group fileName，例如：chgrp test1 init.cfg，把init.cfg文件的群组改为test1，如果在chgrp后面加上
@@ -937,7 +938,7 @@ bash的特点：
     侦测工作，也可以由shell提供的环境变量和相关指令进行设计。几乎可以看成一个小型的程序语言了
 
     通配符：
-	可以通过通配符*来进行匹配，比如ls -l /usr/bin/X*，能查看/usr/bin下所有以X开头的文件
+	可以通过通配符*来进行匹配，比如ls -d /usr/bin/X*，能查看/usr/bin下所有以X开头的文件
 
 bash的基础用法：
 

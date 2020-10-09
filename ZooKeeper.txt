@@ -1,0 +1,319 @@
+     ZooKeeper是一种分布式协调服务，用于管理大型主机。
+
+    分布式应用存在的问题：
+        竞争条件：共享资源只能在某个时间点由单个机器修改，却又两个或多个机器同时尝试进行修改
+        死锁：两个或多个操作等待彼此资源的释放，造成无期限的等待
+        数据不一致：本来需要所有机器的某些配置保持一致，可是数据在更新时，发给部分机器的修改配置请求失败
+    了，或者机器刚好出了问题，导致没有更新
+
+    集群：分布式应用正在运行的某一组系统
+    节点：集群中的每台机器
+
+    Apache ZooKeeper提供的常用服务如下：
+        命名服务：按名称标识集群中的节点。类似于DNS(域名解析服务)，但仅对于节点
+        配置管理：加入节点的最近和最新的系统配置信息
+        集群管理：实时地在集群和节点状态中加入/离开节点
+        选举算法：选举一个节点作为协调的leader
+        数据锁定和同步服务：在修改数据的同时锁定数据。此机制可以用在连接其它分布式应用时进行自动故障恢复
+        高度可靠的数据注册表：即使在一个或几个节点关闭时也可以获得数据
+
+    使用ZooKeeper的好处：
+        1、简单的分布式协调过程
+        2、同步，多个服务直接的协作
+        3、有序的消息
+        4、序列化
+        5、可靠性
+        6、原子性，数据转移完全成功或失败
+
+    ZooKeeper架构：
+        client(客户端)：
+            分布式应用集群中的一个节点，从服务器访问信息。每个客户端以特定的时间间隔向服务器发送消息以使服
+        务器知道客户端是活跃的。
+            当客户端建立连接时，服务器会发送确认码，如果连接的服务器没有响应，客户端会自动将消息重定向到另
+        一个服务器
+      
+        server(服务器)：
+            服务器zookeeper中的一个节点，为客户端提供所有的服务。向客户端发送确认码以告知服务器是活跃的
+
+        ensemble(服务器组)：
+            zookeeper的服务器组，最少需要3个服务器节点才能形成ensemble
+
+        leader(决策者)：
+            leader也是一个服务器节点，在服务启动时会选举出一个leader，如果任何连接的节点失败，则由它来执行
+        自动恢复
+
+        follower(追随者)：
+            跟随leader指令的服务器节点
+
+    层次命名空间：
+        zookeeper的节点称为znode，每个znode由一个名词标识，并用'/'分隔
+
+        zookeeper的根目录是'/'，在根目录下有两个逻辑命名空间config和workers，config用于集中式配置管理，
+    workers用于命名，在config命名空间下，每个znode最多可存储1MB的数据
+        这种结构的主要目的是存储同步数据并描述znode的元数据，此结构称为zookeeper的数据模型
+
+    zookeeper的数据模型节点：
+        zookeeper数据模型中的每个znode都维护着一个stat结构，stat的结构如下：
+            版本号：每个znode都有版本号，这意味着znode关联的数据发生改变时版本号也会增加，当多个客户端同
+          时操作同一znode时，就能知道自己在查询和修改之间是否被其它客户端修改过了，似乎是乐观锁？
+            操作控制列表(ACL)：ACL基本上是访问znode的认证机制，它管理所有znode读取和写入操作
+            时间戳：表示创建和修改znode的时间，通常以毫秒为单位
+            数据长度：存储在每个znode中的数据最大长度，最多可以存储1MB的数据
+
+     znode的类型：
+          znode被分为持久节点、顺序节点和临时节点
+            持久节点：即使在创建该特定znode的客户端断开连接后，持久节点依然存在，默认情况下，所有znode
+          节点都是持久的
+
+            临时节点：客户端不再活跃后，它创建的临时节点就会被自动删除，因此临时节点不允许有子节点。如
+          果临时节点被删除，则下一个合适的节点将填充其位置，临时节点在leader选举中起着重要作用
+
+            顺序节点：顺序节点可以是临时或持久的。当一个新的znode被创建为一个顺序节点时，zookeeper
+          会将10位的序列号附加到原始名称来设置znode的路径，例如创建路径为/myapp的顺序节点，则zookeeper
+          会将路径更改为/myapp0000000001，并将下一个序列号设置为0000000002，如果两个顺序节点是同时
+          创建的，那么zookeeper也不会对每个znode使用相同的数字，应该做了同步处理。顺序节点在锁定和同
+          步中起到重要作用
+
+    session：
+        向客户端分配会话id，客户端以特定的时间间隔发送心跳以保持会话有效。如果会话超过服务器指定的超时时
+    间服务器没有收到客户端的心跳，则它会判断客户端死机
+        会话超时通常以毫秒为单位，当会话结束时，在会话期间创建的临时节点也会被删除
+
+    watches：
+        监听使客户端收到关于zookeeper集合中的更改通知。客户端可以在读取特定znode时设置watches。watches
+    会向注册的客户端发送任何znode更改通知
+        watches会在znode与其子项中相关的数据被修改时触发，客户端与服务器断开连接，相关的watches也将被
+    删除
+
+
+zookeeper工作流：
+
+    zookeeper集合：代表着所有连接到这个集合中的客户端，每个客户端都是一个节点
+
+    一旦zookeeper集合启动，它将等待客户端连接到集合它集合中的一个节点，它可以是leader或follower节点，
+一旦客户端连接成功，节点将向特定客户端分配会话ID并向该客户端发送确认。如果客户端没有收到确认，它将尝
+试连接zookeeper集合中的另一个节点。一旦连接到节点，客户端将有规律地向节点发送心跳，以确保不会丢失
+
+    zookeeper集合中的拥有不同数量服务器节点的效果：
+        单个节点：当该节点故障时，zookeeper集合将故障，会发生单点故障(某个点的故障引起系统故障)，不建议
+    生产环境中使用
+        两个节点：当某个节点故障时，完好的节点没有占大多数，zookeeper集合将会故障
+        三个节点：当某个节点故障时，完好的节点占大多数，zookeeper集合正常运行，因此zookeeper集合在实际
+    生产环境中必须至少有三个节点
+        四个节点：当两个节点故障时，zookeeper集合将会故障，因此最好添加奇数的节点
+
+    如果客户端想要读取特定的znode，它会向具有znode路径的节点发送读取请求，并且节点通过从自己应用中获
+取znode来响应请求
+    如果客户端想将数据写入zookeeper集合中，由于所有数据在所有节点中都有保留，如果写入的话就要给所有的
+节点用watches来发送更改通知，只有在大部分节点都成功响应时才会写入成功，不满足大部分成功则写入失败
+    因此zookeeper集合中写入过程比读取过程要耗费更多的资源
+
+    zookeeper工作流的组件：
+
+        写入(write)：写入过程由leader节点处理，leader将写入请求转发到所有znode，并等待znode的回复，如果
+    一半以上的znode回复，则写入过程完成
+
+        读取(read)：读取某个连接的znode，由于在znode内部执行，因此不需要与集群进行交互
+
+        复制数据库(replicated database)：用于在zookeeper中存储数据，每个znode都有自己的数据库，每个znode
+    在一致性的帮助下每次都有相同的数据。虽然说是数据库，可是节点自己用了什么方式保存数据又有谁知道呢
+
+        决策者(leader)：leader是负责处理写入请求的znode
+
+        追随者(follower)：follower从客户端接收写入请求，并将它们转发到leader
+
+        请求处理(request processor)：只存在于leader节点，它管理来自follower节点的写入请求
+
+        原子广播(atomic broadcasts)：负责广播从leader节点到follower节点的变化
+
+
+leader选举：
+    1、所有节点创建具有相同路径/app/leader_election/guid_的顺序、临时节点
+    2、zookeeper集合将附加10位序列号到路径，创建的znode路径将是：/app/leader_election/guid_0000000001，
+/app/leader_election/guid_0000000002等
+    3、对于给定的实例，在znode中创建最小数字的节点称为leader，其它所有的节点都是follower
+    4、每个follower节点都监视比它小的下一个znode，例如000000008将监视0000000007，0000000007将监视
+0000000006
+    5、如果leader关闭，则其相应的znode/app/leader_election/guid_N将会被删除
+    6、下一个在线follower节点将通过监视器获得关于leader移除的通知
+    7、下一个在线follower节点将检查是否存在其它具有最小数字的znode，如果没有，它将承担leader角色。否
+则它会将它找到的具有最小数字的znode节点作为leader
+    8、类似的，所有其它follower节点选举创建具有最小数字的znode节点作为leader
+
+
+zookeeper安装：
+    zookeeper服务器是用java运行的，它在jvm上运行，需要JDK6以上的版本
+
+    安装过程没啥好说的，下个包，解压，跑zkServer.cmd启动服务器，跑zkCli.cmd启动客户端
+
+
+ZooKeeper CLI：
+    创建znodes：
+        create -option /path data
+            -s：创建顺序节点
+            -e：创建临时节点
+            无：持久节点
+        示例：create -s /myapp this-is-my-app(data不能带空格)
+        结果：如果是第一次创建的话，会出现路径为/myapp0000000002的znode
+        注意：如果创建子节点的话，每次只能创建一级，也就是说无法一次性创建多级，会报节点不存在
+
+    获取znode信息：
+        get /path
+        示例：get /myapp
+        结果：返回/myapp的data、创建时间，修改时间，数据版本，子节点数量，数据长度等等信息
+
+    监视，指定的znode或znode的子节点数据修改时(子节点实测监听不到)，监视器会显示通知，只能在get名字中
+  设置watch：
+        get /path 1
+        示例：get /myapp 1
+        结果：没错，这个1就是加侦听器的意思，只能监听一次，就算改成2也不会变成两次
+
+    设置数据：
+        set /path /data
+        示例：set /myapp set-test
+        结果：一般情况下设置完就没了，如果get指令刚好监听了这个节点，那么监听的会话还会收到一个修改事件
+
+    列出子项：
+        ls /path
+        示例：ls /myapp
+        结果：展示/myapp节点下的子节点，用[]包起来，每个用, 隔开
+
+    检查状态：
+        stat /path
+        示例：stat /myapp
+        结果：返回/myapp的data、创建时间，修改时间，数据版本，子节点数量，数据长度等等信息，其实就是get
+      指令不返回data的结果
+
+    移除节点：
+        rmr /path
+        示例：rmr /myapp
+        结果：移除/myapp节点和所有子节点
+
+    删除节点：
+        delete /path
+        示例：delete /myapp
+        结果：删除/myapp，如果/myapp有子节点则无法删除
+
+    zookeeper命令行提示的指令列表(不同版本差异不一定都可用，不过基本都能匹配)：
+        stat path [watch]
+        set path data [version]
+        ls path [watch]
+        delquota [-n|-b] path
+        ls2 path [watch]
+        setAcl path acl
+        setquota -n|-b val path
+        history
+        redo cmdno
+        printwatches on|off
+        delete path [version]
+        sync path
+        listquota path
+        get path [watch]
+        create [-s] [-e] path data acl
+        addauth scheme auth
+        quit
+        getAcl path
+        close
+        connect host:port
+
+
+zookeeper API：
+
+    注意！所有监听的节点都是一次性的，一旦某个节点被触发了监听器，如果还想继续监听就要重新设置节点监听
+
+    zookeeper API的核心是ZooKeeper类，它提供了在其构造函数中连接zookeeper集合的选项，具有以下方法：
+        connect：连接到zookeeper集合
+        create：创建znode节点
+        exists：检查znode是否存在及其信息
+        getData：从指定znode获取数据
+        setData：设置指定znode的数据
+        getChildren：获取指定znode的子节点
+        delete：删除指定znode与其所有子节点
+        close：关闭连接
+
+        new ZooKeeper：
+            connectString：host:port
+            sessionTimeout：超时时间，单位毫秒
+            watcher：监听器实现(函数式接口)，触发时会传入一个监听器事件，如果同一ZooKeeper对象的其他监听
+        的地方不传监听器，那么就会用这个监听器
+
+        创建znode：zk.create
+            path：znode路径
+            data：znode的数据
+            acl：要创建节点的访问控制列表，就是可以被执行哪些指令，比如读写删查等等，ZooDefs.Perms包含了
+        几个常用的权限标识，ZooDefs.Ids包含了一些常用的acl列表，每个ACL都需要一个权限和一个ID对象，分别
+        代表着哪个ID匹配哪个权限，可以同时使用多个ACL
+            creawteMode：节点类型，有四种，临时或持久，每种又分为顺序和非顺序，枚举类型
+            return：返回创建的节点名称
+
+        检查znode的存在：zk.exists
+            path：znode的路径
+            watcher：是否监听指定znode
+            return：stat元数据
+
+        获取数据：zk.getData
+            path：路径
+            watcher：监听器
+            stat：znode的元数据，如果传了这个对象就会把目标节点的元数据填充进来，如果传null则不填充
+            return：byte[]，节点的数据
+
+        设置数据：zk.setData
+             path：znode路径
+             data：数据
+             version：要修改znode的版本，可通过get的时候传入的stat或者exists返回的stat获取，有点像乐观锁
+             return：stat元数据
+             
+        获取子节点：zk.getChildren
+            path：znode路径
+            watcher：监听器，需要监听器时大多都有boolean的重载，如果传false跟监听器传null一样，传true则是
+          默认监听器
+            return：子节点list
+
+        删除znode：zk.delete
+            path：znode路径
+            version：要删除znode的版本号
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
