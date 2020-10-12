@@ -1506,3 +1506,12 @@ shell:
 
     参数偏移：
 	shift n：n代表偏移的数量
+
+    条件判断：
+	if [条件]; then
+	    执行逻辑	
+	elif [条件]; then
+	    执行逻辑
+	else
+	    执行逻辑
+	fi
