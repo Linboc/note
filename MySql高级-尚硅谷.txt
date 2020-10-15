@@ -1,7 +1,7 @@
 
     MySQL是一个关系型数据库，由瑞典MySQL AB公司开发，目前属于Oracle公司
 
-    MySQL支持大数据库，支持5000万条记录的数据仓库，32位系统表文件最大支持4GB，64位系统最大支持表文件为8GB
+    MySQL支持大数据库，支持5000万条记录的数据仓库，32位系统表文件最大支持4GB，64位系统最大支持表文件为8TB
 
 
 Linux下的MySQL安装：
@@ -199,9 +199,76 @@ SQL执行加载顺序：
 
 性能分析：
 
-    
+    EXPLAIN：模拟优化器执行SQL查询语句，从而知道MySQL是如何处理SQL语句的
 
+    用法：EXPLAIN SQL
 
+    EXPLAIN包含的信息：
+
+	id：SELECT查询的序列号，包含一组数字，表示SELECT语句操作表的顺序，id解释：
+
+	    id相同：在同一条子语句中表的id是相同的，WHERE引用字段越靠右字段所属的表优先级越高，假如WHERE中分不出优		  先级则以FROM后面的顺序来分，排越前面优先级越高
+
+	    id不同：不同的子语句中id就会不同，子查询id会比父查询id大，优先级最高的是最内的子查询，id越大优先级越高
+
+	    id同时存在相同与不同：id大的优先级最高，相同的则前面的优先级最高
+
+	    假如子查询会用作衍生表(临时表)，那么这个子查询的id结束之后跟着读取的就是这个延伸表，table列的值会为			  <derived子查询id>
+
+	    id能看出表的读取顺序
+
+	select_type：这个子语句的查询类型，类型解释如下：
+
+	    SIMPLE：简单查询，包含关联查询，不包含子查询和UNION
+
+	    PRIMARY：如果有子查询或UNION，被最后加载的那个子查询包含的表都是PRIMARY
+
+	    SUBQUERY：子查询，子查询的结果不用做衍生表则是SUBQUERY
+
+	    DERIVED：衍生表，子查询的结果被当做衍生表(临时表)使用则是DERIVED
+
+	    UNION：在UNION后面的表类型会为UNION
+
+	    UNION RESULT：UNION RESULT的id会总NULL，它的table结构是<union1,2>，1,2代表着返回union的子语句id，代表		  着UNION RESULT会在id为1和2的子查询全部执行完后读取，因为所有关联的表都执行完后才能生成结果给它读取
+
+	    DEPENDENT SUBQUERY：子查询的结果依赖取决于外面
+
+	table：这行的数据关于哪张表
+
+	    如果表有别名就用别名，没有就用表名；一些特殊的查询类型，比如衍生表、UNION RESULT表，就会是<>里面有相关		  关键字加id，比如<derived子查询id>、<union关联表id1,关联表id2>，详细情况在上边的id和selece_type中有顺带提
+
+	type：表的读取方式，优化效果的重要依据，常见类型的解释如下：
+
+	    ALL：全表扫描
+
+	    index：遍历索引树，如果查询的列都刚好是索引，就会直接读取索引文件，因为索引文件通常比数据文件小，因此		  虽然都是读全表，index通常还是比ALL快
+
+	    range：使用索引列来进行范围查询，比如使用between、<、>、in，这种方式比全表好，因为只要索引开始结束的点
+
+	    ref：使用索引扫描，并且查询条件能匹配索引或复合索引，扫描结果可能有多个符合条件
+
+	    eq_ref：使用索引扫描结果只有一条记录与之匹配，常见于主键或唯一索引扫描
+
+	    const：在用主键或者唯一索引当查询字段时，查询条件是常量，MySQL在这次查询中会把这个查询当做常量，因为结	  果总是不变
+
+	    system：系统表，表只有一行记录，这是const类型的特例，一般情况几乎不会出现
+
+	    NULL：不用读表
+
+	  type的优劣排序：	  system>const>eq_ref>ref>fulltext>ref_or_null>index_merge>unique_subquery>index_subquery>range>index>ALL
+
+	possible_keys：涉及到查询字段可能会用到的索引
+
+	key：实际用到的索引，如果使用了覆盖索引可能possible_keys中没有key中却有
+	    比如查询条件没有用到索引列，MySQL认为用不上索引，可是查询列却按照索引列来查，这时候又需要索引来避免全		  盘扫描，因此就会出现索引仅在key中存在
+
+	key_len：使用索引匹配的情况下，索引使用的字节数，该值通过计算得出，而非实际统计值，相同结果下越小越好
+
+	ref：
+
+	rows：
+
+	Extra：
 
 
 
