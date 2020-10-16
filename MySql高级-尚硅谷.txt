@@ -264,15 +264,38 @@ SQL执行加载顺序：
 
 	key_len：使用索引匹配的情况下，索引使用的字节数，该值通过计算得出，而非实际统计值，相同结果下越小越好
 
-	ref：
+	ref：哪些列或常量被用于索引搜索，比如等于：db01.user.id,const，则说明db01这个库的user表的id和一个常量(比如       是'abc', 223这种)，被用来匹配一个两列的复合索引；主要说明了索引被哪些列所引用
+	
+	rows：每张表有多少行被优化器查询，大致估算出执行子语句需要读取的行数
 
-	rows：
+	Extra：不适合在其它列展示却又重要的额外信息
 
-	Extra：
+	    Using filesort：使用外部的索引排序，MySQL无法利用索引完成的排序称为文件排序，也就是说在有索引的情况下
+	  又另外做了一次排序。如果在查询的时候用了复合索引的前部分列，那么可以接着在order by后面排序剩下的索引列，
+	  这种情况会利用索引进行排序，性能更高，这样也能消除Using filesort，需要优化
+
+	    Using temporary：使用临时表保存中间结果，MySQL对查询结果排序时使用了临时表。常见于order by和group by,
+	  例如在group by的时候，原本索引是f1, f2，而group by直接对f2分组,并且where里出现了or或in，就会同时出现	  Using filesort和Using temporary，需要优化
+
+	    Useing index：使用了索引。如果同时出现Using where和Using index，就说明索引被用来匹配条件，如果只存在		  Using index则说明使用了覆盖索引，只用索引来读取数据而不进行查找，详情参考key覆盖索引的描述，不需要优化。
+	  覆盖索引的意思就是查询的列被索引覆盖，刚好查的就是索引，因此直接读取索引返回，索引的数据通常比全表少
+
+	    Using where：使用了where查询，不需要优化
+
+	    Using join buff：使用了连接缓存，如果用了很多join，就会提示，这时候就要注意查询缓存是否要调大点，不需		  要优化
+
+	    Impossible WHERE：永远为false的条件，比如：name='a' AND name='b'，同一个字段不可能同时等于两个值
+
+	    select tables optimized away：在没有GROUP BY的情况下，基于索引优化MIN/MAX操作或者对于MyISAM存储引擎优		  化COUNT(*)操作，不必等到执行操作完成再计算，在执行计划生成阶段即可完成优化，也就是直接根据某个变量计算，		  而非进行实际统计
+
+	    distinct：优化DISTINCT操作，第一次找到某个值后，接下来就不会再查找相同的值了
 
 
+    并不是用了or就会使索引失效，而是用了or后，每个or之间的条件如果不是全都用了索引，那么索引就会失效，假如多个or条件用的列都用了索引，那么索引还是会生效的，否则就会全表扫描，比如：索引查询 or 复合索引1 and 复合索引2 or 索引查询，这种情况依然会用到索引
 
+    用了复合索引的前半部分，可以在order by或group by后面跟着剩下的索引部分，MySQL会自动续上剩下的索引，当然如果是in和or就续不上，就只能重新在order by或group by引用完整索引了
 
+    查询后面加/G，会把查询结果竖着排，默认是横着排，\G之前不能有分号，否则就会提示：No query specified
 
 
 
