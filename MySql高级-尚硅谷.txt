@@ -255,7 +255,7 @@ SQL执行加载顺序：
 
 	    NULL：不用读表
 
-	  type的优劣排序：	  	  system>const>eq_ref>ref>fulltext>ref_or_null>index_merge>unique_subquery>index_subquery>range>index>ALL
+	  type的优劣排序：	  	  	   system>const>eq_ref>ref>fulltext>ref_or_null>index_merge>unique_subquery>index_subquery>range>index>ALL
 
 	possible_keys：涉及到查询字段可能会用到的索引
 
@@ -364,7 +364,7 @@ ORDER BY优化：
 优化分析步骤：
 
     1、开启慢查询日志
-    2、explain + 慢SQL分析
+    2、explain + 分析慢SQL
     3、show profile(explain升级版)
     4、数据库服务器参数调优
 
@@ -384,10 +384,10 @@ ORDER BY优化：
 
     慢查询日志可以通过SELECT SLEEP(4)进行测试
 
+    慢查询日志记录的结果可以在slow_query_log_file指定的文件中找到
+
   mysqldumpslow：MySQL提供的慢查询日志分析工具，该命令在/usr/bin/下可以找到
     --help：帮助说明
-    
-
 
 
   MySQL所有的配置如果在数据库里面修改变量的话只会对当前的MySQL进程生效，如果MySQL重启就会失效，如果想要永久生效就要改my.cnf的配置
@@ -395,37 +395,60 @@ ORDER BY优化：
   set global是全局的，除了当前会话，其它会话都会立即生效，而set只对当前会话立即生效，不会影响到其它会话
 
 
+show profile：
+
+    它可以用来分析当前会话中语句执行的资源消耗情况。可以用于SQL调优的测量。只对当前会话生效。
+
+    默认情况下，处于关闭状态，并保存这个会话最近15次SQL运行的结果,关闭状态下不会生效
+
+    可以通过：SHOW VARIABLES LIKE '%profil%';来查看相关信息
+    可以通过：SET profiling=on;来开启PROFILE
+    可以通过：SET profiling_history_size;来记录保存执行SQL信息的数量
+    可以通过：SHOW VARIABLES LIKE '%have_profiling%;来查看是否支持PROFILE
+
+    SHOW PROFILES：注意后面有个s
+	显示最近profiling_history_size参数指定数量个SQL的分析信息
+	Query_ID：查询的id
+	Duration：查询的持续时间
+	Query：查询的语句
+
+    SHOW PROFILE：后面无s
+	查看被记录SQL的整个执行生命周期的详细信息。执行SQL的生命周期步骤并非固定，有些SQL会创建临时表，有些会把临      时表复制到磁盘，如果指定SQL有这些步骤才会显示出来
+	语法：SHOW PROFILE type1、type2... FOR QUERY Query_ID;注意：Query_ID从SHOW PROFIELS中取得
+	  type支持：
+	    ALL：显示所有开销信息
+	    Duration：该步骤的执行持续时间，默认会显示，不需要写
+	    BLOCK IO：显示IO开销
+	    CONTEXT SWITCHES：上下文切换相关开销
+	    CPU：显示CPU相关开销
+	    IPC：显示发送和接收先关开销
+	    MEMORY：显示内存相关开销
+	    PAGE FAULTS：显示页面错误相关开销
+	    SOURCE：显示个source_function、source_file、source_line相关开销
+	    SWAPS：显示交换次数相关开销
+
+    比较危险的生命周期步骤：
+	converting HEAP to MyISAM：查询结果太大，内存不够需要放到磁盘
+	Creating tmp table：先创建临时表，把数据拷贝到临时表，用完再删除，额外加了三个步骤，并且拷贝步骤很耗性能
+	Copying to tmp table on disk：把内存中的临时表复制到磁盘
+	locked：要操作的表被锁住了
 
 
+全局查询日志：
+
+    将执行的SQL语句记录到mysql库的general_log表里
+
+    不要在生产环境开启这个功能，严重影响性能，默认关闭
+
+    启用：set global general_log=1;
+	  set global log_output='TABLE';
 
 
+MySQL锁机制：
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    锁的分类：
+	按操作类型来分有读锁和写锁。读锁就是共享锁，写锁就是排它锁
+	按数据粒度来分有表锁、行锁和页锁。页锁是介于表锁和行锁之间的锁
 
 
 
