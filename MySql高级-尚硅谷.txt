@@ -450,6 +450,62 @@ MySQL锁机制：
 	按操作类型来分有读锁和写锁。读锁就是共享锁，写锁就是排它锁
 	按数据粒度来分有表锁、行锁和页锁。页锁是介于表锁和行锁之间的锁
 
+    MyISAM引擎：
+
+	读锁(共享锁)：锁住一张表后，任意session都能读这张表，其它session修改会阻塞，当前session修改会报错，并且当      前session不能查询其他表
+	写锁(排它锁)：锁住一张表后，当前session可以修改和读这张表，不能读其它表，其它session不能读写这张表，会被堵     塞
+        语法：
+            lock table table_name read | write：为指定表加读|写锁
+            unlock tables：释放当前session的所有锁
+	    show open tables：查看当前所有表的加锁情况
+	    show status like 'table%'：会出现两个变量，table_locks_immediate：产生表级锁定的次数，table_locks_wait 	  ed：因为等待表锁产生等待的次数
+        MyISAM引擎只有表锁，并且没有事务
+
+    InnoDB引擎：
+
+	show variables like 'tx_isolation'：查看当前事务隔离级别
+
+      行锁：
+        如果使用索引列为条件更新数据，就只会锁定一行，如果用非索引列为条件进行更新就会锁整张表
+
+        InnoDB的默认事务等级是可重复读，可重复读读取的内容是事务开始前的数据，也就是说如果在事务中修改了数据，就只    有自己能看到，其他人查询也是查到事务开始前的数据，除非是自己改的。如果是修改的话，如果修改的数据被锁定了则会被     阻塞，具体情况看先执行修改事务的锁的粒度
+        会话默认的写入操作是自动提交，也就是哪怕不开事务，每次增删改都会进行一次提交，开启事务等于是开了非自动提交
+
+      间隙锁(页锁、GAP)：
+        当更新操作使用范围索引时，InnoDB会锁定在这范围内的所有数据，哪怕是插入原本不存在但是符合条件的记录也会被阻     塞，这种在条件范围内但并不存在的记录叫做"间隙(GAP)"，所以叫间隙锁，也叫页锁
+
+      锁定数据：
+        SEELCT * FROM table_name WHERE id = 'xxx' FOR UPDATE;锁定id为xxx的那一行，FOR UPDATE会给条件范围内的数据加    锁，假如条件里没有用到索引，就会进行锁表，这个锁在加锁的会话执行commit后解除
+
+    InnoDB引擎实现了行级锁定，虽然锁定机制的实现方面带来的性能损坏比表级锁高一些，但在整体并发处理能力要优于MyISAM
+。但是行锁如果使用不当可能会让InnoDB的整体性能比MyISAM更差
+
+    锁排查：
+      SHOW STATUS LIKE '%状态名%'：查询某些系统状态
+	Innodb_row_lock_current_waits：当前正在等待锁的数量
+	Innodb_row_lock_waits：系统启动后总共等待的次数
+	Inodb_row_lock_time_avg：平均等待时长
+
+      查询是否锁表：
+	SHOW OPEN TABLES WHERE In_use > 0
+
+      查询进程：
+	SHOW PROCESSLIST
+
+      查询正在加锁的事务：
+	SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCKS
+
+      查询正在等待锁的事务：
+	SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCK_WAITS
+
+
+主从复制：
+
+    
+
+
+
+
 
 
 
