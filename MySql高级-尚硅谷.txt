@@ -501,13 +501,50 @@ MySQL锁机制：
 
 主从复制：
 
+    MySQL主从复制过程分为三步：
+      1、master将改变记录到二进制日志。这些记录过程叫做二进制日志事件：binary log events
+      2、slave将master的binary log events拷贝到它的中继日志：relay log
+      3、slave重做中继日志中的事件，将改变应用到自己的数据库中，MySQL主从复制是异步且串行化的
+
+    每个slave只有一个master，每个slave只能有一个唯一的服务器id，每个master可以有多个slave，复制会产生最大的问题就是slave的数据有延迟
     
+    MySQL版本应该保持一致
+
+配置步骤：
+  主机配置：
+    1、主从机应该保持互相畅通，用ping来测试
+    2、在[mysqld]下配置server-id，每个MySQL服务的id都是唯一的
+    3、在[mysqld]下配置log-bin，可以写mysql绝对安装路径/data/mysqlbin。它是二进制日志文件，参考前面的binary log
+    4、在[mysqld]下配置log-err，可以写mysql绝对安装路径/data/mysqkerr。它是系统日志文件，可以看到运行的异常信息
+    5、重启MySQL服务刷新配置
+    6、关闭防火墙或者配置防火墙允许主从之间通信，Linux用service iptables stop关闭
+    7、创建账户并授权给slave，在mysql的root用户下：GRANT REPLICATION SLAVE ON *.* TO '用户名'@'从机ip' IDENTIFIED   BY '密码'
+    8、在mysql下运行flush privileges，刷新一下新建的用户信息
+    9、运行show master status查看log-bin信息，主要有4列：
+      file：当前使用的log-bin文件名
+      position：log-bin的文件指针，说明应该从哪里开始读取
+      binlog_do_db：如果为空就是要复制除了要忽略的数据库之外的所有库
+      binlog_ignore_db：要忽略的数据库
+
+  从机配置：
+    1、在[mysqld]下配置server-id，每个MySQL服务的id都是唯一的
+    2、重启MySQL服务刷新配置
+    3、关闭防火墙或者配置防火墙允许主从之间通信，Linux用service iptables stop关闭
+    4、拿到主机授权的账号，然后再mysql的root用户下运行：CHANGE MASTER TO MASTER_HOST='主库的ip',MASTER_USER='主机  授权的用户名',MASTER_PASSWORD='主机授权的密码',MASTER_LOG_FILE='主机的bin-log文件名',MASTER_LOG_POS=主机bin-log    文件的指针(不能加引号);在这之前如果启动过slave，记得先STOP SLAVE，否则会报错
+    5、start slave，启动从机进行主从复制
+    6、用SHOW SLAVE STATUS\G查看Slave_IO_Running和Slave_SQL_Running是否都为yes，如果不是则主从未成功
+
+
+  主机可选配置：
+    在[mysqld]下配置basedir，代表MySQL的根目录
+    在[mysqld]下配置tmpdir，代表MySQL的临时目录
+    在[mysqld]下配置datadir，代表MySQL的数据存放位置，默认是mysql目录下的data
+    在[mysqld]下配置read-only：0代表读写都可以，1代表只读。只读模式不会影响到主从复制，slave依然可以进行同步，并且   不会影响super权限的用户，如果要同时限制这些功能则需要用flush tables with read lock
+    在[mysqld]下配置binlog-ignore-db，代表记录log-bin时忽略的数据库，因此主从复制也会忽略
+    在[mysqld]下配置binlog-do-db，代表需要复制的数据库
+    在slave的[mysqld]下配置log-bin，它就是slave的中继日志
 
 
 
-
-
-
-
-
+SHOW SLAVE STATUS\G里slave_io_running一直显示no，每次开slave之后主机的指针都会变化，最好重启slave之前用show master staus对一下指针和file
 
