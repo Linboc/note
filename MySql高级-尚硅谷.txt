@@ -544,7 +544,9 @@ MySQL锁机制：
     在[mysqld]下配置binlog-do-db，代表需要复制的数据库
     在slave的[mysqld]下配置log-bin，它就是slave的中继日志
 
+注意：
+  如果主从复制失败，那么不妨检查一下是否由主从版本不一致导致的，还有binlog文件和指针是否正确
 
 
-SHOW SLAVE STATUS\G里slave_io_running一直显示no，每次开slave之后主机的指针都会变化，最好重启slave之前用show master staus对一下指针和file
+
 
