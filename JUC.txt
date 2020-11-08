@@ -1,7 +1,15 @@
 
     JUC就是java.util.concurrent，指的是java并发工具包，包括java.util.concurrent、java.util.concurrent.locks和java.util.concurrent.atomic
 
+    wait和sleep的区别，它们都会阻塞线程，而wait就是放弃释放当前线程锁的资源，sleep则会继续维持着锁
 
 
+线程的状态：
 
-
+    Thread.State是一个枚举类，代表着线程的状态，状态如下：
+	NEW：线程创建
+	RUNNABLE：线程就绪
+	BLOCKED：线程阻塞，正在等待获取锁
+	WAITING：线程无期限阻塞，比如调用wait
+	TIMED_WAITING：线程有期限阻塞，比如sleep或者wait(long)
+	TERMINATED：线程结束
