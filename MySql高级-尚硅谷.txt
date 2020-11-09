@@ -450,7 +450,104 @@ MySQL锁机制：
 	按操作类型来分有读锁和写锁。读锁就是共享锁，写锁就是排它锁
 	按数据粒度来分有表锁、行锁和页锁。页锁是介于表锁和行锁之间的锁
 
+    MyISAM引擎：
 
+	读锁(共享锁)：锁住一张表后，任意session都能读这张表，其它session修改会阻塞，当前session修改会报错，并且当      前session不能查询其他表
+	写锁(排它锁)：锁住一张表后，当前session可以修改和读这张表，不能读其它表，其它session不能读写这张表，会被堵     塞
+        语法：
+            lock table table_name read | write：为指定表加读|写锁
+            unlock tables：释放当前session的所有锁
+	    show open tables：查看当前所有表的加锁情况
+	    show status like 'table%'：会出现两个变量，table_locks_immediate：产生表级锁定的次数，table_locks_wait 	  ed：因为等待表锁产生等待的次数
+        MyISAM引擎只有表锁，并且没有事务
+
+    InnoDB引擎：
+
+	show variables like 'tx_isolation'：查看当前事务隔离级别
+
+      行锁：
+        如果使用索引列为条件更新数据，就只会锁定一行，如果用非索引列为条件进行更新就会锁整张表
+
+        InnoDB的默认事务等级是可重复读，可重复读读取的内容是事务开始前的数据，也就是说如果在事务中修改了数据，就只    有自己能看到，其他人查询也是查到事务开始前的数据，除非是自己改的。如果是修改的话，如果修改的数据被锁定了则会被     阻塞，具体情况看先执行修改事务的锁的粒度
+        会话默认的写入操作是自动提交，也就是哪怕不开事务，每次增删改都会进行一次提交，开启事务等于是开了非自动提交
+
+      间隙锁(页锁、GAP)：
+        当更新操作使用范围索引时，InnoDB会锁定在这范围内的所有数据，哪怕是插入原本不存在但是符合条件的记录也会被阻     塞，这种在条件范围内但并不存在的记录叫做"间隙(GAP)"，所以叫间隙锁，也叫页锁
+
+      锁定数据：
+        SEELCT * FROM table_name WHERE id = 'xxx' FOR UPDATE;锁定id为xxx的那一行，FOR UPDATE会给条件范围内的数据加    锁，假如条件里没有用到索引，就会进行锁表，这个锁在加锁的会话执行commit后解除
+
+    InnoDB引擎实现了行级锁定，虽然锁定机制的实现方面带来的性能损坏比表级锁高一些，但在整体并发处理能力要优于MyISAM
+。但是行锁如果使用不当可能会让InnoDB的整体性能比MyISAM更差
+
+    锁排查：
+      SHOW STATUS LIKE '%状态名%'：查询某些系统状态
+	Innodb_row_lock_current_waits：当前正在等待锁的数量
+	Innodb_row_lock_waits：系统启动后总共等待的次数
+	Inodb_row_lock_time_avg：平均等待时长
+
+      查询是否锁表：
+	SHOW OPEN TABLES WHERE In_use > 0
+
+      查询进程：
+	SHOW PROCESSLIST
+
+      查询正在加锁的事务：
+	SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCKS
+
+      查询正在等待锁的事务：
+	SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCK_WAITS
+
+
+主从复制：
+
+    MySQL主从复制过程分为三步：
+      1、master将改变记录到二进制日志。这些记录过程叫做二进制日志事件：binary log events
+      2、slave将master的binary log events拷贝到它的中继日志：relay log
+      3、slave重做中继日志中的事件，将改变应用到自己的数据库中，MySQL主从复制是异步且串行化的
+
+    每个slave只有一个master，每个slave只能有一个唯一的服务器id，每个master可以有多个slave，复制会产生最大的问题就是slave的数据有延迟
+    
+    MySQL版本应该保持一致
+
+配置步骤：
+  主机配置：
+    1、主从机应该保持互相畅通，用ping来测试
+    2、在[mysqld]下配置server-id，每个MySQL服务的id都是唯一的
+    3、在[mysqld]下配置log-bin，可以写mysql绝对安装路径/data/mysqlbin。它是二进制日志文件，参考前面的binary log
+    4、在[mysqld]下配置log-err，可以写mysql绝对安装路径/data/mysqkerr。它是系统日志文件，可以看到运行的异常信息
+    5、重启MySQL服务刷新配置
+    6、关闭防火墙或者配置防火墙允许主从之间通信，Linux用service iptables stop关闭
+    7、创建账户并授权给slave，在mysql的root用户下：GRANT REPLICATION SLAVE ON *.* TO '用户名'@'从机ip' IDENTIFIED   BY '密码'
+    8、在mysql下运行flush privileges，刷新一下新建的用户信息
+    9、运行show master status查看log-bin信息，主要有4列：
+      file：当前使用的log-bin文件名
+      position：log-bin的文件指针，说明应该从哪里开始读取
+      binlog_do_db：如果为空就是要复制除了要忽略的数据库之外的所有库
+      binlog_ignore_db：要忽略的数据库
+
+  从机配置：
+    1、在[mysqld]下配置server-id，每个MySQL服务的id都是唯一的
+    2、重启MySQL服务刷新配置
+    3、关闭防火墙或者配置防火墙允许主从之间通信，Linux用service iptables stop关闭
+    4、拿到主机授权的账号，然后再mysql的root用户下运行：CHANGE MASTER TO MASTER_HOST='主库的ip',MASTER_USER='主机  授权的用户名',MASTER_PASSWORD='主机授权的密码',MASTER_LOG_FILE='主机的bin-log文件名',MASTER_LOG_POS=主机bin-log    文件的指针(不能加引号);在这之前如果启动过slave，记得先STOP SLAVE，否则会报错
+    5、start slave，启动从机进行主从复制
+    6、用SHOW SLAVE STATUS\G查看Slave_IO_Running和Slave_SQL_Running是否都为yes，如果不是则主从未成功
+
+
+  主机可选配置：
+    在[mysqld]下配置basedir，代表MySQL的根目录
+    在[mysqld]下配置tmpdir，代表MySQL的临时目录
+    在[mysqld]下配置datadir，代表MySQL的数据存放位置，默认是mysql目录下的data
+    在[mysqld]下配置read-only：0代表读写都可以，1代表只读。只读模式不会影响到主从复制，slave依然可以进行同步，并且   不会影响super权限的用户，如果要同时限制这些功能则需要用flush tables with read lock
+    在[mysqld]下配置binlog-ignore-db，代表记录log-bin时忽略的数据库，因此主从复制也会忽略
+    在[mysqld]下配置binlog-do-db，代表需要复制的数据库
+    在slave的[mysqld]下配置log-bin，它就是slave的中继日志
+
+  只有进行同步之后新创建的库才会被同步，不确定如果配置了binlog-do-db是否能同步旧库
+
+注意：
+  如果主从复制失败，那么不妨检查一下是否由主从版本不一致导致的，还有binlog文件和指针是否正确
 
 
 
