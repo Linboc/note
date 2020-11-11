@@ -13,3 +13,37 @@
 	WAITING：线程无期限阻塞，比如调用wait
 	TIMED_WAITING：线程有期限阻塞，比如sleep或者wait(long)
 	TERMINATED：线程结束
+
+synchronized：
+    每次进synchronized的时候，如果同一加锁对象还没执行完，那个这个对象不能再进来(使用wait会释放锁)，其它非加锁对象不受影响，如果用单号来加锁，那么每个单号只会同时有一个线程在执行
+    如果是类锁，就会锁住这个类的所有对象，也就是同一个类只能进来一个线程
+
+虚假唤醒：
+    在使用wait配合notifyAll的时候，需要防止出现虚假唤醒，比如if判断某个线程进入wait状态，假如这是一个资源类，那么在状态不变的情况下后续的线程调用这里也会调wait，就算用了synchronized后续的线程依然会进来，因为有wait释放锁。
+    这时候调了notifyAll，本意可能是想让其中一个线程去执行某个逻辑，可是如果有多个线程都在wait那里，那么就会全部wait的线程就会一股脑的执行这个逻辑。比如买票卖票，每次+1或-1，多线程情况下卖票到1了就会阻塞，多个线程都阻塞在一起，然后开始买票，买完票一调notifyAll，卖票线程所有线程都给放开了，第一个线程买了第二个线程依然去买，这就是虚假唤醒      这时候判断票就不应该用if，而是用while，让卖票线程被唤醒后再去执行一遍判断，防止前面的线程卖票后面的线程依然去卖。不用担心多个线程同时执行while，同时跳出循环，同时执行卖票，因为synchronizedd原因，只有唤醒的第一个线程才会获得锁，其它线程会等待锁，等第一个线程执行完回到wait的时候，其它线程依然无法通过while的判断，会继续wait
+
+lock：
+
+    lock的功能可以代替synchronized，其中synchronized的加锁和解锁分别用lock和unlock代替，wait、notify、notifyAll则用lock.newCondition对象的await、signal、signalAll来代替
+
+    ReentrantLock：
+	可重入锁，同一个ReentrantLock对象只有第一次进行lock的时候生效，后面的lock都会被阻塞，只有lock执行unlock才会释放前面的锁，因此每次lock都对应一个unlock，前面的lock没有进行unlock，后面的lock就会一直被阻塞，并且释放锁的顺序和调用lock的顺序一致。
+	lock.newCondition()函数可以获得一个Condition对象，这个对象对应着Object类的几个方法:wait、notify、notifyAll
+，他们分别对应着Condition对象的await、signal、signalAll，作用是一致的，Object的方法对调用的对象与当前线程生效，Condition的方法对它所属的lock和当前线程生效
+
+
+多线程使用诀窍：
+    1、使用线程来操作资源类，资源类自己内聚实现线程安全
+    2、判断(假如可以操作就继续，否则就阻塞)、干活(执行业务操作)、通知(唤醒其它线程)
+    3、多线程交互环境下，要防止多线程的虚假唤醒，判断只用while，不用if
+
+
+
+
+
+
+
+
+
+
+
