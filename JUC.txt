@@ -33,9 +33,29 @@ lock：
 	并且Lock还有一个优势，可以精准决定解哪个锁，只需要用一个lock创建多个condition对象，每个锁分别用一个，锁的    时候用对应condition的await()，解锁的时候用要解锁的那个condition的signal()就行了，比wait和nodity灵活在自由控制    解锁的线程，nodify的解锁是由操作系统决定的。
         这跟new几个Object对象有什么区别，不同地方的加锁和解锁分别用这几个对象进行就可以了？因为Object的几个线程相    关方法都需要使用synchronized锁住相关对象才能使用这些对象的线程方法，如果没锁定就用会抛出IllegalMonitorStateExc     eption异常，总不能每次阻塞或唤醒都要先给对应的对象加锁吧。虽然condition也要它所属的lock对象加锁，不然也会出现    那个异常，但是多个condition对象只要用同一个把它new出来的lock进行锁定就行了
 
+
+线程安全集合类：
+
+Vector：
+    ArrayList加synchronized版本
+
+Collections.synchronizedXXX：
+    各种转线程安全集合函数，其实就是在内部创建了一个对象，实现了相同的方法，然后在相同方法里在synchronized代码块里面调用传进去对象的方法
+
 CopyOnWriteArrayList：
     在进行写入操作的时候，先用lock上个锁，然后创建一个新的数组对象，再给这个新的数组对象进行copy，add就是长度+1，remove就是长度-1，然后Arrays.copy，如果操作在数组中间的元素，就先copy前半部分，略过操作的那个元素再copy后半部分，新数组处理好之后，在setArray，让后面的调用者使用新数组，旧数组就废弃了，除了一些之前创建的迭代器可能会保存着快照(snapshot)对象
 
+CopyOnWriteArraySet：
+    内部使用了一个CopyOnWriteArrayList来实现相关功能，每次添加都遍历一遍数组来进行除重判断，如果已存在就添加失败，其他功能也使用了类似的机制
+
+ConcurrentHashMap：
+    1.7采用了分段锁机制，1.8采用了CAS(比较并替换，涉及到底层内存操作)+Synchronized
+
+线程的创建方式：
+    1、extends Thread：继承
+    2、implments Runable：实现
+    3、implments Callable<T>：实现+返回值，可往方法上级抛异常
+	第三种直接用Callable是用不了的，要new FutureTask类，然后把Callable传进它的构造器里，再把FutureTask传进    Thread的构造器里，然后启动Thread，如果想要返回则则用FutureTask对象的get方法，它会一直阻塞到拿到返回值，并且    FutureTask对象只会执行call函数一次，返回值会缓存起来，也就是如果放进多个Thread对象里start，那么也只会执行一次      ，第一次之后的Thread发现能直接拿到返回值就不会去执行call函数
 
 
 多线程使用诀窍：
