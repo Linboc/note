@@ -144,6 +144,7 @@ EntrySet：跟KeySet大同小异，参考就行了，Iterator返回EntryIterator
 加了Entry，线程1遍历结束后，认为这个key不存在，就调用了addEntry，这时HashMap里面有了两个Entry的
 key相同
 
+1.8的HashMap变成了数组+链表/红黑树，当链表的长度>=8就会转成红黑树
 
 
 
