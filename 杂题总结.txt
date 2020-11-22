@@ -173,4 +173,4 @@ starter parent 2.2.4.RELEASE，换成2.1.5.RELEASE就正常了
 问
 
 	idea中的tomcat在控制台输出乱码有可能是tomcat的配置问题，用了9x的版本有乱码，没找具体配置，
-换了个8x就正常了
+换了个8x就正常了，如果还有乱码，可以在虚拟机启动参数添加-Dfile.encoding=UTF-8试试

@@ -264,9 +264,119 @@ RocketMQ的特性：
 
 Broker：
 
+    broker有三种角色，分别为：异步主机(ASYNC_MASTER)、同步主机(SYNC_MASTER)和从机(SLAVE)
+      异步主机：主机写入成功就往客户端反馈写入成功
+      同步主机：主机和从机都写入成功才会向客户端反馈写入成功
+      从机：从机只能有一个主机，主机可以有多个从机
+
+    broker刷盘类型有两种，分别是(同步刷新)SYNC_FLUSH和异步刷新(ASYNC_FLUSH)，同步刷新会损失很多性能，但也更可靠
+
+  Broker配置：
+    listenPort：服务器接受客户端连接的监听端口，默认值：10911
+    nameSrvAddr：名字服务的地址，默认值：null
+    brokerlP1：网卡的网络地址，默认值：当前broker监听的ip
+    brokerlP2：存在主从broker时，如果在broker主节点上配置了brokerlP2属性，broker从节点会连接主节点配  置的  brokerlP2进行同步。也就是主节点用来进行同步的ip端口默认值：当前broker监听的ip
+    brokerName：broker的名称，默认值：null
+    brokerClusterName：本broker所属的cluser名称，默认值：DefaultCluster
+    brokerId：如果为0表示master，其他正整数表示slave，默认值：0
+    storePathCommitLog：存储commit log的路径，默认值：${HOME}/store/commitlog/
+    storePathConsumerQueue：存储consumer queue的路径，默认值：${HOME}/store/consumerqueue/
+    mappedFileSizeCommitLog：commit log的映射文件大小，默认值：1024 * 1024 * 1024 (1G)
+    deleteWhen：在每天什么时间删除已超过文件保留时间的commit log，默认值：04
+    fileReservedTime：以小时计算的文件保存时间，默认值72
+    brokerRole：broker角色，SYNC_MASTER、ASYNC_MASTER、SLAVE，默认值：ASYNC_MASTER
+    flushDiskType：刷盘模式，SYNC_FLUSH、ASYNC_FLUSH，同步刷盘下的broker保证在将消息刷盘后才回复  生产者发送成功，异步刷盘的broker则利用刷盘一组消息的模式，收到消息就回复发送成功，因此没有同步刷盘  安全，但是有更好的性能
+
+  NameServer：
+    做简单的路由管理，包括：brokers定期向每个服务器注册路由数据，名称服务器作为客户端，为生产者、消费  者、命令行客户端提供最新的路由信息
+
+  客户端配置;
+    客户端包括生产者和消费者
+
+    客户端寻址方式：
+        客户端先知道NamaServer，然后通过NameServer再找到Broker
+
+    客户端配置NameServer地址的配置，多个namesrv地址用分号分隔，优先级由高到低：
+        生产者或消费者实例.setNamesrvAddr("192.168.0.1:9876;192.168.0.2:9876")
+        java启动参数指定：-Drocketmq.namesrv.addr=192.168.0.1:9876;192.168.0.2:9876
+        环境变量指定：export NAMESRV_ADDR=192.168.0.1:9876;192.168.0.2:9876
+
+    HTTP静态服务器寻址(默认)，如果没配置NameServer地址就会使用这个：
+        客户端启动后会定时访问一个静态HTTP服务器：http://jmenv.tbsite.net:8080/rocketmq/nsaddr，这个URL会  返    回192.168.0.1:9876;192.168.0.2:9876，客户端每两分钟访问一次这个HTTP服务器，并更新NameServer地址  。URL    已经在代码中硬编码，可以通过修改hosts文件来改变要访问的服务器
+
+    DefaultMQProducer、TransactionMQProducer、DefaultMQPushConsumer、DefaultMQPullConsumer都继承于ClientConfig类，这个类为客户端的公共配置类。里面的配置都是get、set形式，每个参数都可以用spring来配置，也可以在代码中配置，默认会去系统环境变量中获取，如果没有就用默认值
+
+  客户端公共配置：
+    namesrvAddr：NameServer地址列表，无默认值
+    clientIP：客户端ip，某些机器会发生无法识别客户端ip的情况，因此要强制指定，默认值：本机ip
+    instanceName：客户端实例名称，客户端创建的多个Producer、Consumer实际是共用一个内部实例(这个实例包含网  络连接、线程资源等)，默认值：DEFAULT
+    clientCallbackExecutorThreads：通信层异步回调线程数，默认值：4
+    pollNameServerInteval：轮询NameServer间隔时间，单位毫秒，默认值：30000
+    heartbeatBrokerInterval：向broker发送心跳间隔时间，单位毫秒，默认值：30000
+    persistConsumerOffserInterval：持久化Consumer消费进度间隔实际，单位毫秒，默认值：5000
+
+  提供者配置：
+    producerGroup：Producer组名，多个Producer如果属于同一个应用，发送相同的消息，则应该归于一组，默认值：  DEFAULT_PRODUCER
+    createTopicKey：发送消息时，自动创建服务器不存在的topic，需要指定key，该key可用于配置发送消息所在topic的  默认路由，默认值：TBW102
+    defaultTopicQueueNums：自动创建topic时，默认创建的队列数，默认值：4
+    sendMsgTimeout：发送消息超时时间，单位毫秒，默认值：10000
+    compressMsgBodyOverHowmuch：消息Body超过多大开始压缩（Consumer收到消息会自动解压缩），单位字节，  默认值：4096
+    retryAnotherBrokerWhenNotStoreOK：如果发送消息返回sendResult，但是sendStatus!=SEND_OK，是否重试发送  ，默认值：FALSE
+    retryTimesWhenSendFailed：如果消息发送失败，最大重试次数，该参数只对同步发送模式起作用，默认值：2
+    maxMessageSize：客户端限制的消息大小，超过报错，同时服务端也会限制，所以需要跟服务端配合使用。，默认值：  4MB
+    transactionCheckListener：事务消息回查监听器，如果发送事务消息，必须设置，默认值：无
+    checkThreadPoolMinSize：Broker回查Producer事务状态时，线程池最小线程数，默认值：1
+    checkThreadPoolMaxSize：Broker回查Producer事务状态时，线程池最大线程数，默认值：1
+    checkRequestHoldMax：Broker回查Producer事务状态时，Producer本地缓冲请求队列大小，默认值：2000
+    RPCHook：该参数是在Producer创建时传入的，包含消息发送前的预处理和消息响应后的处理两个接口，用户可以在第  一个接口中做一些安全控制或者其他操作，默认值：null
+
+    PushConsumer配置：
+    consumerGroup：Consumer组名，多个Consumer如果属于一个应用，订阅同样的消息，且消费逻辑一致，则应该将  它们归为同一组，默认值：DEFAULT_CONSUMER
+    messageModel：消费模型支持集群消费和广播消费两种，默认值：CLUSTERING
+    consumeFromWhere：Consumer启动后，默认从上次消费的位置开始消费，这包含两种情况：一种是上次消费的位置  未过期，则消费从上次中止的位置进行；一种是上次消费位置已经过期，则从当前队列第一条消息开始消费，默认值：无    CONSUME_FROM_LAST_OFFSET
+    consumeTimestamp：只有当consumeFromWhere值为CONSUME_FROM_TIMESTAMP时才起作用。，默认值：半    个小时前
+    allocateMessageQueueStrategy：Rebalance算法实现策略，默认值：AllocateMessageQueueAveragely
+    subscription：订阅关系，默认值：无
+    messageListener：消息监听器，默认值：无
+    offsetStore：消费进度存储，默认值：无
+    consumeThreadMin：消费线程池最小线程数，默认值：10
+    consumeThreadMax：消费线程池最大线程数，默认值：20
+    consumeConcurrentlyMaxSpan：单队列并行消费允许的最大跨度，默认值：2000
+    pullThresholdForQueue：拉消息本地队列缓存消息最大数，默认值：1000
+    pullInterval：拉消息间隔，由于是长轮询，所以为0，但是如果应用为了流控，也可以设置大于0的值，单位毫秒，默认    值：0
+    consumeMessageBatchMaxSize：批量消费，一次消费多少条消息，默认值：1
+    pullBatchSize：批量拉消息，一次最多拉多少条，默认值：32
+
+  PullConsumer配置：
+    consumerGroup：Consumer组名，多个Consumer如果属于一个应用，订阅同样的消息，且消费逻辑一致，则应该将  它们归为同一组，默认值：DEFAULT_CONSUMER
+    brokerSuspendMaxTimeMillis：长轮询，Consumer拉消息请求在Broker挂起最长时间，单位毫秒，默认值：20000
+    consumerTimeoutMillisWhenSuspend：长轮询，Consumer拉消息请求在Broker挂起超过指定时间，客户端认为超时  ，单位毫秒，默认值：30000
+    consumerPullTimeoutMillis：非长轮询，拉消息超时时间，单位毫秒，默认值：10000
+    messageModel：消息支持两种模式：集群消费和广播消费，默认值：BROADCASTING
+    messageQueueListener：监听队列变化，默认值：无
+    offsetStore：消费进度存储，默认值：无
+    registerTopics：注册的topic集合，默认值：无
+    allocateMessageQueueStrategy：Rebalance算法实现策略，默认值：AllocateMessageQueueAveragely
+
+  message数据结构：
+    Topic：必填，消息所属topic的名称，默认值：null
+    Body：必填，消息体，默认值：null
+    Tags：选填，消息标签，方便服务器过滤使用。目前只支持每个消息设置一个tag，默认值：null
+    Keys：选填，代表这条消息的业务关键词，服务器会根据keys创建哈希索引，设置后，可以在Console系统根据Topic、  Keys来查询消息，由于是哈希索引，请尽可能保证key唯一，例如订单号，商品Id等。，默认值：null
+    Flag：选填，完全由应用来设置，RocketMQ不做干预，默认值：0
+    DelayTimeLevel：选填，消息延时级别，0表示不延时，大于0会延时特定的时间才会被消费，默认值：0
+    WaitStoreMsgOK：选填，表示消息是否在服务器落盘后才返回应答。，默认值：TRUE
 
 
 
+
+
+
+
+
+
+commitLog：
+    rocket存储消息的文件，默认大小1g，默认路径${HOME}/store/commitlog/，消息存储时会顺序写入文件，当文件超过最大大小时会创建一个新文件，文件名是20位，文件名也记录了起始偏移量，第一个文件名是20位0，第二个文件名就是00000000001073741824(默认大小1g的情况下)，里面存储的消息数据包括消息大小、队列偏移量、topic、消息内容...等信息
 
 踩坑：
     两个消费者使用相同的groupName和tag，不同的topic，它们就会互相消费对方topic的消息，也就是说只要groupName相同RocketMQ就会直接忽略topic的差异
