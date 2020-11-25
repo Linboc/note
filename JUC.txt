@@ -113,8 +113,42 @@ BlockingQueue(阻塞队列)：
 	检查(跟移除相同的是都返回第一个元素，但是检查后元素依然在)：element(没有则抛异常)、peek(没有则返回null)
 
 
+ThreadPool(线程池)：
 
+    主要特点是：线程复用、控制并发数、管理线程
 
+  优点：
+	1、降低资源消耗，通过重复利用已创建的线程降低线程创建和销毁造成的资源消耗
+	2、提高响应速度，当任务到达时，任务可以不需要等待线程创建就能立即执行
+	3、提高线程的可管理性，线程如果无线创建，不仅会消耗系统资源，还会降低系统稳定性，线程池可以进行统一的分配      、调优、监控
+
+  线程池简介：
+    线程池的最顶级接口是Executor，它有一个void execute(Runnable command);函数，不过一般用的接口都是ExcutorService。常用的几种线程池的创建都是使用Executors来创建的，实际上这个工具类都是用了new ThreadPoolExecutor()然后传不同的参数来控制线程池的特性，Executors常用函数：
+	Executors.newFixedThreadPool(3)：创建固定容量的线程池
+	Executors.newSingleThreadExecutor()：创建单容量的线程池
+	Executors.newCachedThreadPool()：创建自动扩充的线程池
+
+  ThreadPoolExecutor的构造器参数：
+	corePoolSize：常驻核心线程数(最小线程数)
+	maximumPoolSize：能够同时容纳的最大线程数，必须大于0（队列已满的情况下才会在这里创建新的非核心线程）
+	keepAliveTime：常驻核心线程数之外的线程存活时间，也就是线程池空闲时间达到这个数，就销毁线程到核心池的数量
+	unit：keepAliveTim的单位，是个TimeUnit类型
+	workQueue：工作队列，是一个阻塞队列，存放Runable类型的任务
+	threadFactory：线程创建工厂，一般用默认的
+	handler：拒绝策略，当队列满了，并且工作线程数也达到maximumPoolSize(每新加一个线程就可以马上消耗一个阻塞队        列里的任务)时如何拒绝加进来的Runable任务
+
+    所以一个线程池能同时存储的最大任务量应该是，corePoolSize + maximumPoolSize + workQueue.size()，同时能执行的最  大任务量应该是maximumPoolSize
+
+  线程池工作流程：
+    1、创建线程池等待工作任务
+    2、来了一个新任务之后：
+	1、如果corePoolSize没满则创建线程去执行
+	2、如果corePoolSize满了则放进workQueue里
+	3、如果workQueue满了则创建属于maximumPoolSize范畴的线程，然后从workQueue中拿任务，然后把新的任务放进队列里
+	4、如果maximumPoolSize也满了，则执行拒绝策略
+    3、一个任务执行完后，从workQueue中取出下一个任务来执行
+    4、一个线程空闲时间超过keepAliveTime时，如果当前线程数大于corePoolSize，这个空闲线程就会被销毁
+    5、当线程池的所有任务完成后，经过一定的空闲时间，最终线程池只会保留corePoolSize数量的线程
 
 
 
