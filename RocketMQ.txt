@@ -368,6 +368,11 @@ Broker：
     WaitStoreMsgOK：选填，表示消息是否在服务器落盘后才返回应答。，默认值：TRUE
 
 
+权限控制(ACL)：
+    主要为RocketMQ提供Topic级别的访问控制
+
+    RocketMQ的默认访问权限信息在conf/plain_acl.yml文件下，Broker会对AccessKey(类似用户名)和SecreKey(类似密码)的有效性进行校验，校验通过后会对AccessKey的访问权限进行校验，
+
 
 
 
@@ -389,7 +394,8 @@ commitLog：
 
     因此如果要把消息发送给不同的服务，那么就要创建不同的消费者组，不同的topic，如果不想消息消失，最好一个topic下只有一个tag
 
-
+测试：
+    同一种消费者组和提供者组在一个JVM中只能存在一个
 
 
 
