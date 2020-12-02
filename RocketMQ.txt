@@ -368,9 +368,54 @@ Broker：
     WaitStoreMsgOK：选填，表示消息是否在服务器落盘后才返回应答。，默认值：TRUE
 
 
+权限控制(ACL)：
+    主要为RocketMQ提供Topic级别的访问控制
 
+    RocketMQ的默认访问权限信息在conf/plain_acl.yml文件下，Broker被访问时会对AccessKey(类似用户名)和SecreKey(类似密码)的有效性进行校验，改校验通过后才会对AccessKey具有的访问权限进行校验
 
+    对Topic资源的访问权限标识：
+        DENY：拒绝访问
+        ANY：允许发布和订阅
+        PUB：允许发布
+        SUB：允许订阅
 
+    权限控制的关键属性：
+      全局配置：
+        globalWhiteRemoteAddresses	全局IP白名单，支持多值
+      各个accounts(账户)的配置：
+        accessKey			类似于用户名
+        secretKey			类似于密码
+        whiteRemoteAddress		用户IP白名单，支持多值
+        admin			是否管理员，取true或false
+        defaultTopicPerm		默认的topic权限，取Topic权限标识
+        defaultGroupPerm		默认的ConsumerGroup权限，取Topic权限标识
+        topicPerms			各个topic的权限，支持多值，取topic=Topic权限标识
+        groupPerms			各个consumerGroup的权限，支持多值，取group=Topic权限标识
+      多值配置写法：
+        topicPerms:
+        - topicA=DENY
+        - topicB=ANY
+        - topicC=SUB
+      基于yml配置，按照yml的语法来就行了
+
+    权限控制主要全流程：
+        ACL主要流畅分为两部分，主要包括权限解析和权限校验：
+            权限解析：
+	Broker对客户端的请求命令进行解析，拿到需要鉴权的属性字段。主要由AccessKey和Signature(客户            端根据SecretKey前面得到的字符串，服务端再用SecretKey进行验证)
+            权限校验：
+	1、是否命中全局白名单
+	2、是否命中用户白名单
+	3、signature校验
+	4、用户的权限是否能满足请求所需要权限(特殊请求比如创建topic只能由admin操作)
+	注：如果某个权限没有显式配置，则采用默认的权限
+
+    RocketMQ的权限存储默认是基于yml配置文件。并且可以动态修改配置而无需重启Broker，也就是配置热加载
+
+    使用注意事项：如果开了主从，那么Broker Master节点的全局IP白名单就要加上从节点。如果开了高可用集群，出现宕机时会自动选主，那么集群内所有Broker节点的IP就要放在所有Broker节点的白名单内
+
+    如果更新权限时指定集群名称，则对改集群名称内的所有broker生效
+
+    具体ACL管理命令可以看https://github.com/apache/rocketmq/blob/master/docs/cn/acl/user_guide.md
 
 
 
@@ -389,7 +434,8 @@ commitLog：
 
     因此如果要把消息发送给不同的服务，那么就要创建不同的消费者组，不同的topic，如果不想消息消失，最好一个topic下只有一个tag
 
-
+测试：
+    同一种消费者组和提供者组在一个JVM中只能存在一个
 
 
 
