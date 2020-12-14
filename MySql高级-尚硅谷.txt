@@ -333,6 +333,7 @@ SQL执行加载顺序：
 
     11、ESISTS (subQuery)只会返回true或fasle，因此子查询里的查询列表是什么都无所谓，一般写个常量，MySQL官方也说了EXISTS (subQuery)的子查询字段清单会被忽略，它往往可以跟IN互相代替，in是关联匹配字段的条件写子查询外面，EXISTS是关联匹配字段的条件写子查询里面
 
+    12、如果要使用某张表做主表来关联，并且这张表用了WHERE来筛选，那么在WHERE列使用这张表的索引是能避免让主表进行ALL或者INDEX的，甚至能变成const，上面说的先FROM在WHERE应该是有问题的
 
 ORDER BY避免产生Using filesort：
 
@@ -491,6 +492,9 @@ MySQL锁机制：
 
       查询进程：
 	SHOW PROCESSLIST
+
+      查询正在锁定的事务进程：
+	SELECT * FROM information_schema.INNODB_TRX
 
       查询正在加锁的事务：
 	SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCKS
