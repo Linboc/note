@@ -1,0 +1,39 @@
+
+SpringCloud的版本选择：
+    SpringCloud和SpringBoot的版本选择：
+        SpringCloud的版本是从A开始，目前到H且.SRn为稳定版，n是数字
+        SpringBoot的版本是1.5.x开始，目前到2.4.1
+        目前为止，SpringCloud最新是H版SR9，推荐Boot版本是2.3.5.RELEASE，当前时间是2020-12-15
+        由于本教程使用的是H版本SR1，并且这个Cloud版本推荐的Boot版本是2.2.2，因此选用这个版本
+
+    SpringCloud与SpringBoot版本对应：
+        2020.0.x aka Ilford	2.4.x
+        Hoxton	2.2.x,2.3.x(Starting with SR5，从H版SR5开始用2.3.x)
+        Greenwich	2.1.x
+        Finchley	2.0.x
+        Edgware	1.5.x
+        Dalston	1.5.x
+
+        通过start.spring.io/actuator/info网址可以获取到一些组件的不同版本对应的Boot版本的JSON数据，包括SpringCloid    、Mybatis、SprngCloudAlibaba等等组件
+
+
+SpringCloud升级：
+
+        由于SpringCloud旧组件大量停止升级，也就是升级完全停止，小Bug不改，大Bug看着改，因此这些技术会有一些其它技术    来顶替，以防止出现重大Bug无人维护
+
+    技术升级：
+	注册中心：旧：Eureka，新：Zookeeper、Consul、Nacos
+	服务调用：旧：Ribbon、Feign，新：OpenFeign
+	服务降级与熔断：旧：Hystrix，新：SpringCloudAlibabaSentinel
+	服务网关：旧：Zuul，新：SpringCloudGateway
+	配置中心：旧：SpringCloudConfig，新：Nacos
+	服务总线：旧：SpringCloudBus，新：Nacos
+
+
+
+
+
+
+
+
+
