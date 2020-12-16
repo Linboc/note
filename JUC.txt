@@ -77,7 +77,7 @@ AtomicReference：
     AtomicInteger保证的是旧数字转为新数字的原子性，AmoticReference保证的是旧对象改为新对象的原子性
 
 thread.interrupted()：
-    线程中断，这仅仅会把打断标识位设置为true，而不会真的打断线程，还需要在程序中进行thread.isInterrupted()判断来做相应处理。如果线程正阻塞时被其它线程进行了中断，比如sleep、join、wait、join等，那么就会抛出InterruptedException异常，并且把interrupted重置为false。在synchronized获取锁时阻塞是不会被打断的
+    线程中断，这仅仅会把打断标识位设置为true，而不会真的打断线程，还需要在程序中进行thread.isInterrupted()判断来做相应处理。如果线程正阻塞时被其它线程进行了中断，比如sleep、join、wait、等，那么就会抛出InterruptedException异常，并且把interrupted重置为false。在synchronized获取锁时阻塞是不会被打断的
 
 thread.join：
     在当前线程中调用其它线程的join方法时，就会阻塞到调用join的线程执行结束才会继续执行

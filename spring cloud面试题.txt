@@ -1,0 +1,25 @@
+什么是微服务
+    微服务是一种架构模式，它提倡将单一的应用程序划分成一组小的服务，每个服务运行在自己独立的进程中
+
+SpringCloud和Dubbo的区别：
+    SpringCloud通信用的是http协议RESTFUL风格请求，Dubbo用的是RPC
+    SpringCloud对分布式架构有一站式的解决方案，Dubbo则没那么全面
+
+Ribbon负载均衡策略支持：
+    1、轮询
+    2、随机
+    3、最大可用，过滤掉故障服务器后选一个请求数最少的
+    4、根据响应时间做加权轮询
+
+Ribbon和Feign的区别：
+    1、Ribbon启动用的是@RibbonClient，Feign用的是@EnableFeignClients
+    2、Ribbon实在@RibbonClient注解上声明服务，Feign在接口上使用@FeignClient声明
+
+
+
+
+
+
+
+
+
