@@ -177,3 +177,8 @@ starter parent 2.2.4.RELEASE，换成2.1.5.RELEASE就正常了
 
 	找不到bean定义出现SkipFailbackWrapperException，这次碰到是因为dubbo提供者启动失败，又在web启动了消费者导致出现该异常
 
+SpringCloudEureka的集群如果一直在unavailable-replicas那一行，就要检查
+    1、eureka.instance.hostname的配置是否正确，hostname必须是能解析的域名，并且能访问，比如eureka1.com
+    2、eureka.client.register-with-eureka和eureka.client.fetch-registry是否为true
+    3、eureka.client.service-url.defaultZone是否配置正确，ip是否为正常的域名，而非localhost
+    4、是否配置了content-path，如果配置了就要在端口后面加上这个路径

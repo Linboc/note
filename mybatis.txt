@@ -13,7 +13,7 @@ String statement = "com.boc.mapper.sysTestMapper1.selectSysTestById";
 // 通过statement指定的sqlId，和参数执行sql
 List<SysTest> sysTests = sqlSession.<SysTest>selectList(statement, "80");
 
-ybatis-configuration.xml：
+mybatis-configuration.xml：
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN" "http://mybatis.org/dtd/mybatis-3-config.dtd">
 <configuration>
@@ -56,7 +56,7 @@ System.out.println(mapper.list());
 
 使用${}可以用sql注入，里面的sql语句会解析，${}里面的属性必须明确指定，比如map里面的key，如果传实体类，就
 可以直接使用属性，多个属性可以一直用.调用，如果传简单类型(int, double)，那么${}里面只能写value，使用${}
-还可以直接饮用属性文件中的值，mybatis的属性文件肯定能用，spring的不确定
+还可以直接引用属性文件中的值，mybatis的属性文件肯定能用，spring的不确定
 
 使用#{}不能sql注入，里面只能是参数，sql不会再解析，#{}里面的属性可以不明确，比如传入一个int，里面只要不是
 空的，写什么都行，如果传实体类，就可以直接使用属性，多个属性可以一直用.调用

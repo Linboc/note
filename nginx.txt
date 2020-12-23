@@ -1,4 +1,4 @@
-
+﻿
     nginx是俄罗斯人编写的轻量级HTTP服务器，发音为engine X，是一个高性能的HTTP和反向代理服务器，同时
 也是一个IMAP/POP3/SMT(各种邮件协议)P代理服务器。
 
@@ -265,7 +265,7 @@ nginx模块使用：
 					每个server代表一台要负载均衡的服务器
                 server localhost:8082;		默认轮询
                 server localhost:8083 weight=5;	weight是权重，权重越大访问几率越高
-	ip_hash;				使用ip_hash，每个客户端ip访问固定的服务器	
+		ip_hash;			使用ip_hash，每个客户端ip访问固定的服务器	
             }
         
 高可用：

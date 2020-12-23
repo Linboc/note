@@ -1,0 +1,63 @@
+aop：面向切面编程
+    在主业务流程外，需要做一些业务无关的事，如果直接硬编码在主业务流程中，就会造成代码侵入，且可能需要大量重复性的代码。面向对象编程是自上而下的，无法兼顾到这个，因此需要一个方式来对这些横切性的问题进行处理，也就是使用面向切面编程。它可以以切面的方式实现一些逻辑，在程序的横切面做一些处理，达到减少重复代码，不侵入主业务代码的作用
+
+使用：
+    1、添加aspectj依赖，spring默认不带，而是用自己的，只有aspectj才提供注解方式
+    2、@EnableAspectJAutoProxy注解启动AspectJ代理
+    3、@AspectJ+@Component让spring扫描加入ioc中
+    4、在切面方法上添加@After、@Brfore、@AfterReturning、@AfterThrowing、@Around等注解来写表达式在不同时机进行切面
+    5、步骤4也可以用@Pointcut注解来实现表达式复用
+
+动态代理类型：
+    Jdk动态代理：动态代理的目标必须是一个接口
+    Cglib动态代理：动态代理的目标可以是任何类型
+
+    Ppring进行AOP动态代理的时候，使用Jdk代理还是Cglib代理取决于被代理的对象是否接口，如果是接口则用Jdk自动代理，如果不是则用Cglib代理
+
+Spring怎么实现AOP的：
+    spring通过实现BeanPostProcess，在AbstractAutoProxyCreator类中的后置处理器postProcessAfterInitialization返回一个代理对象。这个Bean通过@EnableAspectJAutoProxy注解加入Ioc中，
+    然后一直跟入postProcessAfterInitialization函数，会发现有调用getAdvicesAndAdvisorsForBean(通过配置的切点表达式判断是否对该Bean进行动态代理)和createProxy(如果需要进行代理则正式开始创建代理)函数，然后一直跟入创建ProxyFactory的代码，会进入DefaultAopProxyFactory.createAopProxy，这个函数会判断是返回Jdk动态代理还是Cglib动态代理，创建后返回代理对象，至此该Bean被Aop代理完成
+
+Jdk动态代理是怎么实现的：
+    首先看看Jdk动态代理怎么使用：
+	Proxy.newProxyInstance(Object.class.getClassLoader(), new Class[]{Map.class}, (obj, method, args) -> {
+	    // obj：代理对象
+	    // method：执行方法
+	    // args：传入参数
+	    return null;
+	});
+    这种写法是Jdk动态代理Map接口，然后返回的proxy对象是Map接口的实现类，调用proxy的每个方法都会进入第三个参数的lambda表达式函数。
+
+它是怎么实现返回Map接口的实现类对象的：
+    1、跟进newProxyInstance方法可以看到调用getProxyClass0返回一个Class对象，然后一直往里跟会看到V value= supplier.get();然后return value
+    2、其实这个supplier.get()是java.lang.reflect.WeakCache.Factory类实现的，由它在进行get，这个Factory进行get最终会调用valueFactory.apply(key, parameter)
+    3、这里又会调到java.lang.reflect.Proxy.ProxyClassFactory类的apply方法。这个方法有一行代码：byte[] proxyClassFile = ProxyGenerator.generateProxyClass(proxyName, interfaces, accessFlags)
+    4、这里是通过字节码直接生成class文件加载到虚拟机后的byte数组，返回的是class的字节码，然后用类加载器把这个生成的类加入到方法区defineClass0(loader, proxyName, proxyClassFile, 0, proxyClassFile.length);
+    5、至此一个新创建的代理类就新鲜出炉了。然后在newProxyInstance方法里进行cons.newInstance(new Object[]{h});返回一个代理对象
+
+总结：
+    普通的class加载：class文件->加载到byte数组->类加载器加载成Class对象
+    动态代理class加载：生成byte数组->类加载器加载成Class对象
+
+代理对象的类命名规则是怎样的：
+    com.sun.proxy.$Proxy + number，这个number是ProxyClassFactory类的静态常量nextUniqueNumber，类型是AtomicLong，每创建一个代理对象都会+1，因此代理对象的名称都是com.sun.proxy.$Proxy123这种格式，由于前面com.sun.proxy是包名，因此类名是$Proxy123格式
+
+为什么Jdk动态代理只能代理接口：
+    通过如下代码来反向输出byte数组生成class文件：
+        byte[] listProxies = ProxyGenerator.generateProxyClass("ListProxy", new Class[]{List.class});
+        FileOutputStream os = new FileOutputStream("C:/Users/我什么都不知道/Desktop/ListProxy.class");
+    然后会发现类签名如下：public final class ListProxy extends Proxy implements List { }
+    由于Jdk动态代理默认继承了Proxy类，可是想要返回List接口的代理类又必须是它的子类或子接口，由于Jdk已经继承了一个类，并且Java不能多继承，因此只剩下实现接口一条路能走。所以Jdk动态代理只能代理接口
+    由此反推Cglib的继承位是空的，因此能对类进行动态代理
+
+动态代理是怎么执行到统一的方法的：
+    动态代理类实现了所有方法，并且方法里全部执行了super.h.invoke(this, m1, new Object[]{var1, var2...})，这个h就是前面生成代理对象传入的lambda表达式函数，因此全部方法调用都会传入统一的方法
+    其中上面的m1是代理类的静态代码块里为每个代理的函数加载的Method对象，代理了多少个方法就有几个m+数字对象，这个对象是为了在执行不同的方法时，把这个方法对应的Method对象传进去
+    注意Object类的方法只实现了toString、hashCode、equals，因此其它像wait、notify、join等方法还是调的Object的，因此不能代理，因为这些方法是final的，无法重写
+    
+
+
+
+
+
+spring怎么实现aop的，jdk动态代理是怎么实现的，为什么只能代理接口
