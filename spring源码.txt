@@ -1,4 +1,7 @@
-aop：面向切面编程
+Aop源码：
+
+
+Aop：面向切面编程
     在主业务流程外，需要做一些业务无关的事，如果直接硬编码在主业务流程中，就会造成代码侵入，且可能需要大量重复性的代码。面向对象编程是自上而下的，无法兼顾到这个，因此需要一个方式来对这些横切性的问题进行处理，也就是使用面向切面编程。它可以以切面的方式实现一些逻辑，在程序的横切面做一些处理，达到减少重复代码，不侵入主业务代码的作用
 
 使用：
@@ -14,7 +17,7 @@ aop：面向切面编程
 
     Ppring进行AOP动态代理的时候，使用Jdk代理还是Cglib代理取决于被代理的对象是否接口，如果是接口则用Jdk自动代理，如果不是则用Cglib代理
 
-Spring怎么实现AOP的：
+Spring怎么实现Aop的：
     spring通过实现BeanPostProcess，在AbstractAutoProxyCreator类中的后置处理器postProcessAfterInitialization返回一个代理对象。这个Bean通过@EnableAspectJAutoProxy注解加入Ioc中，
     然后一直跟入postProcessAfterInitialization函数，会发现有调用getAdvicesAndAdvisorsForBean(通过配置的切点表达式判断是否对该Bean进行动态代理)和createProxy(如果需要进行代理则正式开始创建代理)函数，然后一直跟入创建ProxyFactory的代码，会进入DefaultAopProxyFactory.createAopProxy，这个函数会判断是返回Jdk动态代理还是Cglib动态代理，创建后返回代理对象，至此该Bean被Aop代理完成
 
@@ -54,10 +57,23 @@ Jdk动态代理是怎么实现的：
     动态代理类实现了所有方法，并且方法里全部执行了super.h.invoke(this, m1, new Object[]{var1, var2...})，这个h就是前面生成代理对象传入的lambda表达式函数，因此全部方法调用都会传入统一的方法
     其中上面的m1是代理类的静态代码块里为每个代理的函数加载的Method对象，代理了多少个方法就有几个m+数字对象，这个对象是为了在执行不同的方法时，把这个方法对应的Method对象传进去
     注意Object类的方法只实现了toString、hashCode、equals，因此其它像wait、notify、join等方法还是调的Object的，因此不能代理，因为这些方法是final的，无法重写
+
+
+
+
+Ioc源码：
     
 
 
 
 
 
-spring怎么实现aop的，jdk动态代理是怎么实现的，为什么只能代理接口
+
+
+
+
+
+
+
+
+
