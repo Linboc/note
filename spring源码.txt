@@ -1,3 +1,5 @@
+Spring Aop：
+
 aop：面向切面编程
     在主业务流程外，需要做一些业务无关的事，如果直接硬编码在主业务流程中，就会造成代码侵入，且可能需要大量重复性的代码。面向对象编程是自上而下的，无法兼顾到这个，因此需要一个方式来对这些横切性的问题进行处理，也就是使用面向切面编程。它可以以切面的方式实现一些逻辑，在程序的横切面做一些处理，达到减少重复代码，不侵入主业务代码的作用
 
@@ -12,7 +14,7 @@ aop：面向切面编程
     Jdk动态代理：动态代理的目标必须是一个接口
     Cglib动态代理：动态代理的目标可以是任何类型
 
-    Ppring进行AOP动态代理的时候，使用Jdk代理还是Cglib代理取决于被代理的对象是否接口，如果是接口则用Jdk自动代理，如果不是则用Cglib代理
+    Spring进行AOP动态代理的时候，使用Jdk代理还是Cglib代理取决于被代理的对象是否接口，如果是接口则用Jdk自动代理，如果不是则用Cglib代理
 
 Spring怎么实现AOP的：
     spring通过实现BeanPostProcess，在AbstractAutoProxyCreator类中的后置处理器postProcessAfterInitialization返回一个代理对象。这个Bean通过@EnableAspectJAutoProxy注解加入Ioc中，
@@ -50,14 +52,20 @@ Jdk动态代理是怎么实现的：
     由于Jdk动态代理默认继承了Proxy类，可是想要返回List接口的代理类又必须是它的子类或子接口，由于Jdk已经继承了一个类，并且Java不能多继承，因此只剩下实现接口一条路能走。所以Jdk动态代理只能代理接口
     由此反推Cglib的继承位是空的，因此能对类进行动态代理
 
-动态代理是怎么执行到统一的方法的：
+动态代理是怎么执行到一个统一的处理方法的：
     动态代理类实现了所有方法，并且方法里全部执行了super.h.invoke(this, m1, new Object[]{var1, var2...})，这个h就是前面生成代理对象传入的lambda表达式函数，因此全部方法调用都会传入统一的方法
     其中上面的m1是代理类的静态代码块里为每个代理的函数加载的Method对象，代理了多少个方法就有几个m+数字对象，这个对象是为了在执行不同的方法时，把这个方法对应的Method对象传进去
     注意Object类的方法只实现了toString、hashCode、equals，因此其它像wait、notify、join等方法还是调的Object的，因此不能代理，因为这些方法是final的，无法重写
+
+
+Spring Mybatis：
+
     
+使用beanDefinitionRefistor注册beanDefinition，
 
 
 
 
 
-spring怎么实现aop的，jdk动态代理是怎么实现的，为什么只能代理接口
+
+
