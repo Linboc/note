@@ -1,5 +1,4 @@
 
-
 Spring Aop：面向切面编程
     在主业务流程外，需要做一些业务无关的事，如果直接硬编码在主业务流程中，就会造成代码侵入，且可能需要大量重复性的代码。面向对象编程是自上而下的，无法兼顾到这个，因此需要一个方式来对这些横切性的问题进行处理，也就是使用面向切面编程。它可以以切面的方式实现一些逻辑，在程序的横切面做一些处理，达到减少重复代码，不侵入主业务代码的作用
 
@@ -63,8 +62,51 @@ Spring Mybatis：
 使用beanDefinitionRefistor注册beanDefinition，
 
 
-Spring Ioc：控制反转/依赖注入容器
-    
+
+Spring Ioc：控制反转(iOC)/依赖注入(DI)
+    本来自己创建的对象通过容器来创建，因此也称为控制反转Ioc；容器在创建时注入这些bean的依赖项，因此也称为依赖注入DI
+
+Ioc创建Bean的时机：
+    在容器启动的时候创建非懒加载的Bean，如果发现A依赖B，就先创建B，然后保存到一个Map中
+
+Ioc的依赖注入：
+
+    依赖查找方式：
+	1、byType：通过setter方法的参数查找，只要类型匹配，方法名无所谓
+	2、byName：通过setter方法查找，并且严格规范setter方法名
+
+    依赖注入方式：
+	反射(@Autowired)
+	构造器
+	setter
+
+    Bean查找方式：
+	xml配置
+	@Component
+	@Service
+	@Controller
+	@ComponentScan
+	@Bean
+	@Configuration
+	@Import
+
+
+ApplicationContext：
+    Ioc容器的父类，下面有ClassPathXmlApplicationContext、AnnotationConfigApplicationContext、WebApplicationContext等容器实现，它内部包含了BeanFactory对象，因此有获取Bean的功能，而BeanFactory的默认实现是DefaultListableBeanFactory，这个BeanFactory实现了BeanDefinitionRegistry接口，而Bean定义注册器继承了AliasRegistry，因此ApplicationContext可以注册BeanDefinition和注册别名
+    ApplicationContext先创建，然后加载指定的配置，把BeanDefinition加载进来，然后刷新Ioc，如果创建ApplicationContext时不指定配置类或文件，就要手动调用它的refresh方法进行刷新，刷新会把Ioc里所有非懒加载非原型的Bean创建出来，刷新后BeanDefinition可以随时注册，后注册的Bean在getBean时，如果发现有BeanDefinition但是没有Bean，就会创建Bean
+
+BeanDefinitionRegistryPostProessor会把BeanDefinitionRegistry传进去，让实现类注册自己的BeanDefinition
+
+registerBeanPostProcessors：实例化BeanFactory里所有BeanPostProcessor的子类
+
+
+
+
+
+
+
+
+
 
 
 

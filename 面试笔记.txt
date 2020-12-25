@@ -129,13 +129,10 @@ SpringCloudConfig是与Eureka无关的，无需注册到Eureka，如果需要高可用就注册到eurek
     调用流程：nginx->zuul->服务提供者
 
 
-分库分表情况下的复杂查询：
-    使用ElasticSerach
-
 分库分表技术：
     客户端分库分表：ShardingJDBC，服务端代理分库分表：MyCat
 
-    分库分表下产生的join、分页、事务(seata)的问题
+分库分表下产生的join、分页、事务的问题
 
 雪花算法：
     分布式id生成算法，由64位bit二进制组成，第1位bit不用，代表整数，其后41位bit作为毫秒数，再后10位bit作为机器id，最后12位bit作为序列号
@@ -151,6 +148,145 @@ zookeeper选举：
 
 dubbo支持的协议：
     dubbo、rmi、hessian、http、http REST、web service、redis
+
+dubbo序列化：
+    dubbo默认序列化为hessian2，rmi默认为java序列化，http默认为json
+
+缓存更新：
+    更新数据库时更新缓存可用先改库后删缓存，因为如果先改库再改缓存会导致改库之后数据又被改了，这时候改缓存就是脏数据了
+。
+    如果是有主从数据库，应该改了之后先延迟，等从库读到了再删，因为改了之后马上删缓存，这时候其他请求读缓存读不到去更新，由于读的从库，可能是旧数据
+
+类的加载过程：
+    加载-连接(验证-准备-解析)-初始化-使用-卸载
+
+怎么判断链表是否有回环：
+    判断链表回环，两个指针，一个每次走一步，一个每次走两步，如果两步的走到null就是没回环，如果两步的等于一步的就是有回环，因为如果有回环，两步的始终会追上一步的
+
+死锁产生的四个条件：
+    
+1、互斥条件：一个资源每次只能被一个线程/进程使用
+    
+2、请求与保持条件：一个线程/进程因请求资源而阻塞时，对已获得的资源保持锁定
+
+    3、不剥夺条件：已获得的资源，未使用完之前不能强行剥夺
+    
+4、循环等待条件：若干线程/进程之间形成一种头尾详解的循环等待资源关系
+
+dubbo服务挂了zk怎么知道并剔除服务的：
+    dubbo注册的是临时节点，一旦客户端不活跃，该节点就会被移除
+
+保证线程的顺序执行：
+    
+1、对线程对象使用join，这样当前线程就会等join的线程执行完才会执行
+
+    2、使用线程池，核心池容量和最大容量都设置为1，这样每次就只会执行一个线程，并且阻塞队列还能保住顺序
+
+ThreadLocal实现原理：
+    它是由每个线程都有的一个ThreadLocal.ThreadLocalMap对象来存储的，这个ThreadLocalMap存储了一个动态的Entry数组，每个Entry都存储了一个key(ThreadLocal)，value(threadLocalValue)，ThreadLocalMap在第一次使用ThreadLocal.set创建，所以一个线程有一个ThreadLocalMap，每个Map保存多个Entry，每个Entry包含ThreadLocal和value，Entry继承了WeakReference，是弱引用，在发生gc时就会被回收
+
+RocketMQ怎么保证全局消息顺序：
+    Rocketmq消息要保证全局顺序就只能使用一个消费者一个提供者一个Topic一个队列，Topic默认队列数是16。如果只要保证部分顺序，可以指定sharding key进行分区，每个分区内的消息都能保证顺序
+
+hash和btree索引的使用场景：
+    我回答是hash适用数据量少，BTree适用于数据量多，因为hash如果数据量多起来，产生大量hash碰撞肯定影响性能
+
+histrix的线程池模型：
+    histrix维护了很多线程池来调用不同服务，具体实现我也不知道
+
+怎么实现每秒接口只处理10个请求：
+   一个队列保存每个执行任务的时间戳，来了新的任务就先清理队列里超过1秒的元素，然后判断队列是否小于10，如果是就执行，不然就返回，这个队列如果用的是redis的zset就是一种简单的服务器访问限流方式
+
+ioc中bean初始化流程：
+    根据Ioc、Aop原理回答，大概就是创建ApplicationContext，创建BeanFactory，加载BeanDefinition，创建Bean，如果有依赖的Bean就先创建依赖的Bean，然后各种后置处理器(Aop就是在这里实现的)，初始化方法，再到各种Aware，比如ApplicationAware
+
+缓存的使用场景：
+    我说了全国地址信息，客户商品信息，字典
+
+线程池的限制：
+    核心池数、最大工作线程数和阻塞队列上限
+
+数据库1亿数据同步到缓存，同步期间一直有数据插入，5台8g内存机器，怎么处理：
+    先用canal进行mysql的主从复制，保证了新数据的同步，再用增量迁移给每个机器分配五分之一的旧数据进行迁移
+
+线上的数据库有个字段类型需要修改，怎么保证服务可用的情况下进行字段修改：
+    建一个需要类型的库，用canal进行主从，把数据转移到从库，然后将从库改为主库，面试官好像想听到另外的思路
+
+线程池的几种创建方式：
+    我说了ThreadPoolService和Excutors，并说了Excutors不推荐使用的原因
+
+double为什么会出现精度丢失？bigdecimal怎么保证的数据计算精度？bigdecimal真的能绝对保证精度不丢失吗？
+    不了解
+
+JVM连环追问：
+    Java内存模型是怎样的？哪些区域是线程共享的？堆分哪些区？新生代分哪些区？为什么这么分？新生代用哪些垃圾收集算法？老年代呢？你知道哪些垃圾收集器(到这里我就不会了)？
+
+秒杀场景怎么优化：
+    我也不了解，说了缓存跟加机器做负载均衡，面试官看起来不太满意
+
+xss攻击：
+    我也不了解
+
+HashMap,HashTable,ConcurrentHashMap之间的区别,他们之间1.7跟1.8有哪些不同：
+    HashMap是线程不安全，HashTable是线程安全，ConcurrentHashMap是并发且线程安全
+    1.7下的HashMap是数组+链表，ConcurrentHashMap是分段锁
+    1.8下的HashMap是数组+链表红黑树，ConcurrentHashMap是CAS
+
+JDK1.8下HashMap红黑树排序问题：
+    HashMapJDK1.8的实现是数组+链表+红黑树，红黑树是有序的，如果key没有实现比较器，那红黑树结构下的hash碰撞怎么排序：将key传入System.identityHashCode返回的HashCode的结果进行排序
+
+JDK1.8下的ConcurrentHashMap怎么保证cas的原子性：
+    我也不知道
+
+HashMap出现hash冲突是用头插法吗，1.7个1.8有什么不同，头插法会出什么问题吗：
+    1.7是头插法，1.8我不清楚，头插法出现什么问题也不清楚
+
+HashMap具体是怎么进行扩容的：
+    第一次会扩到比当前容量大的最小2的次方(比如初始容量是13，扩容后就是16)，之后每次put数据量到了总容量*负载因子之后每次容量*2。每次扩容后会创建一个新的数组，旧的数组里每个值都要重新计算hash，然后放入新数组里
+
+ArrayList跟LinkendList的区别：
+    其实就是数组跟列表的区别，分析一下各自的优劣势就行了
+
+Ioc中Bean的初始化时机：
+    容器刷新时跟第一次get对应Bean时
+
+你们分布式事务怎么解决的：
+    答seata，之后必问seata实现机制
+
+mvc执行流程：
+    映射得到handle、handle适配器执行handle得到ModleAndView，视图解析器解析得到View，视图渲染器渲染View
+
+怎么实现用户停留在一个页面10s积分＋1：
+    我也不知道怎么防止客户端获取用户token后进行恶意操作怎么处理
+
+最常用的设计模式：
+    我说了观察者，并说了使用场景，常用的模式肯定都要懂
+
+什么场景下使用wait的：
+    我说了不再需要对资源加锁，wait会释放锁
+
+BeanFactory跟FactoryBean：
+    BeanFactory负责创建管理Bean，FactoryBean是一个接口，是一类特殊的bean
+
+总结：
+    Ioc、Aop、MVC、Spring Boot原理问的挺多
+    缓存相关问题，各种场景解决方案问的挺频繁
+    注册中心机制，比如zk的选举，eureka的续租
+    Dubbo的各种协议、序列化
+    HashMap(1.7、1.8)、HashTable、ConcurrentHashMap(1.7、1.8)、ArrayList、LinkedList之间的原理和差异问的挺频繁
+    设计模式问的也很频繁
+    MQ使用场景也经常问
+
+
+
+
+
+
+
+
+
+
+
 
 
 
