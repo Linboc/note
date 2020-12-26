@@ -283,14 +283,16 @@ bean的创建时机：
 
 频繁出现的问题总结：
     Ioc、Aop、MVC、Boot原理
+    常用设计模式
     缓存的使用场景，穿透、击穿、雪崩、布隆过滤器都要知道
     注册中心机制，比如zk的选举，eureka的续租
     Dubbo的各种协议、序列化，这个背一下就行了，不会深问
-    HashMap(1.7、1.8)、HashTable、ConcurrentHashMap(1.7、1.8)、ArrayList、LinkedList之间的原理和差异，优劣势
-    设计模式，非外包公司必问
+    HashMap(1.7、1.8)、HashTable、ConcurrentHashMap(1.7、1.8)、同系列Set、ArrayList、LinkedList之间的原理和差异(Set系列很多都是在内部new了一个同种类的型Map来用，比如HashSet内部new了一个HashMap)
     MQ使用场景也经常问，不过一般只问使用场景，最难的也就问了怎么保证消息顺序
-    还有各种场景题，非外包公司必问
+    各种场景题
+    
 
+    
 
 
 
