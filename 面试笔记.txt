@@ -266,7 +266,7 @@ mvc执行流程：
     我说了不再需要对资源加锁，wait会释放锁
 
 BeanFactory跟FactoryBean：
-    BeanFactory负责创建管理Bean，FactoryBean是一个接口，是一类特殊的bean
+    BeanFactory负责创建管理Bean，FactoryBean是一个接口，是对Bean的封装，是一类特殊的bean
 
 用户下单后订单需要3天后不支付自动取消，怎么实现：
     mq发延迟消息，延迟3天后如果订单状态还是未支付就取消
@@ -284,15 +284,15 @@ bean的创建时机：
     容器刷新时会创建当时所有注册了BeanDefinition且非懒加载非原型的bean，创建一个bean时会先创建它所依赖的所有bean，剩余的懒加载、原型bean跟容器刷新后才注册BeanDefinition的bean会在第一次get时创建。
     如果new了一个容器，并且构造器制定了配置(配置文件或者配置类)，容器就会在new时刷新，否则就要手动调用容器的refresh方法进行手动刷新，如果不刷新直接尝试getBean就会抛出容器未刷新异常
 
-总结：
-    Ioc、Aop、MVC、Boot原理问的挺多
-    缓存的使用场景，穿透、击穿、雪崩、布隆过滤器
+频繁出现的问题总结：
+    Ioc、Aop、MVC、Boot原理
+    缓存的使用场景，穿透、击穿、雪崩、布隆过滤器都要知道
     注册中心机制，比如zk的选举，eureka的续租
-    Dubbo的各种协议、序列化
-    HashMap(1.7、1.8)、HashTable、ConcurrentHashMap(1.7、1.8)、ArrayList、LinkedList之间的原理和差异问的挺频繁
-    设计模式问的也很频繁
-    MQ使用场景也经常问，不过一般只问使用场景
-    还有各种场景下各种问题的解决方案，非外包公司必问
+    Dubbo的各种协议、序列化，这个背一下就行了，不会深问
+    HashMap(1.7、1.8)、HashTable、ConcurrentHashMap(1.7、1.8)、ArrayList、LinkedList之间的原理和差异，优劣势
+    设计模式，非外包公司必问
+    MQ使用场景也经常问，不过一般只问使用场景，最难的也就问了怎么保证消息顺序
+    还有各种场景题，非外包公司必问
 
 
 
