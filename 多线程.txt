@@ -1,0 +1,57 @@
+线程状态(6种)：
+    NEW：新创建的，还未start
+    RUNNABLE：运行中的
+    BLOCKED：等待锁阻塞
+    WAITING：无超时的阻塞
+    TIMED_WAITING：有超时的阻塞
+    TERMINATED：已结束
+
+lock和synchronized的区别：
+    一个是关键字，一个是类
+    一个会自动释放(异常上抛或执行完成自动释放)，一个要手动释放(调unlock)
+    一个获取锁会一直等待，一个等待过程可以打断(调interrupt)
+    一个无法判断锁状态，一个可以(调trylock)
+    一个无法读写分离，一个可以(用ReadWriteLock)
+    一个少量同步，一个是大量同步(大量线程竞争性能更高)
+    一个用Object的wait、notify、notifyAll调度，一个用Condition的await、signal、signalAll进行调度
+    lock使用场景：
+        1、等待锁时需要中断
+        2、需要wait、notify指定到某一线程
+        3、每个线程排队等候，机制公平
+
+Thread.join：
+    该方法是Thread类的非静态方法，让当前线程阻塞到调用join的线程结束之后才执行，如果目标线程还未start，就不会进行阻塞
+
+Unsafe：
+    进行一些cpu级别的原子性操作，比如AmoticInteger里就使用了Unsafe对象，这个类是单例的，在静态代码块就会创建，它的compareAndSwapInt方法就是原子性方法
+
+wait和sleep的区别：
+    wait会释放锁，sleep不会
+
+原子操作：
+    让一个事务(代码块)不间断的全部执行或者全部不执行
+    java里关键就是不间断，因为i++有三个步骤，取出i，i+1，给i赋值，多线程会导致中间操作中断，因此需要保证操作期间不能被其他线程干涉，因此加锁就行了，比如synchronized
+
+volatile：
+    保证变量的内存可见性和禁止指令重排，synchronized在它的基础上还能保证原子性，该关键字在被多线程修改时，需要保证每个线程都使用主内存里的变量时使用
+
+线程打断：
+    interrupt：线程的实例方法，可以打断lock、sleep，用户自己也可以进行判断是否被打断来进行处理
+    isInterrupted：线程的实例方法，判断当前线程是否已被打断
+    interrupted：线程的静态方法，判断当前线程是否已被打断，如果已打断则重置状态为未打断
+
+线程停止：
+    stop：线程的实例方法，强行终止线程，并且释放锁，由于线程可能在执行一些关键步骤，需要保证原子性，强行中断会导致原子性被破坏，因此已弃用，不推荐使用
+
+线程暂停：
+    suspend：线程的实例方法，暂停线程，不会释放锁
+
+线程恢复：
+    resume：线程的实例方法，恢复线程
+
+
+
+
+
+
+

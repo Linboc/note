@@ -88,7 +88,7 @@ CountDownLatch(倒计数锁)：
     倒计数锁，构造器需要传一个总计数，线程安全。主要使用两个函数，countDown：计数减一，await：在哪个线程使用就把当前线程阻塞到计数为零。一但countDown把计数减到0，就会把所有线程从执行await的地方唤醒
 
 CyclicBarrier(计数锁)：
-    计数锁，构造器需要传一个计数和一个Runable对象(可选，用来在计数满足时执行)，使用了ReentrantLock保证了计数时的线程安全。函数如下：
+    计数锁，构造器需要传一个计数和一个Runable对象(可选，用来在计数满足时执行)，计数到设定的数时唤醒所有被它阻塞的线程，然后重新从0 计数，使用了ReentrantLock保证了计数时的线程安全。函数如下：
 	getParties()：获得总计数
 	getNumberWaiting()：获得当前计数
 	isBroken()：是否计数完成
