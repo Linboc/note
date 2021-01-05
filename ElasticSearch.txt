@@ -1,3 +1,106 @@
 
-ElasticSearch的结构：
-    索引 -> 类型 -> 文档 -> 字段
+elasticsearch：
+    它是一个开源的搜索引擎，建立在Apache Lucene的基础之上，但Lucene仅仅是一个Java编写的库，并且原理非常复杂。Elasticsearch通过封装隐藏Lucene的复杂性，提供一套简单的RESTful API来使用
+
+它是：
+    一个分布式的实时文档存储，每个字段都可以被索引和搜索
+    一个分布式实时分析搜索引擎
+    能胜任上百个服务器节点的扩展，并支持PB级别的结构化或者非结构化的数据
+
+优缺点：
+    优点：
+        集群扩展方便，支持大数量，查询性能高
+    缺点：
+        结构简单，分页性能差，不支持复杂查询(联表)
+
+启动：
+    直接在bin目录下启动elasticsearch.bat(windows)或者elasticsearch(linux)就可以了
+    启动完成之后可以访问localhost:9200来获取elasticsearch的相关信息
+    默认访问地址是9200，访问地址是用来给客户端调用的；默认通信地址是9300，通信地址是用来与集群中的其它es或者插件进行通信用的
+
+配置：
+    可以在config/elasticsearch.yml文件里修改配置
+
+ELK：
+    Elasticsearch(全文搜索服务器) + Logstash(数据收集、解析、转换，也就是拿到数据->进行过滤->输出数据) + kibana(基于es的数据可视化)。ELK就是通过三者进行整合，进行日志收集、解析、可视化的分布式日志分析系统
+
+Elastic Stack：
+    Elastic Stack是在ELK的基础上加入了Beats，Beats是数据采集器，能从成千上万台机器上向Logstash或Elasticsearch发送数据。因此形成了：数据采集(Beats) -> 数据分析(Logstash) -> 数据存储(elasticsearch) -> 数据可视化(Kibana)
+
+面向文档：
+    ElasticSearch是存储整个对象或文档的，而不是像关系型数据库一样把数据分成行列。ElasticSearch不仅存储文档，还索引每个文档的内容。在ElasticSearch中针对文档进行索引、检索、排序和过滤，而非行列数据，这也是ElasticSearch能支持复杂全文索引的原因
+
+数据格式：
+    ElasticSearch使用JSON作为文档的序列化格式，因为几乎所有语言都支持对JSON的处理
+
+es和solr的比较：
+		es				solr
+底层      	              lucene			                lucene
+访问方式	              RESTful			                web service
+数据格式	              JSON			                多格式(JSON/XML/CSV)
+性能	              查询速度，建索引加数据快	                查询快，建索引加数据慢
+分布式管理             自带分布式协调管理		                zookeeper
+功能	              第三方插件提供		                solr官方很多自带
+社区	              维护者较少			                有更多的用户，开发和贡献者社区
+综上所述，如果数据和索引是不断增加的，es会更合适，如果数据变动较少，solr更合适
+
+索引：
+    索引(名词)：类似于关系型数据库的一个数据库，是一个存储关系型文档的地方
+    索引(动词)：索引一个文档就是存储一个文档到索引中以便被检索和查询
+
+倒排索引：
+    为文档的每个属性创建索引，跟关系型数据库的索引类似，根据索引找到对应的数据。每个被索引的属性可以进行分词分成多个索引，每个索引可以指向多个文档
+    默认情况下一个文档的所有属性都会建立倒排索引，一个没有倒排索引的属性是不能被搜索到的
+
+保证es和数据库的一致性：
+    1、直接在主业务中同时写入es
+        优点：方便简洁，数据更新实时性高
+        缺点：侵入代码，跟业务耦合度高，如果es出问题将导致原业务受到影响
+    2、通过监听binlog将数据同步到es
+        优点：不侵入代码，跟业务耦合度低
+        缺点：数据是异步添加，只能保证最终一致性。并且引入了binlog监听和同步服务，增加了开发量和    维护成本    ，如果binlog更新过快可能会处理不过来，还要兼顾插入es失败情况下的处理
+    3、在监听binlog后把数据放到mq
+        优点：不侵入代码，跟业务耦合低，能进行削峰，可以利用mq特性保证顺序
+        缺点：额外维护mq服务跟消费者，无法保证mq消息什么时候被处理
+
+管理ui：
+    可以下载elasticsearch-head的浏览器插件，只要几百k，如果下载elasticsearch-head项目，还要另外起一个前端项目
+
+kibana中文支持：
+    在kibana.yml里添加：i18n.locale: "zh-CN"
+    国际化支持的中文数据源在x-pack\plugins\translations\translations\zh-CN.json里面
+
+解决es跨域：
+    在elasticsearch.yml中添加：
+        http.cors.enable: true
+        http.cors.allow-orgin: "*"
+
+ik分词器：
+    使用：
+        1、到github将elasticsearch-analysis-ik的zip包下到本地
+        2、在es的plugins目录下，新建一个名为ik的目录，将zip包解压到ik
+        3、重启es
+        4、发送请求获得分词结果：
+            POST localhost:9200/_analyze
+            body：{ "analyzer": "ik_max_word", "text" : "你算什么东西"}
+        5、将会返回一个属性名为tokens的分词列表
+    analyzer类型：
+        ik_smart：最少切分，会分成：你、算什么、东西
+        ik_max_word：最细粒度切分，会分成：你、算什么、什么东西、什么、东西
+
+Elasticsearch相关概念：
+
+类型：
+    官方解释是类似于表，对同一索引下的文档进行逻辑分隔。但视频的解释是：elasticsearch会对新增的字段进行类型匹配，可能它匹配的也不对，最安全的方式就是自己进行设置，就像关系型数据库一样指定文档中的每个属性的类型，但这不是必须的。
+
+文档：
+    一个JSON对象，文档本身没有规定字段与格式，不需要像关系型数据库那样先定义字段才能写入数据
+
+属性：
+    每个文档都有多个属性，建立倒排索引就是针对属性进行建立，然后索引映射到文档id找到对应文档
+
+
+
+
+
+
