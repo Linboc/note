@@ -51,6 +51,7 @@ es和solr的比较：
 倒排索引：
     为文档的每个属性创建索引，跟关系型数据库的索引类似，根据索引找到对应的数据。每个被索引的属性可以进行分词分成多个索引，每个索引可以指向多个文档
     默认情况下一个文档的所有属性都会建立倒排索引，一个没有倒排索引的属性是不能被搜索到的
+    倒排索引会保存每一个词项出现过的文档总数，每个文档中词项出现的次数，词项在文档中的顺序，每个文档的长度，所有文档的平均长度等等
 
 保证es和数据库的一致性：
     1、直接在主业务中同时写入es
@@ -58,7 +59,7 @@ es和solr的比较：
         缺点：侵入代码，跟业务耦合度高，如果es出问题将导致原业务受到影响
     2、通过监听binlog将数据同步到es
         优点：不侵入代码，跟业务耦合度低
-        缺点：数据是异步添加，只能保证最终一致性。并且引入了binlog监听和同步服务，增加了开发量和    维护成本    ，如果binlog更新过快可能会处理不过来，还要兼顾插入es失败情况下的处理
+        缺点：数据是异步添加，只能保证最终一致性。并且引入了binlog监听和同步服务，增加了开发量和维护成本     ，如果binlog更新过快可能会处理不过来，还要兼顾插入es失败情况下的处理
     3、在监听binlog后把数据放到mq
         优点：不侵入代码，跟业务耦合低，能进行削峰，可以利用mq特性保证顺序
         缺点：额外维护mq服务跟消费者，无法保证mq消息什么时候被处理
@@ -290,12 +291,27 @@ reindex：
         数组内嵌对象会导致对象的关联性丢失，比如users数组内有两个对象，小红26岁，小黄23岁，搜索users.na m =小红且users.age=23，能把整个文档查出来，因为这个文档内同时存在小红跟23，但是希望匹配的值是数组内的其中一个对象name为小红并且age为26岁，而不是所有的值聚合起来一起匹配
         此时可以把users的类型设置为nested，也就是嵌套类型。如果类型为nested，每一个嵌套对象都会被索引成一个独立的文档，比如数组对象里的每个对象都会成为一个独立文档，这个嵌套对象的文档是跟整个文档绑定的，并且是隐藏存储的，并不会被查出来。如果要进行增删改，就要对整个文档进行重新索引，如果要查，只能查整个文档，而不能只查嵌套文档，被查询到符合条件的嵌套文档返回的是整个文档，而不是嵌套文档
 
-    文档相关性：
-        文档的相关性通过_score字段来表示，值越大代表相关性越高，值的统计和以下条件有关：
-            1、检索的值在字段中出现的频率，出现频率越高相关性越高
-            2、每个检索值在字段中的出现的频率，可能一次性会检索多个值，出现频率越高相关性越高
-            3、字段内容长度越短相关性越高
-        并不是只有统计_score才会有相关性，单纯的true or false查询也会有，在多条件子句的情况下，匹配的子句    越多相关性评分越高
+文档相关性：
+    文档的相关性通过_score字段来表示，值越大代表相关性越高，值的统计和以下条件有关：
+        1、检索的值在字段中出现的频率，出现频率越高相关性越高
+        2、每个检索值在字段中的出现的频率，可能一次性会检索多个值，出现频率越高相关性越高
+        3、字段内容长度越短相关性越高
+    并不是只有统计_score才会有相关性，单纯的true or false查询也会有，在多条件子句的情况下，匹配的子句越多相关性评分越高
+
+doc values：
+    在es中doc values是一种列式存储结构，也就是将某一列的值单独存储起来，并进行排序然后序列化到磁盘。默认情况下每个字段的doc values都是激活的。当字段被索引时，es会同时存储该字段的doc values。
+    在以下场景下doc values将会被使用：
+        1、对某一个字段进行排序
+        2、对某一个字段进行聚合
+        3、某些过滤，比如地理位置过滤
+        4、某些与字段相关的脚本计算
+    可以理解为doc_values就是为文档的每个列进行额外的单独存储并排序，这个列可以是多值(数组)也可以是单值。doc values默认对所有的字段使用，除了带分析器的字符串字段，因为这种字段会产生很多token(词项)。如果使用字符串，那么es会将字符串转为数字再排序存储
+    禁用doc values：
+        假如想禁用doc values来节省磁盘空间，可以在字段的mappings中设置doc_values为false。字段在禁用doc _ values后将不能被用于聚合、排序和脚本操作，就像字段不索引就无法被搜索到一样
+    
+Fielddata：
+    Fielddata是用来针对带分析器的字符串的。功能与doc_values类似，因为带分析器的字符串会产生大量token，会很耗内存，因此Fielddata是懒加载的，只有在使用到某个字段进行聚合或排序时才会将该字段所有相关的Fielddata加载到内存。
+    由于Fielddata很吃内存，有可能会造成堆溢出，因此有一系列针对Fielddata的配置防止发生堆溢出
 
 轻量查询：
 
@@ -654,12 +670,212 @@ _source为upsert的内容
     只有在age完全相同的情况下才会对相同的age进行_score排序
     如果age里有多个值，比如age是个数组，那么可以在sort的age里加mode属性，可以填min、max、avg、sum，通过这种方式把多个值聚合为一个值后再排序
 
+    GET /index1/_search?scroll=1m：游标查询
+    {
+        "query" : {"match_all" : {}},
+        "sort" : ["_doc"],
+        "size" : 1000
+    }
+    在index1进行游标查询，除了数据之外还会返回一个scroll_id，可以用这个id去查询游标的下一批数据
+    游标查询会存储某个时间点的数据快照。并且由于es会记录游标的查询信息，游标的过期时间能让es自动释放这部分资源，过期时间会在游标每次查询时刷新。_doc排序是让es从还有结果的分片返回下一批结果，不考虑额外的顺序，因此是最有效的排序
 
+    GET /_search/scroll：通过scroll_id查询下一批游标的数据
+    {
+      "scroll" : "1m",
+      "scroll_id" : "DXF1ZXJ5QW5kRmV0Y2gBAAAAAAAAAeIWeUV2akN4bThTUks5bUtmTTFkd2FQZw=="
+    }
+    同一批次游标查询scroll_id不会变，游标的过期时间每次都可以重新设置，判断游标是否结束可以判断hits数组是否为空
+    
+    GET /boc/_search：精确查询
+    {
+        "query": {
+            "term": {
+                "name": "红"
+            }
+        }
+    }
+    term可以用来查询数字、布尔值、日期，这几种都能进行精确匹配，不过这种方式只适合简单查询，如果要进行多条件复合查询就要用bool了
+    不过对于文本有点特殊，因为文本进行索引的不是精确值，而是解析后的索引值，而通过term进行查询的值不会被解析器解析，因此查询文本会查不到，除非查解析后的索引值，因此如果文本要进行精确查询，可以将该字段设置成not_analyzed
+    不需要评分记得用constant_score+filter，因为es将免于计算评分，并对查询进行有条件的缓存，filter的与或非使用and、or、not，而不是must、should、must_not
 
+    GET /boc/_search：精确查询多个值
+    {
+        "query" : {
+            "terms" : {
+                "tags" : ["汽", "武"]
+            }
+        }    
+    }
+    它跟term差不多，不过它能一次指定多个值，多个值之间的关系是or，文档只要能匹配任意一个值都将被返回
 
+    GET /boc/_search：嵌套bool查询，bool就是布尔查询，里面的每个子查询都可以当成返回bool值的结果
+    {
+        "query": {
+            "bool": {
+                "must": [
+                    {
+                        "bool": {
+                            "should": [
+                                {
+                                    "term": {
+                                        "tags": "汽"
+                                    }
+                                }, {
+                                    "term": {
+                                        "tags": "武"
+                                    }
+                                }
+                            ],
+                            "must_not": [
+                                {
+                                    "term": {
+                                        "desc": "大佬"
+                                    }
+                                }
+                            ]
+                        }
+                    }, {
+                        "constant_score": {
+                            "filter": {
+                                "range": {
+                                    "age": {
+                                        "lt" : 1000
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    以上可以理解为：age < 1000 and ((tags = 汽 or tags = 武) and desc != 大佬)
+    bool：布尔查询、must：与、must_not：非、should：或，其中bool节点下must和should只能同时存在一个     bool里能嵌套与或非，与或非里能嵌套bool
+    如果想做到(a and b) or c可以should里写c，再嵌套一个bool，bool里写must，must写a、b
+    加constant_score是因为非倒排索引的值计算_score无任何意义
 
+    GET /boc/_search：范围查询
+    {
+        "query": {
+            "range": {
+                "timestamp": {
+                    "gt": "2014-01-01 00:00:00||+1M",
+                    "lt": "now-1h"
+                }
+            }
+        }
+    }
+    时间戳大于2014-01-01 00:00:00加一个月，并小于当前时间-1小时，||是一个表达式符号，代表后面是表达式
+    gt：大于、lt：小于，后面加e就是大于等于或小于等于，至于纯等于用term就行
+    字符串也允许用range过滤，大小排序按字典排序，不过词项越多性能越差
 
+索引管理：
 
+    DELETE /index1：删除索引index1
+
+    DELETE /index1,index2：删除索引index1和index2
+
+    DELETE /index*：删除以index开头的索引
+
+    DELETE /_all：删除所有索引
+
+    DELETE /*：删除所有索引
+
+    禁止使用通配符或者_all来删除索引：action.destructive_requires_name: true
+
+    PUT /my_index：创建索引并配置相关参数
+    {
+        "mappings" : {}				字段的类型映射
+        "aliases" : []					别名数组
+        "settings" : {
+            "number_of_shards" : 1,			主分片数量，默认5，不可变
+            "number_of_replicas" : 0,			副分片数量，默认1，可变
+            "analysis" : {				分析器配置
+                "char_filter" : {				自定义字符过滤器
+                    "&_to_and" : {				定义一个叫&_to_and的字符过滤器
+                        "type" : "mapping",			类型为映射
+                        "mappings" : [ "&=> and" ] 		将&转为and
+                    } 
+                },
+                "tokenizer" : {},				自定义分词器，非全局，只能在本索引使用
+                "filter" : {					自定义token过滤器，非全局，只能在本索引使用
+                    "my_stopwords"	: {			定义一个叫my_stopwords的过滤器
+                        "type" : "stop",			类型为停词器
+                        "stopwords" : ["the", "a"]		删除词条里的the和a
+                    }
+                },
+                "analyzer" : {				自定义分析器，非全局，只能在本索引使用
+                    "es_std" : {				创建一个名称为es_std的分析器
+                        "type" : "standard",			es_std分析器为标准类型
+                        "stopwords" : "_spanish_"		使用西班牙停词器
+                    },
+                    "my_analyzer" : {				定义一个叫my_analyzer的分析器
+                        "type" : "custom"			类型为自定义
+                        "char_filter" : ["html_strip", "&_to_and"]	使用html和自定义的字符过滤器，可以有多个
+                        "tokenizer" : "standard"			分词器使用标准的，分词器只能有一个
+                        "filter" : ["lowercase", "my_stopwords"]	使用转小写和自定义的token过滤器，可以有多个
+                    }
+                }
+            }
+        }
+    }
+
+    PUT /my_index/_settings：修改已存在索引的配置
+    {
+        "number_of_replicas" : 0			副分片数量，默认1，可变
+    }
+
+    "_all" : {"enable" : false}：直接将索引中所有的_all字段禁用
+    "include_in_all" : false：将文档的某字段在_all里排除，并且父对象的配置会改变子对象的默认值
+    "_all": { "analyzer": "whitespace" }：配置_all字段的分析器
+
+    PUT /my_index_v1/_alias/my_index：为my_index_v1增加别名my_index
+    将my_index作为my_index_v1的别名
+    假如需要修改索引的结构，又不希望停机，此时可以将别名指向索引1，系统则调用别名，将修改后的索引命名为索引2，然后将索引1的数据reindex到索引2中，此时只要将索引1的别名删除并添加索引2的别名就能进行不停机更新了
+
+    GET /*/_alias/my_index：查询my_index指向哪些索引
+    查询哪些索引将my_index作为别名
+
+    GET /my_index_v1/alias/*：查询my_index_v1索引有哪些别名
+    查询my_index_v1的所有别名
+
+    POST /_aliases：原子性的批量增删别名
+    {
+        "actions" : [
+            {
+                {"remove" : {"index" : "myindex_v1", "alias" : "my_index"}},
+                {"add" : {"index" : "myindex_v2", "alias" : "my_index"}},
+            }
+        ]
+    }
+    先删除my_index_v1的my_index别名，再添加my_index_v2的my_index别名，这个操作是原子性的
+
+    POST /_refresh：手动刷新所有索引
+    es新添加文档的索引不是马上生效的，而是会先写入内存缓存并周期性地写入段中，提交点文件记录着所有的段，默认情况下时每个分片每秒写入一次，每次都会产生一个新的段。每次写内存缓存时会同时写到translog(事务日志)中。写入事务日志是同步的，也就是说如果有多个节点有主副分片 ，那么要所有分片都写入事务日志才会返回写入成功
+
+    PUT /index1/_settings：异步写入事务日志
+    {
+        "index.translog.durability": "async",	设置为异步写入translog
+        "index.translog.sync_interval": "5s"	写入时间为每5s一次
+    }
+    修改index1索引的translog写入方式，async为异步，默认是request。如果为异步的话就5s写入一次
+
+    POST /index1/_refresh：手动刷新index1索引的段
+
+    PUT /index1/_settings：修改index1段的刷新频率
+    {
+        "refresh_interval" : "30s"
+    }
+    refresh_interval可以识别单位，如果直接写数字不写单位默认为毫秒，写个1会直接瘫痪，-1为不自动刷新
+    
+    POST /index1/_flush：将translog的数据刷新到磁盘
+    手动将index1索引的所有事务日志刷新到索引文件中。分片在每30分钟或者事务日志太大时也会自动flush，flush结束后会同时删除老的translog。flush的数据是从提交点拿的，如果是突然停机，那么事务日志会先加载到段并记录进提交点之后才会看情况flush
+
+    POST /_flush/wait_for_ongoing：将所有索引的translog刷新到磁盘，并等待执行完成
+    将index1索引的所有事务日志刷新到磁盘中的索引文件中，并等待刷新完成才返回
+
+    POST /index1/_optimize?max_num_segments=1：强制将索引中所有的段合并成一个段
+    将index1索引的所有段合并成一个段，es会自动将小段合并成大段，这会占据服务器的io资源，并且可能会占据节点的所有资源
 
 es的集群与分片：
 
