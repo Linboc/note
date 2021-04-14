@@ -182,3 +182,25 @@ SpringCloudEureka的集群如果一直在unavailable-replicas那一行，就要检查
     2、eureka.client.register-with-eureka和eureka.client.fetch-registry是否为true
     3、eureka.client.service-url.defaultZone是否配置正确，ip是否为正常的域名，而非localhost
     4、是否配置了content-path，如果配置了就要在端口后面加上这个路径
+
+JPA查询却执行了修改语句：
+    如果将查询出来的对象进行了修改，然后在同一个session中执行了查询，就会将持久化对象也进行更新，因为这个对象是持久
+状态：
+    (1)临时状态：通过new新建的对象，没有被持久化，也不在session缓存中
+    (2)游离状态：已经被持久化，但不在session缓存中
+    (3)持久状态：已经被持久化，也在session缓存中
+
+    此时要么别直接修改这个对象，将对象复制一份，要么通过session修改这个对象的状态
+    Session session = (Session) entityManage.getDelegate();
+    session.close()：关闭session，会清除所有持久对象
+    session.clear()：只清空不关闭session，会清除所有持久对象
+    session.evict(obj)：清除单个持久对象
+
+    用evict(obj)能解决，也可以复制出新对象来解决
+
+
+
+
+
+
+

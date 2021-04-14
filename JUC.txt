@@ -16,6 +16,7 @@
 
 synchronized：
     synchronized在实例方法时，锁的是当前调用对象，在静态方法时，锁的是类。类和实例的锁是分开互不干涉的，在代码里加synchronized(obj)的锁的是obj这个对象，实例方法的锁可以看做synchronized(this)，静态方法的锁可以看做synchronized(当前类.class)，其实锁的都是对象，不过一个是实例对象，一个是Class对象。当一个线程试图访问同步方法时，它必须首先得到锁，退出代码块或者抛出异常都会必须释放锁
+    不同的线程进入synchronized时持有相同锁的无法重复进入，因为后来者获取不到锁，相同的锁只能同时被一个线程获取
 
 volatile：
     它是轻量级的同步机制，因为synchronized保证了可见性，禁止指令重排，保证原子性，而volatile不能保证原子性
