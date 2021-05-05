@@ -1,2 +1,1 @@
-linux、rocket mq(rabbit mq)、nginx、sql优化、jvm、数据结构和算法、高并发、深入spring cloud、spring cloud alibaba、
-zookeeper、spring security、spring data jpa、dubbo
+Linux、Kafka、JVM、Apollo、分布式事务、分布式锁的实际应用、高并发场景处理、领域事件驱动、Docker、Shiro
