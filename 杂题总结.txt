@@ -198,12 +198,15 @@ JPA查询却执行了修改语句：
 
     用evict(obj)能解决，也可以复制出新对象来解决
 
-发现在项目中有这样的注入@Autowired private IBaseDao baseDao;，但是IBaseDao有很多实现类Bean在ioc中，我很好奇为
+    发现在项目中有这样的注入@Autowired private IBaseDao baseDao;，但是IBaseDao有很多实现类Bean在ioc中，我很好奇为
 什么不会报找到太多Bean的异常，经过查找发现自动注入是先根据类型匹配，如果类型无法匹配就会根据属性名匹配，这个例子
 就相当于根据baseDao这个name进行注入的
 
+    用jar包启动javaagent，提示找不到premain所在的agent类，可能是因为使用了spring boot maven插件，这个插件执行jar包
+的时候指定了spring的类加载路径，可是如果不使用这个jar包，而是引用的话就无法找到类加载路径，因为那个路径只有spring的
+启动器才会去加载，默认的加载参数对spring的不适用，这些配置都在META-INF/MANIFEST.MF文件中
 
-
-
+    一直以为mysql的数值类型的长度是指数字的位数，还一度很奇怪怎么是用位数来当单位的，现在才发现这个长度仅仅是用来展
+示用的，不会影响到真正存储的数据长度，如果设置int长度为3，如果int为1则展示为001，还要设置了fillzero才生效
 
 
