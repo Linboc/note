@@ -209,4 +209,8 @@ JPA查询却执行了修改语句：
     一直以为mysql的数值类型的长度是指数字的位数，还一度很奇怪怎么是用位数来当单位的，现在才发现这个长度仅仅是用来展
 示用的，不会影响到真正存储的数据长度，如果设置int长度为3，如果int为1则展示为001，还要设置了fillzero才生效
 
+    ConditionalOnBean找不到EntityManage实际上运行时ioc却能获取到EntityManage，猜测是EntityManage的BeanDefinition
+是后面才注册的，导致验证Bean阶段无法获取，从而无法获取到
 
+    ConditionalOnBean的生效与否跟Bean的加载顺序有关，如果ConditionalOnBean所在的类已经加载了，而ConditionalOnBean
+指向的Bean还没加载，就会出现明明有Bean，ConditionalOnBean却生效了，阻止了Bean的加载
