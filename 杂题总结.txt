@@ -214,3 +214,7 @@ JPA查询却执行了修改语句：
 
     ConditionalOnBean的生效与否跟Bean的加载顺序有关，如果ConditionalOnBean所在的类已经加载了，而ConditionalOnBean
 指向的Bean还没加载，就会出现明明有Bean，ConditionalOnBean却生效了，阻止了Bean的加载
+
+   又拍云文件上传无法覆盖，删除、覆盖都没效果，可能是浏览器缓存，可以清除缓存试一下
+
+
