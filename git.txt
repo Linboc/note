@@ -154,6 +154,8 @@ git checkout commit_id -- file.txt
 
 	git stash：保存现场(贮藏)，后面可以恢复执行git stash当时的所有状态
 
+                git stash save 'your msg'：拥有和git stash相同的效果，不过它还可以为贮藏指定说明信息
+
 	git stash list：查看所有的现场(贮藏)
 
 	git stash apply：恢复一个最近的现场(贮藏)
