@@ -1304,7 +1304,7 @@ startInternal()方法会让服务器开始工作
 个线程去执行，实例的数量取决于它父类的acceptorThreadCount属性
 
 
-
+看context映射可以到Mapper#public void map(MessageBytes host, MessageBytes uri, String version,MappingData mappingData)
 
 
 
