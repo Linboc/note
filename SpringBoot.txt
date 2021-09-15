@@ -20,7 +20,7 @@ SpringBoot简化了配置和依赖
 	@CondiyionalOnClass(Class[])：classpath中有指定类才会生效
 	@ConditionalOnMissingBean(Class[])：classpath中没有指定类才会生效
 
-	@CondiyionalOnproperty：如果包含指定的属性、值，那么代码将会生效
+	@ConditionalOnproperty：如果包含指定的属性、值，那么代码将会生效
 		prefix：属性的前缀
 		name[]：属性名
 		havingValue[]：属性值

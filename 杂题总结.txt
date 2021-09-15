@@ -228,3 +228,37 @@ JPA查询却执行了修改语句：
     idea服务启动到某一步突然卡住，没有任何提示，可能是因为开了debug，虽然debug没有启用，并且debug界面没有任何栈
 信息，但是就是会卡主，可以把所有debug全关了或者删了试一下
 
+    jpa的神奇异常，如果出现了identifier of an instance of was altered from to null，大体上的含义是某个实体的id不能由xxx
+改为null，可是你只是执行了一段查询，这个可能是上一轮查出来的数据被修改了，到了这次查询才会校验触发异常，所以要注意
+一下之前的逻辑是否有数据库中的实体id被改过。哪怕你只是查出来，改了id，先不保存它校验也不通过
+
+    关于Spring的@Async注解的循环依赖异常，当某个类的方法中使用了@Async后，如果此时它与其它Bean出现循环依赖，就
+会出现BeanCurrentlyInCreationException异常，这是因为Bean创建的时候是先new，再注入属性，再代理，而@Async注解会
+让Bean被代理，然后用线程池进行调用，异常原因详情如下：
+	1、@Async的Bean实例化完成，并放入半成品池
+	2、开始注入属性，发现要用其它Bean
+	3、创建其它Bean，注入时发现需要@Async那个Bean，此时该Bean已存在半成品池中，直接取出来注入
+	4、其它Bean创建完成，开始走BeanPostProcessor和初始化方法，创建结束
+	5、此时回到@Async的Bean，它依赖的其它Bean已创建完成，拿出来继续进行注入
+	6、@Async的Bean进行BeanPostProcessor，进行动态代理
+	7、在创建收尾时@Async的Bean发现IOC中有两种它，一个是被代理后的，一个是在代理前被其它Bean循环依赖时注
+            入的原始对象
+	8、此时就开始报错，@Async那个Bean有两个版本
+    解决方法：@Async的Bean注入时使用@Lazy，这样就能避免循环依赖时被其它Bean拿到原始对象了，等被获取Bean时它已
+经代理完成创建完成了
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
