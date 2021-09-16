@@ -246,7 +246,9 @@ JPA查询却执行了修改语句：
 	8、此时就开始报错，@Async那个Bean有两个版本
     解决方法：@Async的Bean注入时使用@Lazy，这样就能避免循环依赖时被其它Bean拿到原始对象了，等被获取Bean时它已
 经代理完成创建完成了
-
+    那bean有一个初始化之前先代理的操作为什么没生效呢，因为@Async那个代理处理器没有实现早期Bean代理的处理接口，就
+算自己加了aop的处理器也没用，因为@Async的那个对象要aop配置了切面才会进行早期代理，就算代理了后面也会被重复代理，
+依然会有多个版本。早期代理处理器：SmartInstantiationAwareBeanPostProcessor
 
 
 
