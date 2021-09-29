@@ -19,3 +19,40 @@
 工厂池：bean的初始池，如果被循环依赖则转到半成品池，如果没被依赖则转到单例池，转了之后都会被移出工厂池
 
 提前引用：依赖的bean在自己没加载好之前就引用自己，此时依赖自己的bean可能需要的是代理对象，因此提前引用可能会发生bean没初始化就被代理，会导致bean由工厂池转到半成品池
+
+
+三级缓存：
+    一级：singletonObjects，存放了完整的Bean对象，是实例化、填充结束，各种处理器处理完毕的
+    二级：earlySingletonObjects，存放了仅仅实例化完的Bean，未到填充步骤
+    三级：singletonFactories，存放了未实例化的Bean，它仅仅是个ObjectFactory接口的实现，只有真正getObject的时候才会进行实例化，aop就是在里面做的早期代理
+
+源码角度全流程循环依赖：
+    假设A与B相互依赖，且先加载A后加载B
+    1、首先对A进行getBean、doGetBean，然后createBean，doCreateBean，创建A的实例
+    2、其中在doGetBean中会依次从一级、二级、三级缓存中拿Bean，拿到就直接返回
+    3、在doCreateBean中假如earlySingletonExposure(早期暴露)为true，就将Bean以ObjectFactory的方式加入三级缓存中，earlySingletonExposure
+为True的条件是Bean是单例、容器允许循环依赖、且Bean正在创建中(createBean()会把BeanName加入一个集合，这里判断是否在集合中)
+    4、ObjectFactory并不会直接返回原始Bean，而是通过getEarlyBeanReference方法返回，这个方法会执行SmartInstantiationAwareBeanPostProcessor
+处理器，也就是AOP用来的早期代理的那个处理器，@Async没在这里做早期代理，所以会导致有原始与代理对象两种形态出现
+    5、此时开始为A填充属性，也就是注入B，对B进行getBean操作
+    6、由于此时B还不存在，所以要给B进行createBean，为B执行1-3步骤的操作
+    7、此时B开始填充属性，为B注入A，此时B进行getBean(A)
+    8、此时重新进入doGetBean的getSingleton方法，A此时在三级缓存，当从三级缓存中拿出来后，执行ObjectFactory.getObject()，然后放入二级缓存，从三级缓存中删除，然后返回A
+    9、B成功注入A，为B执行初始化，然后B创建完毕
+    10、A拿到创建完毕的B，进行自己的属性注入，然后A进行初始化
+    11、最后会判断，如果earlySingletonExposure==true，也就是Bean是早期暴露的，并且早期暴露的Bean跟原始Bean不同，而且依赖当前Bean的任意一个Bean已经创建好了，
+因为当前Bean都没创建完成，这些Bean想创建完成必须拿到它的早期暴露对象，当时它后面又代理了一层，此时就会抛出BeanCurrentlyInCreationException异常，提示Bean存在多个版本，
+只有在Bean创建完成后在调用createBean上一层的地方会判断如果是新的Bean就会将Bean转到第一层，删除第二第三层
+
+    以上只关注循环依赖的过程，不关注其它无关的Aware与BeanPostProcessor
+
+    那么为什么aop也替换了对象，最后的exposedObject和bean相同呢？因为早期代理不会替换调exposedObject变量，只有后置处理器才会，
+因此早期代理的exposedObject==bean总是相同的，@Async只有后置代理，因此会不相等，而AOP只有早期代理，没有后置代理，因此总是会相等
+
+
+
+
+
+
+
+
