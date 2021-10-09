@@ -307,6 +307,9 @@ bean的创建时机：
 mq从哪些纬度进行选型，比如RabbitMQ和RocketMQ：
     RocketMQ的性能比如消息堆积下的处理比RabbitMQ要快，更多的我也不是很清楚
 
+hystrix线程隔离模式：
+    
+
 Q:为什么使用消息队列？消息队列有什么优点和缺点？Kafka、ActiveMQ、RabbitMq、RocketMQ 都有什么优点和缺点？
 消息队列解耦，削峰，限流。
 Q:如何保证消息队列的高可用？(多副本)
