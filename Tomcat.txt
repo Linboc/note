@@ -1183,7 +1183,7 @@ Containerservlet接口：
 
 基于JXM对Tomcat进行管理：
 
-JXM：
+JMX：
 	jmx是java管理扩展规范，它提供了比ContainerServlet接口更灵活的方法来管理Tomcat，许多服务器都使用JMX技术来管
 理各自的资源，如Tomcat、JBoss、JONAS等
 	如果一个Java对象可以被一个遵循JMX规范的管理器管理，那么这个对象称为一个可由JMX管理的资源，想要成为一个可以
