@@ -251,12 +251,16 @@ JPA查询却执行了修改语句：
 依然会有多个版本。早期代理处理器：SmartInstantiationAwareBeanPostProcessor
     @Async是单例的，不是原型
 
+    JPA在同一个事务中执行了update，然后find一直查到的是update之前的数据，update是在Repository中手写的，find是jpa语
+法支持的自动化查询。就是因为find中jpa做了缓存，update时又没清除，此时只要在update的@Modifying注解中设置
+clearAutomatically = true就会清空缓存了
 
+    在数据库中用Update加排它锁来保证数据一致性，虽然避免了分布式锁那么大的锁范围，但是如果有大量sql过来都被锁住的话
+，会占用大量数据库连接，拖垮数据库，而分布式锁虽然锁的范围比较大，锁冲突不多时没有数据库锁快，但是它不会占用大量连
+接，因此使用什么锁不能光看锁范围还要看具体场景，如果锁冲突的多使用数据库锁就要小心数据库了
 
-
-
-
-
+    Spring data jpa判断当前事务是否处于活跃状态的方法：((EntityManagerHolder) TransactionSynchronizationManager.getResource(SpringContextUtils.getBean(JpaTransactionManager.class).getEntityManagerFactory())).getEntityManager().getTransaction().isActive()
+，需要注意的是，如果没有事务会空指针
 
 
 

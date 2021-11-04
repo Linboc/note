@@ -1553,3 +1553,51 @@ shell:
 ，再用passwd命令修改密码
 
 
+RPM用户管理套件：
+
+    rpm -option pageage
+      -a：查询所有套件
+      -l：显示套件的文件列表
+      -i：显示套件的相关信息
+      -v：显示执行过程
+      -vv：显示详细执行过程
+      -h：套件安装时列出标记
+      -e：删除指定套件
+      -U升级指定套件
+      -f：查询拥有指定文件的套件
+      -q：询问模式，遇到任何问题都会先询问用户
+
+    示例：rpm -hvi dejagnu-1.4.2-10.noarch.rpm，安装指定软件包
+              rpm -hvU dejagnu-1.4.2-10.noarch.rpm，升级指定软件包
+              rpm -e dejagnu，删除指定软件，只要软件名就行，不需要包名
+              rpm -ql dejagnu，查询指定软件包文档的安装位置
+
+
+YUM是一个Shell前端软件包管理器，基于RPM包管理：
+
+    yum -option command package
+      -y：安装过程所有提示全选yes
+      -q：不现实安装过程
+      check-update：列出所有可更新的软件清单
+      update：更新所有软件
+      install package：安装指定软件
+      update package：更新指定软件
+      list keyword：列出所有可安装的软件，可用通配符*
+      remove package：删除指定软件
+      search keyword：查找软件
+      clean [package1,package2...]：清除缓存目录下的软件包
+      clean headers：清除目录下的headers
+      clean oldheaders: 清除缓存目录下旧的 headers
+
+
+
+
+
+
+
+
+
+
+
+
+

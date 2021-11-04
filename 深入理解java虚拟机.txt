@@ -146,6 +146,7 @@ HotSpot的算法实现：
 	-XX:MaxTenuringThreshold：晋升到老年代的年龄，每次坚持过一次Minor GC后年龄+1，超过这个参数就会进入老年代
 	-Xmx：设置最大堆
 	-XX:UseSerialGC：虚拟机在Client模式下的默认值，打开后使用Serial + Serial Old组合进行内存回收
+	 -XX:NewRatio：老年和新声代的比例，默认为2，含义是老年代2 : 新生代1
 
 
     ParNew(Parallel New，并发新生代)新生代收集器：
