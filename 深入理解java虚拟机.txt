@@ -483,6 +483,17 @@ strictfp关键字：
 	是一个HashTable结构，保存了所有字符串常量的引用，每加载一个常量，都会先来这里查是否已存在，如果未存在就加入    运行时常量池，然后在这里保存一遍引用，如果已存在就将已有的引用返回去
 
 
+关于以下代码：
+        String str1 = new StringBuilder().append("程").append("序").toString();
+        System.out.println(str1.intern() == str1);
+        String str2 = new StringBuilder().append("ja").append("va").toString();
+        System.out.println(str2.intern() == str2);
+    结果是true、false，因为第一次加入常量池中的时候，比如intern()，如果还未存在该常量，就用加入常量池的那个常量的引用来放入常量池中，否则就返回之前已存在的引用。
+    以上的案例是因为“程序”这个字符串在常量池中还不存在，此时调用intern()就会把str1的引用加入常量池中，也就是会返回str1的引用；而“java”字符串在常量池中已存在，因此intern()返回的是第一次被加载时“java”字符串对象的引用。至于为什么程序里没定义“java”字符串而常量池里却已存在，然而在加载其他类的过程中出现个“java”字符串也是勉强说得通的一件事
+    在执行以上代码时先将“程序”字符串加入常量池，就会发现结果是false、false，也算验证了上面的说法
+    补充：像方法名也会加入字符串常量池，而类名、变量名就不会
+
+
 
 字节码指令简介：
 
