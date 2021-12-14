@@ -1,0 +1,51 @@
+
+启动nacos：
+    bin/startup.cmd -m standalone(standalone代表单机模式，非集群模式)
+
+关闭nacos：
+    bin/shutdown.cmd
+
+基本操作：
+
+    服务注册：
+        POST http://127.0.0.1:8848/nacos/v1/ns/instance?serviceName=com.boc.service_1&ip=192.168.2.132&port=9001
+        向地址为127.0.0.1:8848的nacos服务器注册一个：服务名为：com.boc.service_1，ip为：192.168.2.132，端口为9001的服务
+        如果成功会返回状态码为200，body为ok
+
+    服务列表：
+        GET http://localhost:8848/nacos/v1/ns/instance/list?serviceName=com.boc.service_1
+        向地址为127.0.0.1:8848的nacos服务器查询服务名称为：com.boc.service_1的所有服务列表
+
+    发布配置：
+        POST http://127.0.0.1:8848/nacos/v1/cs/configs?dataId=boc.config.data1&group=test&content=HelloWorld
+        向地址为127.0.0.1:8848的nacos服务器发布一个，数据id为：boc.config.data1，分组为：test，内容为：HelloWorld的配置
+
+    获取配置：
+        GET http://127.0.0.1:8848/nacos/v1/cs/configs?dataId=boc.config.data1&group=test
+        向地址为127.0.0.1:8848的nacos服务器获取，数据id为：boc.config.data1，分组为：test的配置，基于上面的请求会在body返回HelloWorld
+
+spring nacos：
+
+    @NacosPropertySource：
+        和@PropertySource类似，将配置加入spring的环境中，但是它支持自动更新
+
+    @NacosConfigurationProperties：
+        和@ConfigurationProperties类似，将配置加入指定配置类中，但是它支持自动更新
+
+    @NacosValue：
+        和@Value类似，但是它支持自动更新
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

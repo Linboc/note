@@ -147,7 +147,7 @@ HotSpot的算法实现：
 	-Xmx：设置最大堆
 	-XX:UseSerialGC：虚拟机在Client模式下的默认值，打开后使用Serial + Serial Old组合进行内存回收
 	-XX:NewRatio：老年和新声代的比例，默认为2，含义是老年代2 : 新生代1
-
+	-XX:MetaspaceSize=256m并不意味着设置元空间的初始大小，由于元空间的初始容量是20M左右，每次空间满了扩容都会进行一次full gc，因此通过这个值来设置元空间的full gc阈值，在这个值之下进行扩容不会触发full gc
 
     ParNew(Parallel New，并发新生代)新生代收集器：
 	ParNew收集器其实就是Serial收集器的多线程版本，除了多线程这点，其它所有控制参数，收集算法，Stop The World，      对象分配规则、回收策略等都与Serial收集器完全一样

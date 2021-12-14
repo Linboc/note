@@ -262,7 +262,8 @@ clearAutomatically = true就会清空缓存了
     Spring data jpa判断当前事务是否处于活跃状态的方法：((EntityManagerHolder) TransactionSynchronizationManager.getResource(SpringContextUtils.getBean(JpaTransactionManager.class).getEntityManagerFactory())).getEntityManager().getTransaction().isActive()
 ，需要注意的是，如果没有事务会空指针
 
-
+    group_id请求头在服务器收不到，nginx因为一些标准，-和_都会转为_，所以默认情况下不支持_，所以通过nginx转发的请求，
+请求头里包含_的都会丢失，可以通过在http下面增加属性：underscores_in_headers on来支持请求头的_(下划线)
 
 
 
