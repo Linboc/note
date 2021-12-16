@@ -265,7 +265,10 @@ clearAutomatically = true就会清空缓存了
     group_id请求头在服务器收不到，nginx因为一些标准，-和_都会转为_，所以默认情况下不支持_，所以通过nginx转发的请求，
 请求头里包含_的都会丢失，可以通过在http下面增加属性：underscores_in_headers on来支持请求头的_(下划线)
 
+    https请求提示什么证书错误，可以设置一下连接属性，以下数hutool的处理方式：
+        urlConnection.setSSLSocketFactory(CommonUtils.uncheck(() -> SSLSocketFactoryBuilder.create().build()));
+        urlConnection.setHostnameVerifier(new TrustAnyHostnameVerifier());
+        注意连接类是HttpsURLConnection类
 
-
-
+    Runtime执行curl，输入流一直读不到数据，线程一直阻塞，是因为runtime.exec执行，如果命令有间隔要用数组的重载方法，如果有大量空格依然只传一个字符串，就会阻塞住
 
