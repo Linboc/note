@@ -840,7 +840,14 @@ synchronized与ReentrantLock对比：
     个对象进行，如果要对多个对象进行等待与唤醒，只能加多个synchronized才能实现，而不像ReentrantLock只需一个
         注意，这些方法必须在获得锁后，释放锁前才能调用，否则会报错
 
-
+CAS(CompareAndSet)：
+    比较并替换，CPU直接支持的原子性操作，有三个操作数：变量的内存地址、原值，更新的值，当变量的值等于原值的时候，
+就会将该变量内存地址的值改为新值，并返回原值
+    这个操作在Java中由Unsafe类提供，但是由于Unsafe只支持被Bootstrap类加载器所加载的类调用，因此用户无法直接调用，
+只能通过JUC包里的AtomicInteger等类的compareAndSet、incrementAndGet等方法来间接调用
+    CAS还有个ABA问题，就是一个值在读取的时候为A，当进行CAS的时候被改为B又改回A，此时虽然值依然是A，可是这个A已
+经不是原来的那个A了，JUC提供了AtomicStampedReference，通过控制版本号来解决这个问题，不过大多数情况下ABA都不会
+对程序的正确性造成影响
 
 
 
