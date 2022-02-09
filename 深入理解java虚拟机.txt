@@ -810,6 +810,49 @@ Java内存模型(Java Memory Model，JMM)：
             synchronized也能保证有序性，因为它能保证同一时间只有一条线程在访问同步块，而单线程下指令重排是安全的
 
 
+线程的六种状态：
+    新建(NEW)：创建后未启动的线程
+
+    运行(Runable)：此状态下可能正在执行，也可能正在等待CPU分配执行
+
+    无期限等待(Waiting)：线程除非被手动唤醒，不然会一直陷入等待。比如Object.wait()：让当前线程进入待唤醒状态、还有
+Thread.join()：让当前线程等待指定线程执行完毕才唤醒，原理是while判断指定线程是否活跃，如果活跃就一直wait当前线程、
+LockSupport.park()
+
+    有期限等待(Timed Waiting)：与无期限等待的区别是，有期限等待会在到时间后被系统自动唤醒，比如Thread.sleep()、
+有参数的Object.wait()、有参数的Thread.join()、LockSupport.parkNanos()、LockSupport.parkUntil()
+
+    阻塞(Blocked)：也是陷入等待，阻塞与等待的区别是：阻塞是因为在等锁，比如进入synchronized同步块时，等拿到锁就会自
+动退出阻塞
+
+    结束(Terminated)：已终止线程的线程状态，线程已执行结束
+
+synchronized与ReentrantLock对比：
+    synchronized再1.6后经过优化性能已经与ReentrantLock基本持平了，并且虚拟机如果对性能做优化肯定也是对synchronized
+进行优化，因此性能不再是选择ReentrantLock的理由了，所以在synchronized能实现功能的情况下还是优先选择synchronized
+    ReentrantLock可以自动锁等待超时，synchronized不行
+    ReentrantLock可以做到公平锁，也就是先等待锁的线程先获得锁，只要在构造器传入true就行，而synchronized不行
+    ReentrantLock的Condition可以绑定多个条件，而synchronized只能绑定一个条件
+    条件：
+        条件是指：wait\await、notify\signal、notifyAll\signalAll等只能在当前获得锁之后调用的等待与唤醒方法，如果使用
+    ReentrantLock，则可以用newCondition方法获取多个Condition，然后操作等待与唤醒时只需要调对用的Condition就能进
+    行精确等待与唤醒。而synchronized只有一个隐式的锁条件，也就是被synchronized锁定的那个对象，等待与唤醒也只能对那
+    个对象进行，如果要对多个对象进行等待与唤醒，只能加多个synchronized才能实现，而不像ReentrantLock只需一个
+        注意，这些方法必须在获得锁后，释放锁前才能调用，否则会报错
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
