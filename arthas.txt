@@ -1,0 +1,51 @@
+1、下载arthas的包：https://arthas.aliyun.com/arthas-boot.jar
+2、启动arthas：java -jar arthas-boot.jar
+注意：启动arthas进程的用户与目标程序进程的用户要具有相同权限
+3、启动arthas后选择目标程序的编号，输入并按Enter，此时就会进入arthas控制台
+
+退出arthas：
+    quit、exit：仅退出当前连接，目标进程上的athas还会继续运行，下次可以直接连接上
+    stop：完全退出arthas
+
+dashboard：
+    展示当前arthas选择进程的信息
+
+thread：
+    展示所有线程信息
+    thread 1：打印线程id为1的线程堆栈，，1通常是main函数的线程
+    thread -n 2：打印最忙的2的线程堆栈
+    thread -b：找出阻塞其它想线程的线程
+    thread --state WAITING：查看指定状态的线程，线程状态参考Thread.State
+
+jad 类全路径：
+    反编译指定类
+
+watch 类全路径 方法名 [params(入参) | target(异常) | returnObj(返回值)]：
+    查看指定类的指定方法的入参或返回值或异常
+    location属性有三种可能值：AtEnter，AtExit，AtExceptionExit。对应函数入口，函数正常return，函数抛出异常。
+    高级用法：
+        watch com.Test test "params[0]"：查看第一个参数
+        watch com.Test test "params[0].{#this.name}"：查看第一个参数的name属性
+        watch com.Test test "params[0].{? #this.name == null}"：按第一个参数的name属性过滤
+        watch com.Test test 'params[0]=="abc"'：判断第一个参数是否相等，如果是Long要写成：123L
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
