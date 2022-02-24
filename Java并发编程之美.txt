@@ -1,0 +1,149 @@
+Java线程的创建：
+    1、继承Thread，好处是方便传参，this就是当前线程，坏处是Java不支持多继承，无法继承其它类
+    2、实现Runable，然后new Thread(Runable run)，好处是不占继承，但是没有返回值
+    3、实现Callable，然后new Thread(new FutureTask<String>(Callable call))，好处是不占继承，也能拿到返回值
+
+
+线程的通知与等待：
+
+Object系列并发函数：
+    wait()：
+        当一个线程调用了一个共享变量的wait()方法时，该调用线程就会被阻塞挂起，直到发生以下几件事之一才返回：
+            1、其它线程调用了该共享对象的notify(随机唤醒一个等待该对象锁的线程)或notifyAll(唤醒所有等待该对象锁的线          程)方法
+            2、其它线程调用了该线程的interrupt()方法，该线程抛出InterruptedException异常并返回
+
+        需要注意的是，wait()还会释放当前线程对该对象的监视器锁(MonitorExit)，仅释放该对象的，如果线程还持有其它对象     的锁，那么依然持有。如果调用wait()的线程没有事先获取该对象的监视器锁(MonitorEntry)，在调用时将抛出
+    IllegalMonitorStateException，抛出IllegalMonitorStateException异常的时候，如果catch在同步块里，且锁已经被拿了，     那么就要等下次拿到锁时才能真正把异常抛出来
+
+    wait(long timeout)：
+        超时时间到之后自动进入锁池，wait(0)等同于wait()，因为wait()就是调了wait(0)
+
+    wait(long timeout, int nanos)：
+        nanos如果大于999999或小于0则抛异常，否则如果大于0就会使timeout+1
+
+    notify()：
+        随机唤醒一个该对象被wait()挂起的线程，被唤醒后需重新竞争锁
+
+    notifyAll()：
+        不同的是，notifyAll()会唤醒所有被该对象调wait()挂起的线程
+
+    以上方法需注意：类似wait()系列的方法，都需要拿到监视器锁后才能调用，否则会抛出IllegalMonitorStateException异常
+
+    虚假唤醒：
+        如果在同步块里，if(条件不满足)就执行obj.wait()，此时如果obj被notify了，但是条件依然不满足，就会产生虚假唤醒
+    ，此时应该继续wait的代码被放过去了。如果改成where(条件不满足)就执行obj.wait()，就能有效防止虚假唤醒，因为如果被
+    意外唤醒了，会进行下一次条件判断，不满足则继续wait()
+        书里说：一个线程可以从挂起状态变为可以运行状态(就是被唤醒)，即使该线程没有被其他线程调用notify()、notifyll      ()方进行通知，或者被中断，或者等待超时
+
+    锁池与等待池：
+        锁池：如果对象的锁已被某线程拿到，而其它线程想要拿到这个对象的锁，也就是进入synchronized代码块，由于该对象    的锁目前已被某线程持有，所以这些线程就会进入该对象的锁池，锁池中的线程会去竞争锁
+        等待池：如果一个线程在同步块里调用了某个对象的wait()方法，此线程就会进入该对象的等待池中，当其它线程调用了
+    该对象的notifyAll(唤醒该对象所有wait线程)或者notify(唤醒该对象随机一个wait线程)方法时，被唤醒的线程就会进入对象
+    的锁池中，等待竞争
+
+Thread系列并发函数：
+    
+    interrupt()：
+        为目标线程设置中断标识，能直接打断被wait、join、sleep等方法挂起的线程，跑用户代码的线程就要靠用户自己去判断
+    打断标识了
+
+    boolean isInterrupted()：
+        返回该线程是否已被中断，内部调了isInterrupted(false)，说明不清除中断标识
+
+    boolean interrupted()：
+        返回该线程是否已被中断，与isInterrupted()不同的是，该方法如果发现当前线程被中断，则会清除中断标志，该方法是
+    static方法。内部调了isInterrupted(true)，说明清除中断标识
+        注意，这个方法是获取当前线程的中断标识，而不是调用线程的中断标识，小心因为调用者是线程对象被骗了
+
+    join()：
+        当前线程等待调用join()的线程执行完成，等待过程中，当前线程被调用interrupt()方法就会抛出  
+    InterruptedException异常
+
+    sleep()：
+        让出sleep这段时间内CPU的执行权，也就是这段时间不参与CPU的调度，但是依然把持监视器锁，sleep结束后线程直接进 
+    入就绪状态，如果该线程被调用interrupt()方法就会抛出InterruptedException异常。由于sleep一直把持着锁，就算被打断
+    抛出异常，且catch在锁里面也无需等待监视器锁就能直接进入catch
+
+    yield()：
+        操作系统是以时间片为单位来为线程分配CPU的，这个方法的作用是暗示线程调度器自己剩余的时间片不想用了，但是线程
+    调度器可以无条件忽略这个暗示。实测是基本都能按照想法让出，并且下次分配都会分配给其它线程，但是不能保证绝对靠谱
+        一般很少使用这个方法，在调试或测试时这个方法或许可以帮助复现并发引起的问题
+
+
+线程上下文切换：
+    线程个数一般都大于CPU个数，而每个CPU同一时刻只能被一个线程使用，为了让用户感觉多个线程是在同时执行的，CPU资源的
+分配采用了时间片轮转的策略，也就是给每个线程分配一个时间片，线程在时间片内占用CPU来执行任务。当时间片被线程用完后，
+就会处于就绪状态并让出CPU给其他线程占用，这就是线程的上下文切换，从当前线程上下文切换到了其他线程。
+    那么让出CPU的线程等下次轮到自己占用CPU，该如何知道自己之前运行到哪里了？所以在线程上下文切换时需要保存当前线程
+的执行现场，当再次执行时根据保存的执行现场信息来恢复执行现场
+    线程上下文切换的时机：当前线程的CPU时间片用完处于就绪状态、当前线程被其它线程中断，或自己让出时间片
+
+死锁：
+    满足死锁的四个条件：
+        资源互斥条件：锁资源只能同时被一个线程获取，只有持有锁的线程释放锁，其它线程才能获得
+        请求并持有条件：线程本身就获取到了锁，又去获取另外一个锁
+        资源不可剥夺条件：当线程拿到锁之后，其它线程不会掠夺走，除非线程自己释放锁
+        环路等待条件：线程A持有A锁并等待B锁，线程B持有B锁并等待A锁，构成环路
+
+    避免线程死锁：
+        只需破坏线程死锁的至少一个必要条件即可，目前至于请求并持有和环路等待是可以破坏的
+        造成死锁的原因和申请资源的顺序有很大关系，使用资源申请的有序性原则就可以避免死锁，也就是所有线程获取资源都
+    按照一致的顺序去获取，申请资源的有序性破坏了请求并持有条件与环路等待条件
+
+
+守护线程与用户线程：
+    JVM会启动一个叫做DestroyJavaVM的线程进行监视所有的用户线程，当所有用户线程全部结束后，就会销毁JVM进程，而不会管
+守护线程是否执行完
+    默认线程都是用户线程，如果希望启动守护线程，则在线程的start()方法之前调用setDeamon(true)
+
+
+ThreadLocal：
+
+    Thread类中有一个threadLocaks和一个inheritableThreadLocals，它们都是ThreadLocalMap类型的变量，这是一个定制化的
+HashMap，默认情况下这两个变量都为Null，只有第一调用ThreadLocal的get或set方法时才会创建它们
+
+    ThreadLocak方法介绍
+        void set(T value)：
+            获取当前线程的threadLocals，如果不为Null则直接将this和value，put进Map里。如果是第一次使用，threadLocals
+        为null，则调createMap
+
+        T get()：
+            获取当前线程的threadLocals，如果不为null就拿到map，然后用this作key拿到value并返回，否则就调
+        setInitialValue
+
+        T setInitialValue()：
+            调initialValue()拿到value的默认值，默认值为null，然后拿到threadLocals，如果不为空就将this和value默认值
+        put进去，如果threadLocals为null则调createMap，然后返回value
+
+        void createMap(Thread t, T value)：
+            其实就是创建线程的ThreadLocalMap并put：t.threadLocals = new ThreadLocalMap(this, value)
+
+        void remove()：
+            拿到threadLocals，不过不为null则删除key为this的元素
+
+    由于每个线程的本地变量都存放在线程自己的变量threadLocals中，如果当前线程一直不消亡，这些本地变量就会一直存在，
+所以有可能会造成内存溢出，因此使用完毕要记得调ThreadLocal的remove方法删除线程threadLocals中的本地变量
+
+
+InheritableThreadLocal：
+
+    为了解决子线程无法继承父线程本地变量的问题，InheritableThreadLocal应运而生。InheritableThreadLocal继承自
+ThreadLocal，它提供了一个特性，那就是让子线程可以访问父线程中设置的本地变量
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

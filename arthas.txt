@@ -1,11 +1,11 @@
-1、下载arthas的包：https://arthas.aliyun.com/arthas-boot.jar
+﻿1、下载arthas的包：https://arthas.aliyun.com/arthas-boot.jar
 2、启动arthas：java -jar arthas-boot.jar
 注意：启动arthas进程的用户与目标程序进程的用户要具有相同权限
 3、启动arthas后选择目标程序的编号，输入并按Enter，此时就会进入arthas控制台
 
 退出arthas：
     quit、exit：仅退出当前连接，目标进程上的athas还会继续运行，下次可以直接连接上
-    stop：完全退出arthas
+    stop：完全退出arthas，还原所有增强过的类，除了redefine重加载的类
 
 dashboard：
     展示当前arthas选择进程的信息
@@ -21,29 +21,180 @@ jad 类全路径：
     反编译指定类
 
 watch 类全路径 方法名 [params(入参) | target(异常) | returnObj(返回值)]：
-    查看指定类的指定方法的入参或返回值或异常
+    监控指定类的指定方法的入参或返回值或异常
     location属性有三种可能值：AtEnter，AtExit，AtExceptionExit。对应函数入口，函数正常return，函数抛出异常。
     高级用法：
         watch com.Test test "params[0]"：查看第一个参数
         watch com.Test test "params[0].{#this.name}"：查看第一个参数的name属性
         watch com.Test test "params[0].{? #this.name == null}"：按第一个参数的name属性过滤
         watch com.Test test 'params[0]=="abc"'：判断第一个参数是否相等，如果是Long要写成：123L
+        watch demo.MathGame <init> 'params[0]'：监控构造器
+
+getstatic 全类名 变量名：
+    查询静态变量
+    getstatic -c 18b4aac2 全类名 变量名：指定类加载器，类加载器code由sc -d指定获得
+    getstatic --classLoaderClass sun.misc.Launcher$AppClassLoader 全类名 变量名：直接指定类加载器，前提是指定类加载器只有一个实例
+
+sc -d 全类名：
+    查询指定类所在的类加载器、类的所在包、类的基本信息，拿到对应类加载器的classLoaderHash可以在进行查询操作时指定类
+加载器，也可以拿类加载器@后面的值，那也是code
+
+ognl [-c classLoaderHashCode(指定类加载器code) 或 --classLoaderClass sun.misc.Launcher$AppClassLoader(指定唯一实
+例类加载器)](两种类加载器选项只能同时存在一个，看不清晰就参考getstatic指令) [-x n](对象展开层次，默认1)：
+    使用ognl表达式执行，默认类加载器是SystemClassLoader
+    示例：
+    ognl '@java.lang.System@out.println("hello")'：调动静态方法
+    ognl '@com.boc.ArthasTest@NEED'
+
+heapdump /tmp/dump.hprof：
+    将堆dump到指定文件
+
+vmtool:
+    vmtool --action getInstances --className java.lang.String --limit 10 --express 'instances[0].hashCode()'
+    详解：
+      --action：getInstances是拿对象，forceGc是强制gc
+      --className：指定类
+      --limit：限制返回实例数量
+      --express：用返回结果执行表达式，instances是实例数组，这里是拿10个String实例，然后获取第一个实例的hashCode
+
+mc：
+    将java文件编译成class文件
+    mc -d /tmp/output /tmp/ClassA.java /tmp/ClassB.java：
+    详解：
+        -d：class输出目录
+        /tmp/ClassA.java：要编译的java文件，可以制定多个
+
+retransform：
+    运行中热修改类代码，只能修改方法内的，还可以很方便的清除修改
+    示例：
+        retransform /tmp/Test.class：加载指定class文件
+        retransform -l：查看所有被retransform加载的类
+        retransform -d id：删除指定的retransform加载的类，需要id，id通过-l获取
+        retransform --deleteAll：删除所有retransform加载的类，需要显示触发一下才能生效
+        retransform --classPattern 全类名：显示触发指定类的retransform
+    注意：如果要消除retransform，一定记得重新触发，否则不生效
+    使用技巧：先jda反编译得到源码，再mc编译代码，最后retransform加载新的字节码
+    限制：不允许增加字段与方法，正在跑的函数没有退出不会生效
+
+redefine：
+    与retransform类似，不同的是retransform是在原字节码的基础上进行修改再替换，而redefine是整个字节码文件都替换掉
+    官方推荐用retransform
+
+classloader：
+    查看类加载器的继承树，urls，类加载等信息
+    无：平铺所有类加载器，并展示其实例数量与加载的类数量
+    -l：按类加载器加载的实例数进行统计
+    -t：打印所有类加载器的继承树
+    -a：列出所有类加载器加载的类，类太多慎用
+    -c hashCode：查看指定类加载器的实际urls
+    --classLoaderClass 类加载器全类名：与-c一样，不过这里是指定类，前提类加载器是唯一实例
+    -c hashCode -r META-INF/MANIFEST.MF：查找指定类加载器下的资源
+    -c hashCode -r java/lang/String.class：查找指定类加载器下的类文件
+    -c hashCode --load 全类名：使用类加载器去加载类
 
 
+对于大部分跟类相关的操作，基本都支持：
+    -c与--classLoaderClass来指定类加载器
 
+对于大部分与实例相关的查询，基本都支持：
+    -x来指定返回实例的深度
 
+monitor：
+    方法执行监控，可监控某个方法在每个统计周期内的执行次数、成功次数、失败次数、平均响应时间、失败比例等信息
+    monitor -E '[a-z]{5}' -c 5 demo.*Test *Test "params[0] >= 2"
+    详解：
+      -E：正则表达式匹配，如果不开启则为通配符匹配
+      -c：统计周期，默认120秒
+      demo.*Test：类名匹配表达式
+      *Test：方法名匹配表达式
+      "params[0] >= 2"：参数条件表达式
+      
 
+trace：
+    方法内部调用链路，并输出方法路径上每个节点的耗时
+    trace --skipJDKMethod false -E com.boc.arthas.ArthasTest v 'params[0]>100' '#cost>100' -n 3 
+--exclude-class-pattern com.demo.TestFilter --listenerId 1 -v
+    详解：
+      --skipJDKMethod：默认情况下会忽略jdk的函数，如果需要跟踪jdk函数就设置为false
+      -E：开启正则表达式
+      com.boc.arthas.ArthasTest：类名的表达式
+      v：方法名的表达式
+      'params[0]>100'：条件表达式
+      '#cost>100'：执行时间超过100ms才输出trace结果
+      -n：命令执行次数，如果为3，则会在3次trace到结果后退出
+      --exclude-class-pattern：排除的类名表达式
+      --listenerId：监控id，想跟踪子方法时可以trace后拿到这个id去另开一个终端里指定参数，这样当父方法trace时如果这
+个id能匹配就会在另外一个终端输出trace信息
+      -v：打印更多信息，比如条件表达式具体的值与执行结果
 
+stack：
+    输出当前方法被调用的调用路径
+    stack com.boc.arthas.ArthasTest v -E 'params[0]<0' -n 2 '#cost>5'
+    详解：
+      com.boc.arthas.ArthasTest：类名的表达式
+      v：方法名的表达式
+      -E：开启正则表达式，默认是通配符匹配
+      'params[0]<0'：条件表达式
+      -n：命令执行次数，如果为3，则会在3次stack到结果后退出
+      '#cost>5'：执行时间超过5ms才会被stack
 
+tt：
+    记录制定方法每次调用的入参与返回信息，并记录时间点
+    tt -t *Test print 'params[1] instanceof Integer' params[0].mobile=="13989838402" -n 3
+    详解：
+      -t *Test print：希望记录下类名以Test结尾的print方法
+      'params[1] instanceof Integer'：第二个方法参数是Integer类型
+      'params[0].mobile=="13989838402'：第一个参数的mobile属性为指定值
+      -n 3：只记录三条信息，如果不加以限制很容易就会把JVM内存撑爆
+    tt -l：展示tt记录的结果
+    tt -s 'method.name=="primeFactors"'：对tt的结果进行筛选，这里是筛选方法名为primeFactors的记录
+    tt -i 1003：查看记录明详细信息，包括执行时间、参数、异常、返回值等，1003是tt记录的index，tt -l能获取到每条记录的这个值
+    tt -i 1003 -p --replay-times 3 --replay-interval 2000：根据1003号记录重新发起一次调用；--replay-times代表调用次
+数，默认一次；--replay-interval代表调用间隔，默认1000ms；由于这次调用是arthas的线程发起的，调用链路也会不同，调用结
+果可能会不同，，因为很多框架的信息是跟线程绑定的，arthas线程并没有那些信息
 
+options：
+    查看所有选项
+options unsafe true：
+    watch/trace/tt/trace/monitor等命令默认不支持java.* package下的类，设置这个选项为true可以支持
+options json-format true：
+    以json方式查看结果
 
+grep：
+    arthas支持像linux一样对结果进行| grep管道流
 
+cls：
+    清空界面
 
+后台异步任务：
+    当线上出现偶发的问题，比如需要watch某个条件，而这个条件一天可能才会出现一次时，异步后台任务就派上用场了
+    感觉不太用的上，不写了，需要再看文档
 
+agent与attach方式的区别：
+    agent：直接在原程序的进程里进行，不需要另外启动一个arthas进程，直接在原程序进行操作
+    attach：另外启动一个arthas进程，然后与原程序的进程做通信进行操作
 
+reset：
+    还原所有被arthas增强过的类
+    无：还原所有类
+    -E：指定还原的类名支持正则，默认是通配符
 
+重载方法过滤技巧：
+    同名方法过滤可以通过匹配表达式,可以使用表达式核心变量中所有变量作为已知条件,可以通过判断参数个数params.length 4==1, 参数类型params[0] instanceof java.lang.Integer、返回值类型 returnObj instanceof java.util.List 等等一种或者多
+种组合进行过滤。
 
-
+表达式核心变量，几乎所有表达式都是围绕这些变量进行的：
+    loader	本次调用类所在的 ClassLoader
+    clazz	本次调用类的 Class 引用
+    method	本次调用方法反射引用
+    target	本次调用类的实例
+    params	本次调用参数列表，这是一个数组，如果方法是无参方法则为空数组
+    returnObj	本次调用返回的对象。当且仅当 isReturn==true 成立时候有效，表明方法调用是以正常返回的方式结束。如果
+当前方法无返回值 void，则值为 null
+    throwExp	本次调用抛出的异常。当且仅当 isThrow==true 成立时有效，表明方法调用是以抛出异常的方式结束。
+    isBefore	辅助判断标记，当前的通知节点有可能是在方法一开始就通知，此时 isBefore==true 成立，同时     isThrow==false 和 isReturn==false，因为在方法刚开始时，还无法确定方法调用将会如何结束。
+    isThrow	辅助判断标记，当前的方法调用以抛异常的形式结束。
+    isReturn	辅助判断标记，当前的方法调用以正常返回的形式结束。
 
 
 
