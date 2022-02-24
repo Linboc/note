@@ -121,6 +121,9 @@ HashMap，默认情况下这两个变量都为Null，只有第一调用ThreadLocal的get或set方法时才
         void remove()：
             拿到threadLocals，不过不为null则删除key为this的元素
 
+        ThreadLocalMap getMap(Thread t)：
+            返回传入线程的threadLocals属性
+
     由于每个线程的本地变量都存放在线程自己的变量threadLocals中，如果当前线程一直不消亡，这些本地变量就会一直存在，
 所以有可能会造成内存溢出，因此使用完毕要记得调ThreadLocal的remove方法删除线程threadLocals中的本地变量
 
@@ -129,6 +132,106 @@ InheritableThreadLocal：
 
     为了解决子线程无法继承父线程本地变量的问题，InheritableThreadLocal应运而生。InheritableThreadLocal继承自
 ThreadLocal，它提供了一个特性，那就是让子线程可以访问父线程中设置的本地变量
+
+    InheritableThreadLocal类方法介绍：
+        T chlidValue(T parentValue)：
+            覆盖父类方法，原方法为抛异常，默认返回parentValue，这个方法在子线程复制父线程的inheritableThreadLocals
+        变量时，每个value都会传进来一次
+
+        ThreadLocalMap getMap(Thread t)：
+            覆盖父类方法，原方法为返回传入线程的threadLocals，覆盖后返回传入线程的inheritableThreadLocals
+
+        void createMap(Thread t, T firstValue)：
+            覆盖父类方法，原方法为：用this与set进来的value参数为t.threadLocals属性创建一个ThreadLocalMap并puts，覆
+        盖后变成为t.inheritableThreadLocals属性赋值
+
+    总的来说就是将之前针对threadLocals的操作都改为针对inheritableThreadLocals
+
+    复制行为发生在new Thread()时，构造器内会调init方法，这个方法会在父线程的inheritableThreadLocals不为空的情况下将
+所有元素复制到子线程的inheritableThreadLocals中。父线程用Thread.currentThread()获取，子线程用this获取
+
+    子线程还有多种使用父线程变量的方式，在线程start之前将参数传给线程实现类，然后在它的run里面就能this调用，或者写
+lambda表达式的时候外层放final变量，里面也能直接使用，不过这些都会改变使用习惯，而InheritableThreadLocal就比较方便，
+前提是不用线程池
+
+
+
+并发与并行：
+    并发是指一个时间段内有多个任务在执行，而一个时间段由多个时间单位累计而成，一个时间单位可能同时只有一个任务在执
+行；而并行是指一个时间单位内多个任务同时执行
+
+线程安全问题：
+    线程安全问题是指，当多个线程同时读写一个共享资源且没有任何同步措施时，导致出现脏数据或者其他不可预见的结果
+
+synchronized：
+    synchronized是java提供的一种原子性内置锁，这种Java内置的使用者看不到的锁被称为内置锁，也叫监视器锁
+    由于Java中的线程是与操作系统的原生线程一一对应的，所以当阻塞一个线程时，需要从用户态切换到内核态，这是很耗时的
+操作，当线程进入synchronized拿不到锁进入挂起或被恢复时就会导致上下文切换
+    synchronized在进入时会把synchronized块内使用到的线程变量从线程的工作内存中清除，这样线程从工作内存中读不到该变
+量就会去主内存中获取。退出synchronized块时会把块内对共享变量的修改刷新到主内存，因此synchronized也能保证内存可见性
+，除此之外synchronized还经常被用来实现原子性
+    有些读操作也会加synchronized，看起来好像没必要，其实是不能去掉的，因为要靠synchronized来保证内存可见性
+
+volatile：
+    由于synchronized太笨重了，会带来线程上下文切换开销。对于解决内存可见性问题，Java还提供了一种弱形式的同步，也就
+是volatile关键字。
+    当一个变量被声明为volatile时，线程写入变量时不会把值缓存到工作内存，而是把值刷新回主内存；读取变量时会先清空工
+作内存，再从主内存获取最新值。写入volatile相当于退出synchronized，读取volatile相当于进入synchronized
+    但是volatile不保证原子性，因此volatile使用场景如下：
+        1、写入变量值不依赖当前值，依赖当前值将是：获取-计算-写入，这三步不是原子性的，因此volatile保证不了正确性
+        2、读写变量值时没有加锁，如果已经加锁了，本身就保证了内存可见性，volatile就是多余的了
+
+指令重排：
+    java内存模型允许编译器和处理器对指令进行重排序以提高运行性能
+    单线程下能保证指令重排前后结果不产生差别，但是多线程下，比如先设置值i=2，然后init=true，那么init=true时i必然=2
+，然后if (init)，此时i与init的顺序互换对程序没影响，但是多线程下，如果进行指令重排，先init=true，然后i=2，如果线程1
+先init=true，此时线程2进行if判断，发现init为true，进去if才发现i此时不等于2，程序就会出现问题，此时就需要禁止指令重
+排
+    注意，以上例子是需要对init进行禁止指令重排，也就是volatile要加给init，而不是i，因为要确保init前面的操作不会排到
+init后面
+    volatile和synchronized都可以禁止指令重排。
+    写volatile变量时，可以确保volatile写之前的操作不会被编译器重排到volatile写之后，读volatile变量时，可以保证
+volatile读之后的操作不会被编译器重排序到volatile读之前
+
+
+伪共享：
+    为解决计算机系统中主内存与CPU之间运行速度差问题，会在CPU与主内存之间添加一级或多级高速缓存。这个缓存一般被集成
+到CPU内部，所以也叫CPU Cache。在CPU Cache内部，数据是按行存储的，其中每一行被称为一个Cache行，Cache行是CPU与主内存
+进行数据交换的单位。CPU访问某个变量时，会先去看CPU Cache内是否有该变量，有则从中获取，无则去主内存中获取，然后把该
+变量所在内存区域的一个Cache行大小的内存复制到CPU Cache中。由于复制的是内存块，而不是单个变量，所以可能会把多个变量
+存放到一个Cache行中。
+    当多个线程访问一个变量时，由于不同线程可能处于不同CPU，A线程在CPU1中更新x变量，在缓存一致性协议下，B线程在CPU2
+的CPU Cache中x变量就会失效，只能去二级缓存或主内存重新获取，x变量所在的缓存行整个就失效了，这就破坏了一级缓存，而一
+级缓存比二级缓存快。这也说明了多个线程不能同时去修改自己所使用CPU中相同缓存行里的变量
+    此时就会出现，虽然CPU1和CPU2都缓存了x变量，但是由于x变量与y变量处于同一缓存行，因此对y变量的更新也会破坏CPU对x
+变量的缓存。
+    所以为了避免这种情况就出现一种操作，就是在读取缓存目标变量后，对剩下的缓存行直接填充。要进行字节填充一定要内存
+连续才行。比如连续的属性，或者连续元素的数组。LongAdder的实现原理就是以此为基础
+    JDK8之前都是要自己手动进行留空，但是JDK8提供了@sun.misc.Contended注解，用来解决伪共享的问题，在Thread类中就有使
+用
+    @sun.misc.Contended：
+        该注解用来解决伪共享，可以修饰类与字段，默认情况下该注解只用于Java核心类。如需使用需添加参数：
+    -XX:-RestrictContended，默认宽度为128，如果需要自定义宽度可以用：-XX:ContendedPaddingWidth
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
