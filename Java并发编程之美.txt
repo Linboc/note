@@ -214,8 +214,9 @@ volatile读之后的操作不会被编译器重排序到volatile读之前
 用
     @sun.misc.Contended：
         该注解用来解决伪共享，可以修饰类与字段，默认情况下该注解只用于Java核心类。如需使用需添加参数：
-    -XX:-RestrictContended，默认宽度为128，如果需要自定义宽度可以用：-XX:ContendedPaddingWidth
-
+            -XX:-RestrictContended，默认宽度为128，如果需要自定义宽度可以用：-XX:ContendedPaddingWidth
+    实测二维long数组，一维二维长度都为10000，顺着一维遍历(一维遍历完才切换到下个一维)与顺着二维遍历(每次遍历都换一个一维数
+组)的性能相差10倍
 
 
 
