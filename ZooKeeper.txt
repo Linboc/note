@@ -273,7 +273,20 @@ zookeeper API：
             path：znode路径
             version：要删除znode的版本号
 
-
+    zookeeper集群：
+        关于zookeeper的作用与选举的相关知识，可以看zookeeper.txt，这里介绍zookeeper集群的配置：
+        zookeeper群组不建议超过7个，因为zookeeper使用了一致性协议，节点太多会降低性能，如果希望在线更新zookeeper的
+    配置，可以修改后依次重启每个节点，既能高可用又能改到配置
+        每个zookeeper服务器还要在数据目录中创建一个myid文件，用于指明自己的服务器id，文件内容如下：
+            tickTime=2000：指定基础的时间单位，与其它时间配置配合使用
+            dataDir=/var/lib/zookeeper：zookeeper的目录
+            clientPort=2181：客户端端口，专门给客户端api使用的端口
+            initLimit=20：从节点与主节点建立初始化连接的时间上限，20的意思是(tickTime的20倍)毫秒
+            syncLimit=5：允许从节点与主节点不同步状态的时间上限，5的意思是(tickTime的5倍)毫秒
+            server.1=zoo1.boc.com:2888:3888
+            server.2=zoo2.boc.com:2888:3888
+            以上两行配置：server.是固定值；1代表服务器id，必须是整数，不能重复，此id要与zookeeper的配置文件id一直，其它
+        没要求；zoo1.boc.com是服务器名或ip；2888是用于节点之间通信的端口；3888是用于leader选举通信的端口
 
 
 

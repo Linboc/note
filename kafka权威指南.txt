@@ -67,7 +67,53 @@ broker和集群简介：
     比如，多个Kafka集群都先用MirrorMaker的消费者消费消息，然后用生产者发送到另一个统一聚合集群里，然后将这个聚合集
 群的消息再用相同的方式复制到另一个数据中心即可
 
+kafka中的zookeeper：
+    在kafka中，zookeeper的作用主要是保存broker、主题、消费者的元数据与消费者的分区偏移量
 
+    zookeeper集群：
+        关于zookeeper的作用与选举的相关知识，可以看zookeeper.txt，这里介绍zookeeper集群的配置：
+        zookeeper群组不建议超过7个，因为zookeeper使用了一致性协议，节点太多会降低性能，如果希望在线更新zookeeper的
+    配置，可以修改后依次重启每个节点，既能高可用又能改到配置
+        每个zookeeper服务器还要在数据目录中创建一个myid文件，用于指明自己的服务器id，文件内容如下：
+            tickTime=2000：指定基础的时间单位，与其它时间配置配合使用
+            dataDir=/var/lib/zookeeper：zookeeper的目录
+            clientPort=2181：客户端端口，专门给客户端api使用的端口
+            initLimit=20：从节点与主节点建立初始化连接的时间上限，20的意思是(tickTime的20倍)毫秒
+            syncLimit=5：允许从节点与主节点不同步状态的时间上限，5的意思是(tickTime的5倍)毫秒
+            server.1=zoo1.boc.com:2888:3888
+            server.2=zoo2.boc.com:2888:3888
+            以上两行配置：server.是固定值；1代表服务器id，必须是整数，不能重复，此id要与zookeeper的配置文件id一直，其它
+        没要求；zoo1.boc.com是服务器名或ip；2888是用于节点之间通信的端口；3888是用于leader选举通信的端口
+
+broker：
+    broker.id：
+        每个broker都需要有一个唯一标识，默认值是0，可以设置成任何整数，这个值在集群中必须唯一
+
+    port：
+        kafka默认端口是9092，如有需要可以自行修改
+
+    zookeeper.connect：
+        zookeeper的连接地址，默认是localhost:2181，可以指定多个，用分号分隔，这样如果某个zookeeper挂了可以连其他的
+        比如localhost:2181/kafka;localhost:2182/kafka，后面的kafka是broker在zookeeper中的根路径，默认为/
+
+    log.dirs：
+        保存消息的路径，多个用逗号分隔，如果指定多个，broker会保证相同分区的日志片段保存到相同的路径，新的分区会根据
+    最小分区原则选择路径，也就是哪个路径的分区最少就选哪个
+
+    num.recovery.thread.pre.data.dir：
+        kafka启动和停止时的线程数
+        对于一下3种情况，kafka会使用线程池来处理日志：
+            1、服务器启动时，用于打开每个分区的日志片段
+            2、服务器奔溃后重启，用于检查和截短每个分区的日志片段
+            3、服务器关闭时，用于关闭日志片段
+        默认情况下，每个日志目录只是用一个线程，线程池只是在服务器启动和关闭时用来加速用的
+        如果这个值设置为8，代表每个目录需要8个线程，此时如果log.dirs又有3个目录，那么一共需要8*3=24个线程
+
+    auto.create.topics.enable：
+        kafka是否自动创建topic，以下几种情况会自动创建topic：
+            1、生产者往主题写入消息
+            2、消费者从主题读消息
+            3、客户端向主题发送元数据相关请求
 
 
 
