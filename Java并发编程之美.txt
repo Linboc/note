@@ -226,7 +226,8 @@ volatile¶ÁÖ®ºóµÄ²Ù×÷²»»á±»±àÒëÆ÷ÖØÅÅÐòµ½volatile¶ÁÖ®Ç°
         ±¯¹ÛËø£º
             ±¯¹ÛËøÖµ¶ÔÊý¾Ý±»Íâ²¿ÐÞ¸Ä³Ö±£ÊØÌ¬¶È£¬ÈÏÎªÊý¾ÝºÜÈÝÒ×±»ÆäËûÏß³ÌÐÞ¸Ä£¬ËùÒÔÔÚÊý¾Ý´¦ÀíÇ°ÏÈ¶ÔÊý¾Ý¼ÓËø
         ÀÖ¹ÛËø£º
-            ÀÖ¹ÛËøÊÇÏà¶Ô±¯¹ÛËøÀ´ËµµÄ£¬ËüÈÏÎªÊý¾ÝÔÚÒ»°ãÇé¿öÏÂ²»»á·¢ËÍ³åÍ»£¬ËùÒÔÔÚ·ÃÎÊÇ°²»»á¼ÓÅÅËüËø£¬¶øÊÇÔÚ½øÐÐÊý¾ÝÌá½»
+            ÀÖ¹ÛËøÊÇÏà¶Ô±¯¹ÛËøÀ´ËµµÄ£¬ËüÈÏÎªÊý¾ÝÔÚÒ»°ãÇé¿öÏÂ²»»á·¢ËÍ³åÍ»£¬ËùÒÔÔÚ·ÃÎÊÇ°²»»á¼ÓÅÅËüËø£¬¶øÊÇÔÚ½øÐÐÊý¾Ý
+    Ìá½»
         Ê±¶ÔÊý¾ÝÊÇ·ñ·¢Éú³åÍ»½øÐÐÐ£Ñé£¬Ò»°ãÊÇÓÃversion»òÒµÎñ×Ö¶ÎÀ´ÊµÏÖ¡£Êµ¼ÊÊ¹ÓÃÆðÀ´¿ÉÒÔÓÃÑ­»·Ö¸¶¨ÖØÊÔ´ÎÊý£¬ÓÐµãÀàËÆ
         CASµÄ×ÔÐý²Ù×÷
 
@@ -252,9 +253,11 @@ volatile¶ÁÖ®ºóµÄ²Ù×÷²»»á±»±àÒëÆ÷ÖØÅÅÐòµ½volatile¶ÁÖ®Ç°
     Æ÷+1£¬Ã¿´ÎÊÍ·ÅËøÔò¼ÆÊýÆ÷-1£¬µ±¼ÆÊýÆ÷Îª0Ê±£¬ËøÀïÃæµÄÏß³Ì±êÊ¾ÖØÖÃÎª0¡£´ËÊ±ÆäËüÏß³Ì¾Í»á±»»½ÐÑÀ´¾ºÕù¸ÃËø
 
     ×ÔÐýËø£º
-        ÓÉÓÚJavaµÄÏß³ÌºÍ²Ù×÷ÏµÍ³Ïß³ÌÊÇÒ»Ò»¶ÔÓ¦µÄ£¬ËùÒÔµ±Ò»¸öÏß³Ì»ñÈ¡ËøÊ§°Üºó£¬»á±»ÇÐ»»µ½ÄÚºËÌ¬ºó¹ÒÆð¡£¸ÃÏß³Ì»ñÈ¡µ½Ëø
+        ÓÉÓÚJavaµÄÏß³ÌºÍ²Ù×÷ÏµÍ³Ïß³ÌÊÇÒ»Ò»¶ÔÓ¦µÄ£¬ËùÒÔµ±Ò»¸öÏß³Ì»ñÈ¡ËøÊ§°Üºó£¬»á±»ÇÐ»»µ½ÄÚºËÌ¬ºó¹ÒÆð¡£¸ÃÏß³Ì»ñÈ¡µ½
+    Ëø
     Ê±£¬ÓÖÒª±»ÇÐ»»µ½ÄÚºËÌ¬»½ÐÑ¡£¶ø´ÓÓÃ»§Ì¬ÇÐ»»µ½ÄÚºËÌ¬µÄ¿ªÏúÊÇ±È½Ï´óµÄ£¬¶Ô²¢·¢ÐÔÄÜÓÐÒ»¶¨µÄÓ°Ïì¡£
-        ×ÔÐýËø¾ÍÊÇÔÚÏß³Ì»ñÈ¡ËøÊ§°ÜÊ±£¬»á¶à´Î³¢ÊÔ»ñÈ¡£¬Ä¬ÈÏ10´Î£¬¿ÉÒÔÊ¹ÓÃ-XX:PreBlockSpinshÉèÖÃ£¬ÓÐ¿ÉÄÜÔÚºóÃæ¼¸´ÎÖØÊÔ
+        ×ÔÐýËø¾ÍÊÇÔÚÏß³Ì»ñÈ¡ËøÊ§°ÜÊ±£¬»á¶à´Î³¢ÊÔ»ñÈ¡£¬Ä¬ÈÏ10´Î£¬¿ÉÒÔÊ¹ÓÃ-XX:PreBlockSpinshÉèÖÃ£¬ÓÐ¿ÉÄÜÔÚºóÃæ¼¸´ÎÖØ
+   ÊÔ
     Ê±ËøÒÑ¾­ÊÍ·ÅÁË£¬¾Í½ÚÊ¡ÁËÇÐ»»µ½ÄÚºËÌ¬¹ÒÆðµÄ¿ªÏú¡£ÓÉ´Ë¿´À´×ÔÐýËøÊÇÓÃCPUÊ±¼ä»»È¡Ïß³Ì×èÈûÓëµ÷¶ÈµÄ¿ªÏú£¬µ«ÊÇCPU¿É
     ÄÜ°×°×ÀË·ÑÁËÊ±¼ä£¬ÒòÎª×ÔÐýºóÒÀÈ»»ñÈ¡²»µ½µÄ»°ÒÀÈ»Òª¹ÒÆð£¬CPU¾Í°××ÔÐýÁË
 
@@ -274,12 +277,113 @@ threadLocalRandomSeed±äÁ¿À´¼ÆËãÐÂµÄÖÖ×Ó£¬È»ºó¸üÐÂÐÂµÄÖÖ×Ó»Ø¸Ã±äÁ¿ÖÐ£¬Ö®ºó¾Í¸ù¾ÝÐ
     ThreadLocalRandomÊÇµ¥ÀýµÄ£¬Í¨¹ýcurrent()º¯Êý·µ»Ø£¬¸Ã±äÁ¿ÊÇstaticµÄ¡£ÓÉÓÚ¾ßÌåµÄÖÖ×ÓÊÇ·ÅÔÚÏß³ÌÀïÃæµÄ£¬
 ThreadLocalRandomÖ»°üº¬ÁËÓëÏß³ÌÎÞ¹ØµÄÍ¨ÓÃËã·¨£¬ËùÒÔËüÊÇÏß³Ì°²È«µÄ
 
+    threadLocalRandomProbeÊôÐÔÄ¿Ç°ÒÑ·¢ÏÖµÄ×÷ÓÃÓÐÒÔÏÂ£º
+        1¡¢ÅÐ¶ÏthreadLocalRandomSeedÊÇ·ñÒÑ³õÊ¼»¯£¬Èç¹ûthreadLocalRandomProbe²»Îª0ÔòthreadLocalRandomSeedÒÑ³õÊ¼»¯
+        2¡¢¸øÀàËÆÓÚLongAdderÖ®ÀàµÄÀàÓÃ£¬ÒòÎªÏß³ÌÑ¡¶¨µÄcellsÏÂ±êÊÇ¸ù¾ÝÊý×é³¤¶È & threadLocalRandomSeed¼ÆËã³öÀ´µÄ£¬Ëù
+    ÒÔÖ»Òªcells³¤¶È²»±ä£¬Ïß³ÌµÄthreadLocalRandomSeed²»±äÔòÃ¿´ÎÏß³Ì¶¼»áÈ¥µ½ÏàÍ¬µÄÏÂ±ê£¬Ä³Ð©Çé¿öÏÂ¿ÉÄÜ»áÏ£ÍûÏß³ÌÑ¡È¡
+    ÏÂ±êµÄ½á¹ûÓÐËù¸Ä±ä£¬ËùÒÔ¾Í»á¸Ä±äthreadLocalRandomSeedµÄÖµÀ´´ïµ½Ä¿µÄ¡£¿ÉÒÔµ÷ÓÃThreadLocalRandom.advanceProbe(h)
+    À´¸Ä±äËüµÄÖµ
+        ±ÈÈçConcurrentHashMapÄÚ²¿ÓÐ¸öCounterCellÀàÐÍµÄcounterCellsÊôÐÔ£¬ÓÃÀ´Í³¼ÆËüµÄsize£¬Ô­Àí¸úLongAdder²î²»¶à£¬Èç
+    »ñÈ¡¹ûËüÔÚÔö¼ÓÊ±¶à´Î·¢ÏÖCASµÄÏß³Ì³åÍ»£¬¾Í»áÔÚ¶à´ÎCASÊ§°Üºóµ÷ÓÃThreadLocalRandom.advanceProbe(h)À´µ÷ÕûÒ»ÏÂÏß³ÌËù
+    µÄÏÂ±ê
 
 
 
+Ô­×Ó±äÁ¿²Ù×÷Àà£º
+
+    AtomicLong£º
+        Ô­Àí¾ÍÊÇÍ¨¹ýUnsafeÀàµÄÒ»ÏµÁÐ·½·¨ÊµÏÖ£¬ÄÚ²¿ÓÐÒ»¸övolatileµÄlongÀàÐÍÊôÐÔ£¬È»ºó¾Í²Ù×÷ÓÃUnsafeÀ´²Ù×÷Õâ¸öÊôÐÔ
+        ÆäËüÏà¹ØÔ­×ÓÀàµÄÔ­ÀíÒ²²î²»¶à£¬Ö»ÊÇÄÚ²¿Î¬»¤µÄvolatileÊôÐÔÀàÐÍÓÐËù²»Í¬
+
+    LongAdder£º
+        JDK8ÐÂÔöµÄÀà¡£AtomicLongËäÈ»Ê¹ÓÃÁËCAS£¬Ïà±ÈÓÚ¼Ó¼àÊÓÆ÷ËøÓÐÁË¸üºÃµÄÐÔÄÜ£¬µ«ÊÇÓÉÓÚÍ¬Ò»Ê±¼äÖ»ÓÐÒ»¸öÏß³Ì»áCAS²Ù
+    ×÷³É¹¦£¬ÆäËüÏß³Ì¾ºÕùÊ§°Ü¾Í»á²»¶Ï½øÐÐ×ÔÐý³¢ÊÔCAS²Ù×÷£¬°×°×ÀË·ÑÁËCPU×ÊÔ´¡£Òò´ËJDK8ÐÂÔöÁËLongAdderÓÃÀ´¿Ë·þÔÚ¸ß²¢·¢
+    ÏÂÊ¹ÓÃAtomicLongµÄÈ±µã
+        ¼ÈÈ»AtomicLongµÄÐÔÄÜÆ¿¾±ÊÇÓÉÓÚ¶à¸öÏß³ÌÈ¥¾ºÕùÒ»¸ö±äÁ¿µÄ¸üÐÂ¶ø²úÉúµÄ£¬ÄÇÎªÊ²Ã´²»°ÑÒ»¸ö±äÁ¿·Ö½â³É¶à¸ö±äÁ¿£¬ÈÃ
+    Ïß³ÌÈ¥¾ºÕù¶à¸ö×ÊÔ´£¬Ö»Òª¾ºÕùµ½ÈÎÒâÒ»¸ö×ÊÔ´¾Í¿ÉÒÔÁË£¬ÕâÊÇ²»ÊÇ¾Í½â¾öÁËÐÔÄÜµÄÎÊÌâ£¿
+        LongAdder¾ÍÊÇÕâ¸öË¼Â·£¬ËüÔÚÄÚ²¿Î¬»¤ÁË¶à¸öCell±äÁ¿£¬Ã¿¸öCellÀïÃæ¶¼ÓÐÒ»¸ö³õÊ¼ÖµÎª0µÄlongÀàÐÍ£¬Ïß³ÌÈç¹û¸üÐÂÄ³
+    ¸öCellÊ§°ÜÁË£¬Ëü¿ÉÒÔ³¢ÊÔÈ¥ÆäËüCell±äÁ¿ÉÏ½øÐÐCAS£¬×îÖÕ»ñÈ¡LongAdderµÄÖµÊ±£¬·µ»ØËùÓÐCellµÄÖµµÄºÍ¼ÓÉÏbase¾Í¿ÉÒÔÁË
+        LongAdderÎ¬»¤ÁËÒ»¸öÑÓ³Ù³õÊ¼»¯µÄvolatileÊý×éCellsºÍÒ»¸ö»ùÖµ±äÁ¿base¡£ÓÉÓÚCells±È½Ï´ó£¬ËùÒÔ²ÉÓÃ¶èÐÔ¼ÓÔØ¡£
+        Ò»¿ªÊ¼Èç¹ûCellÊý×éÊÇnull²¢ÇÒ²¢·¢Ïß³Ì½ÏÉÙ£¬ËùÓÐµÄÀÛ¼Ó²Ù×÷¶¼ÊÇ¶Ôbase±äÁ¿½øÐÐµÄ¡£CellÊý×éµÄ´óÐ¡×ÜÊÇÎª2µÄ´Î·½£¬
+    ³õÊ¼»¯Ê±Îª2¡£Êý×éµÄÔªËØÊÇCellÀàÐÍ£¬Õâ¸öÀàÐÍÊÇAtomicLongµÄÒ»¸ö¸Ä½ø£¬ÓÃÁË@ContendedÀ´ÐÞÊÎ£¬ÓÃÀ´½â¾öÎ±¹²ÏíµÄÎÊÌâ
+        ¶ÔÓÚ´ó¶àÊý¹ÂÁ¢µÄÔ­×Ó²Ù×÷½øÐÐ×Ö½ÚÌî³äÊÇÀË·ÑµÄ£¬ÒòÎªÔ­×ÓÐÔ²Ù×÷ÊÇÎÞ¹æÂÉµÄ·ÖÉ¢ÔÚÄÚ´æÖÐµÄ£¬µ«ÊÇÔ­×ÓÐÔÊý×éÔªËØµÄ
+    ÄÚ´æµØÖ·ÊÇÁ¬ÐøµÄ£¬ËùÒÔÊý×éÄÚµÄ¶à¸öÔªËØÄÜ¾­³£¹²Ïí»º´æÐÐ£¬Òò´ËÕâÀïÓÃ@Contended¶ÔCellÀàÐÍ½øÐÐÌî³ä£¬ÒÔÈ·±£CellsµÄÃ¿
+    ¸öÔªËØ¶¼¶ÀÏíÒ»¸ö»º´æÐÐ£¬ÕâÔÚÐÔÄÜÉÏÊÇÒ»¸öÌáÉý
+
+    LongAdderÔ´Âë·ÖÎö£º
+        ¼Ì³ÐÓÚStriped64£¬DoubleAdderÒ²¼Ì³ÐÁËÕâ¸öÀà£¬ÒòÎªLongºÍdouble¿ÉÒÔ»¥×ª£¬ÊµÏÖÁËSerializable
+
+        cellsÊôÐÔ£º
+            ÊÇÒ»¸öCellÀàÐÍµÄ¶¯Ì¬ËØ×é
+
+        baseÊôÐÔ£º
+            »ù´¡Öµ£¬Ä¬ÈÏÎª0£¬Èç¹û¶Ôbase½øÐÐCASÃ»ÓÐ·¢ÉúÊ§°Ü£¬»òÕßµ±cellsÎªnull£¬¶Ôcells½øÐÐ³õÊ¼»¯Ê±¶ÔcellsBusy½øÐÐ
+        CASÊ§°Ü£¬¾ÍÖ»ÓÃbase¾Í¿ÉÒÔÁË
+
+        cellsBusyÊôÐÔ£º
+            ÊµÏÖ×ÔÐýËø£¬×´Ì¬Ö»ÓÐ0ºÍ1£¬´´½¨ÐÂµÄCellÔªËØ¡¢À©ÈÝCells»òÕß³õÊ¼»¯CellsÊ±Ê¹ÓÃCAS±£Ö¤Ö»ÓÐÒ»¸öÏß³ÌÔÚ½øÐÐÆäÖÐ
+        Ö®Ò»µÄ²Ù×÷
+
+        Striped64ÀàµÄCellÄÚ²¿Àà£º
+            @Contended×¢½âÐÞÊÎµÄÀà£¬ÄÚ²¿ÓÐÒ»¸övolatileÐÞÊÎµÄlongÀàÐÍµÄvalue£¬»¹ÓÐ¸öcas·½·¨ÓÃÀ´ÐÞ¸ÄvalueÊôÐÔ£¬ÆäÓàµÄ
+        ¾ÍÊÇUnsafeºÍvalueÊôÐÔµÄÆ«ÒÆÁ¿
+
+        sum£º
+            ·µ»Øµ±Ç°µÄÖµ£¬µ±Ç°Öµ = cellsËùÓÐÔªËØµÄvalueµÄºÍ + baseµÄÖµ
+
+        reset£º
+            ½«baseºÍcellsÀïËùÓÐÔªËØµÄvalue¶¼ÖÃÎª0
+
+        sumThenReset£º
+            sumºÍresetµÄºÏÌå°æ±¾£¬¶ÔÃ¿¸öÖµ½øÐÐÀÛ¼Óºó¶¼ÖÃ0£¬Ò²¾ÍÊÇ·µ»ØsumµÄÖµ£¬ÇÒbaseºÍcells¶¼Çå0£¬Ö»ÓÃÁËÒ»´ÎÑ­»·
+
+        longValue£º
+            µÈ¼ÛÓÚsum£¬»¹ÓÐÒ»ÏµÁÐ¸÷ÖÖxxxValue£¬ÆäÊµÖ»ÊÇ¶Ô·µ»ØµÄlong×öÁËÏàÓ¦ÀàÐÍµÄÇ¿×ª
+
+        longAccumulate£º
+            ºËÐÄ·½·¨£¬°üº¬ÁËthreadLocalRandomProbeµÄ³õÊ¼»¯¡¢cellsµÄ³õÊ¼»¯¡¢cellsÔªËØµÄ´´½¨¡¢cellsµÄÀ©ÈÝ¡¢baseµÄCAS
+        ¡¢cellsÀïÔªËØµÄCAS
 
 
+LongAccumulator£º
+    Ìá¹©µÄ¹¦ÄÜºÍLongAdderÀàËÆ£¬²»Í¬µÄÊÇLongAccumulator¿ÉÒÔÖ¸¶¨³õÊ¼Öµ£¬¶øLongAdderµÄ³õÊ¼ÖµÖ»ÄÜÊÇ0¡£²¢ÇÒ
+LongAccumulator»¹Ö§³ÖÖ¸¶¨ÀÛ¼ÓÆ÷£¬ÀÛ¼ÓÆ÷¾ÍÊÇÃ¿´Î½øÐÐCAS£¬¶¼»á°Ñ¾ÉÖµÓëÐÂÖµ´«½øÈ¥£¬È»ºó°ÑÀÛ¼ÓÆ÷µÄ·µ»ØÖµµ±ÐÂÖµ£¬ÀÛ¼ÓÆ÷
+ÀïÃæ¶Ô¾ÉÖµÓëÐÂÖµÊÇ×ö¼Ó¼õ»¹ÊÇ³Ë³ý»òÕß¸÷ÖÖ²Ù×÷¶¼¿ÉÒÔ×Ô¶¨Òå
+    Òò´ËLongAccumulatorÆðÃû½ÐLongÀÛ¼ÓÆ÷£¬¶øLongAdderÖ»ÄÜ½ÐLong¼Ó·¨Æ÷
 
+
+CopyOnWriteArrayList£º
+    Ô­Àí¾ÍÊÇÃ¿´Îadd¶¼newÒ»¸ö±ÈÉÏ´Î³¤¶È+1µÄÊý×é£¬½«¾Écopy¹ýÈ¥£¬È»ºó½«ÐÂÔªËØ·ÅÈë×îºóÒ»¸öÏÂ±ê¡£Õâ»á»á³öÏÖÒ»¸öÎÊÌâ£¬²é
+Ñ¯Ê±¿ÉÄÜ¸ÕºÃ¼¯ºÏ±»Ìí¼Ó»òÉ¾³ýÁËÔªËØ£¬µ«ÊÇ²éÑ¯ÒÀÈ»ÄÜ²é³öÀ´£¬Õâ¾ÍÊÇÐ´Ê±¸´ÖÆ²ßÂÔ²úÉúµÄÈõÒ»ÖÂÐÔÎÊÌâ
+    µü´úÆ÷µÄ¿ìÕÕÔÚµ÷ÓÃiterator()Ê±ÔÚµü´úÆ÷ÄÚ²¿±£´æ
+
+
+LockSupport£º
+    LockSupportÊÇ¸ö¹¤¾ßÀà£¬Ö÷Òª×÷ÓÃÊÇ»½ÐÑºÍ¹ÒÆðÏß³Ì£¬LockSupportÀàÓëÃ¿¸öÊ¹ÓÃËüµÄÏß³Ì¶¼»á¹ØÁªÒ»¸öÐí¿ÉÖ¤£¬Ä¬ÈÏÇé¿öÏÂ
+Ïß³ÌÊÇÃ»ÓÐÐí¿ÉÖ¤µÄ¡£LockSupport±¾ÖÊÉÏÊÇ¶ÔUNSAFEµÄ·½·¨×÷ÁËÒ»²ã·â×°
+    
+
+    park()£º
+        Èç¹ûµ÷ÓÃpark()·½·¨µÄÏß³ÌÓÐÐí¿ÉÖ¤£¬ÔòÂíÉÏ·µ»Ø£¬·ñÔò»á±»¹ÒÆð¡£¹ÒÆð¿ÉÒÔ±»ÖÐ¶Ï±êÊ¶»òÕßunpark()·½·¨´ò¶Ï£¬±»´ò¶Ï
+    Ê±²»»áÅ×³öÖÐ¶ÏÒì³£
+
+    park(Object blocker)£º
+        Óëpark()ÀàËÆ£¬Çø±ðÊÇÈç¹ûÏß³ÌÒòpark()±»¹ÒÆð£¬Õâ¸öblocker»á±»¼ÇÂ¼µ½Ïß³ÌÄÚ²¿£¬¿ÉÒÔÍ¨¹ýÕâ¸öÀ´Çø·Ö²»Í¬µÄÏß³Ì£¬Õï     ¶Ï¹¤¾ß¿ÉÒÔÍ¨¹ýgetBlocker(Thread t)À´»ñÈ¡blocker¶ÔÏó£¬ËùÒÔÍ¨¹ýÕâ¸ö±äÁ¿¿ÉÒÔ·ÖÎöÊÇÄÄ¸ö¶ÔÏóÒýÆðµÄpark¡£
+        Èç¹ûÓÃjstack ½ø³ÌID£¬¾Í¿ÉÒÔ¿´µ½»á¶îÍâÊä³öÓÃ»§µ÷Æðpark()µÄÀà£¬»¹ÓÐ´«Èë¶ÔÏóµÄÄÚ´æµØÖ·(ºÃÏñÊÇ)
+        blocker»áÔÚpark¿ªÊ¼Ö®Ç°¼ÇÂ¼µ½Ïß³Ì£¬park½áÊøºóÇå³ý£¬ÒòÎªÒ»°ã¶¼ÊÇÔÚÏß³Ì×èÈûÊ±²Å·ÖÎöÔ­Òò
+
+    unpark(Thread t)£º
+        ´«ÈëÒ»¸öÏß³Ì£¬Èç¹û´«ÈëµÄÏß³ÌÃ»ÓÐÐí¿ÉÖ¤£¬ÔòÈÃ¸ÃÏß³Ì³ÖÓÐÐí¿ÉÖ¤¡£Èç¹û¸ÃÏß³ÌÖ®Ç°ÒòÎªpark±»¹ÒÆð£¬Ôò»½ÐÑ¸ÃÏß³Ì
+
+    parkNanos(long nanos)£º
+        Óëpark()ÀàËÆ£¬Çø±ðÊÇÏß³Ì±»¹ÒÆðnanosÊ±¼äºó»á×Ô¶¯·µ»Ø
+
+    parkNanos(Object blocker, long nanos)£º
+        ÓëparkNanos()ÀàËÆ£¬Çø±ðÊÇ¿ÉÒÔ´«Èëblocker
+
+    parkUntil(Object blocker, long deadline)£º
+        ÓëparkNanos()ÀàËÆ£¬Çø±ðÊÇparkNanos()µÄÊ±¼äÊÇÖ¸´Óµ±Ç°Ê±¼ä¿ªÊ¼ËãµÄnanosÊ±¼ä£¬¶ødeadlineµÄÊ±¼äÊÇÖ¸¾ø¶ÔÊ±¼ä£¬Ò²
+    ¾ÍÊÇ´Ó1970Äêµ½·µ»ØÊ±¼äÖ®¼äµÄºÁÃëÊý
 
 
 
