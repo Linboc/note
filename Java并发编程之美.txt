@@ -362,7 +362,6 @@ LockSupport：
     LockSupport是个工具类，主要作用是唤醒和挂起线程，LockSupport类与每个使用它的线程都会关联一个许可证，默认情况下
 线程是没有许可证的。LockSupport本质上是对UNSAFE的方法作了一层封装
     
-
     park()：
         如果调用park()方法的线程有许可证，则马上返回，否则会被挂起。挂起可以被中断标识或者unpark()方法打断，被打断
     时不会抛出中断异常
@@ -385,7 +384,7 @@ LockSupport：
         与parkNanos()类似，区别是parkNanos()的时间是指从当前时间开始算的nanos时间，而deadline的时间是指绝对时间，也
     就是从1970年到返回时间之间的毫秒数
 
-
+    LockSupport的每一次park的唤醒都需要一次unpark，且unpark不可积累
 
 
 
