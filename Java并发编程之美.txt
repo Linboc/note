@@ -257,7 +257,7 @@ volatile读之后的操作不会被编译器重排序到volatile读之前
     锁
     时，又要被切换到内核态唤醒。而从用户态切换到内核态的开销是比较大的，对并发性能有一定的影响。
         自旋锁就是在线程获取锁失败时，会多次尝试获取，默认10次，可以使用-XX:PreBlockSpinsh设置，有可能在后面几次重
-   试
+    试
     时锁已经释放了，就节省了切换到内核态挂起的开销。由此看来自旋锁是用CPU时间换取线程阻塞与调度的开销，但是CPU可
     能白白浪费了时间，因为自旋后依然获取不到的话依然要挂起，CPU就白自旋了
 
@@ -287,7 +287,45 @@ ThreadLocalRandom只包含了与线程无关的通用算法，所以它是线程安全的
     获取果它在增加时多次发现CAS的线程冲突，就会在多次CAS失败后调用ThreadLocalRandom.advanceProbe(h)来调整一下线程所
     的下标
 
+Unsafe：
+    Unsafe提供硬件级别的操作，里面都是native方法，主要提供CAS、线程挂起、线程唤醒等操作，详情如下：
 
+    long objectFieldOffset(Field field)：
+        获取指定属性的偏移量，CAS对属性进行操作都是基于偏移量的，此方法是基础
+
+    int arrayBaseOffset(Class arrayClass)：
+        获取数组中第一个元素的地址
+
+    int arrayIndexScala(Class arrayClass)：
+        获取数组中一个元素占用的字节
+
+    boolean compareAndSwapLong(Object obj, long offset, long expect, long update)：
+        基本的CAS操作，obj：操作的对象，offset，操作对象属性的偏移量，expect：如果原值等于它，update：则更新为它
+
+    long getLongvolatile(Object obj, long offset)：
+        获取obj对象偏移量为offset的属性的值，支持volatile语义，也此次操作支持内存可见与指令重排，哪怕对象没用到
+        volatile
+
+    void putLongvolatile(Object obj, long offset, long value)：
+        设置obj对象中偏移量为offset的属性的值，支持volatile语义，语义的含义看上面
+
+    void putOrderedLong(Objdct obj, long offset, long value)：
+        设置obj对象中偏移量为offset的属性的值为value，不保证值对其它线程可见，除非值本身就被volatile修饰了
+
+    void park(boolean isAbsolute, long time)：
+        阻塞当前线程，如果isAbsolute为false且time为0表示一直阻塞，否则isAbsolute为false时time为相对值，为true时time
+    为绝对值
+        线程被中断、其他线程调用了unPark()都会导致park()返回
+
+    void unPark(Object thread)：
+        传入的线程如果被park()阻塞则唤醒它
+
+    long getAndSetLong(Object obj, long offset, long update)：
+        将obj对象中偏移量为offset的属性的值，用while + CAS的方式更新为update。拿到旧值进行CAS，如果失败就再拿再进行 
+    CAS，返回旧值
+
+    long getAndAddLong(Object obj, long offset, long addValue)：
+        obj对象中偏移量为offset的属性的值，用while + CAS的方式自增addValue。返回旧值
 
 原子变量操作类：
 
@@ -361,7 +399,7 @@ CopyOnWriteArrayList：
 LockSupport：
     LockSupport是个工具类，主要作用是唤醒和挂起线程，LockSupport类与每个使用它的线程都会关联一个许可证，默认情况下
 线程是没有许可证的。LockSupport本质上是对UNSAFE的方法作了一层封装
-    
+    LockSupport底层也是用了UNSAFE来实现的
 
     park()：
         如果调用park()方法的线程有许可证，则马上返回，否则会被挂起。挂起可以被中断标识或者unpark()方法打断，被打断
@@ -384,6 +422,70 @@ LockSupport：
     parkUntil(Object blocker, long deadline)：
         与parkNanos()类似，区别是parkNanos()的时间是指从当前时间开始算的nanos时间，而deadline的时间是指绝对时间，也
     就是从1970年到返回时间之间的毫秒数
+
+
+
+AbstractQueuedSynchronizer(AQS)：
+    抽象同步队列，它是实现同步器的基础组件，并发包中的锁底层就是AQS实现的，比如独占锁、读写锁、信号量、计数器等
+
+    AQS是一个双向队列，内部通过节点head和tail记录队首和队尾元素，元素类型为Node
+
+    Node内部实现：
+        thread：线程变量，用来存储放入AQS里面的线程
+        SHARED：也是一个Node，用来标记该线程是获取共享资源时被挂起后放入AQS队列的
+        EXCLUSIVE：也是一个Node，用来标记线程是获取独占资源时被挂起后放入AQS队列的
+        waitStatus：记录了当前线程的等待状态
+            CANCELLED：1，线程被取消
+            SIGNAL：-1，线程需要被唤醒
+            CONDITION：-2，线程在条件队列里面等待
+            PROPAGATE：-3，线程释放共享资源时需通知其它节点
+            prev：当前节点的前一个节点
+            next：当前节点的后一个节点
+
+    state：
+        AQS内部维持了状态信息，这个值会通过CAS来修改
+        ReentrantLock：
+            对于RentrantLock来说，state用来表示当前线程获取锁的可重入次数
+        ReentrantReadWriteLock：
+            对于ReentrantReadWriteLock来说，state的高16位表示读锁的获取次数，低16位代表获取到写锁线程的重入次数
+        Semaphore：
+            对于Semaphore来说，state代表当前可用信号个数
+        CountDownlatch：
+            对于CountDownlatch来说，state代表计数器当前值
+
+    AQS有个内部类ConditionObject，用来结合锁实现线程同步，由于是内部类ConditionObject可以访问AQS对象的内部变量，
+ConditionObject是条件变量，每个条件变量都对应一个条件队列，用来存放Condition调用await()后被阻塞的线程，这个队列的头
+部为firstWaiter，尾部为lastWaiter
+    ConditionObject里的是被该条件变量await()方法挂起的线程，AQS里的共享与独占队列是等待拿锁的线程
+    ConditionObject方法：
+        await()：
+            将当前线程创建一个Node节点放入条件变量的队列尾部。然后尝试释放锁，如果当前线程已拿到锁，则释放，如果没
+        拿到，则抛出IllegalMonitorStateException异常，然后将该Node的waitStatus设置为CANCELLED，等下次有线程准备将当
+        前线程放入条件变量的队列尾部之前，会先对队列里Node的waitStatus状态为CANCELLED的Node进行清理
+
+
+    独占模式的资源获取：
+        acquire(int arg)
+        acquireInterruptibly(int arg)，由于底层都是Unsafe.park，区别是这个被打断后会抛出异常，acquire打断后继续拿锁
+    独占模式的资源释放：
+        boolean release(int arg)
+    共享模式的资源获取：
+        acquireShared(int arg)
+        acquireSharedInterruptibly(int arg)，参考acquireInterruptibly()
+    共享模式的资源释放：
+        boolean releaseShared(int arg)
+    以上几个方法在AQS里都没实现，都是交给子类进行实现的，子类要根据自己的逻辑去判断state，返回成功或失败
+
+    boolean isHeldExclusively：
+        返回锁是被当前线程独占的还是共享的
+
+    Node enq(Node node)：
+        线程获取锁失败后，被转为Node对象，然后将该Node对象插入AQS队列的tail(尾部)，最后返回原来的tail
+
+
+
+
+
 
 
 
