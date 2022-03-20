@@ -428,7 +428,8 @@ LockSupport：
 AbstractQueuedSynchronizer(AQS)：
     抽象同步队列，它是实现同步器的基础组件，并发包中的锁底层就是AQS实现的，比如独占锁、读写锁、信号量、计数器等
 
-    AQS是一个双向队列，内部通过节点head和tail记录队首和队尾元素，元素类型为Node
+    AQS是一个双向队列，内部通过节点head和tail记录队首和队尾元素，元素类型为Node。head在获取锁成功时修改，tail在AQS
+加入新的阻塞线程时修改
 
     Node内部实现：
         thread：线程变量，用来存储放入AQS里面的线程
@@ -463,6 +464,11 @@ ConditionObject是条件变量，每个条件变量都对应一个条件队列，用来存放Condition调用
         拿到，则抛出IllegalMonitorStateException异常，然后将该Node的waitStatus设置为CANCELLED，等下次有线程准备将当
         前线程放入条件变量的队列尾部之前，会先对队列里Node的waitStatus状态为CANCELLED的Node进行清理
 
+        signal()：
+            唤醒一个被await()阻塞的线程节点，然后将该节点放入AQS的队列尾部
+
+        await就是将AQS的节点放入ConditionObject中，signal就是将ConditionObject的节点放回AQS中
+
 
     独占模式的资源获取：
         acquire(int arg)
@@ -482,10 +488,867 @@ ConditionObject是条件变量，每个条件变量都对应一个条件队列，用来存放Condition调用
     Node enq(Node node)：
         线程获取锁失败后，被转为Node对象，然后将该Node对象插入AQS队列的tail(尾部)，最后返回原来的tail
 
+    boolean hasQueuedPredecessors：
+        当前线程是否排在AQS的头部
+
+    FairSync：
+        公平锁，如果当前获取锁的线程已经有锁了，则state加1，如果没拿到锁，并且不是排在AQS的队列头部的那个，则将该线
+    程插入AQS的尾部，然后挂起。
+        释放锁的时候总是尽量从头部开始唤醒，如果头部的状态不正确，才依次往后排
+
+    NonfireSync：
+        非公平锁，跟公平锁一样，主要的差别就是tryAcquire方法的实现里只要调用lock都会尝试去改state，如果刚好锁被释放
+    了就能拿到
+
+    ReentanctLock与synchronized区别：
+        1、lock允许超时，sync不允许
+        2、lock支持公平锁，sync不支持
+        3、lock可以控制是否可被中断，sync总是会被中断
+
+    如果在多层锁里调用wait或await，lock只会释放conditionObject对应的锁，sync只会释放调用wait对象的锁
+
+    关于读是否需要加锁的问题：
+        目前发现读有必要加锁的场景只有在get的时候，通过synchronized来保证变量的可见性，如果变量本身有使用volatile修
+    饰，连锁都不用加
+
+
+ReentantReadWriteLock：
+
+    简介：
+        内部有两个锁实现，分别是ReadLock和WriteLock。这两个锁内部都是操作相同的Sync，区别只是读锁操作share方法，写
+    锁操作普通方法。其中Sync的实现也是有两个，分别是NonfairSync和FairSync
+
+    与ReentrantLock的不同：
+        1、state在ReentrantReadWriteLock中，高16位代表当前读锁的加锁次数，低16位代表当前写锁的加锁次数。在判断时，
+    获取写锁的次数只需state & ((1 << 16) - 1)就能排除高16位的值了；获取读锁的次数只需state >> 16就能获取高16位的值
+    了。而写锁加锁只需state + 1，读锁加锁则state + (1 << 16)
+
+        2、HoldCounter类型，每个HoldCounter变量都保存了线程id与线程的加锁次数
+
+        3、ThreadLocalHoldCounter类型的readHolds属性，这个类型实现了ThreadLocal，泛型是HoldCounter，也就是说每个线
+    程都有自己独有的readHolds属性，记录了它们的的读锁加锁次数与线程id
+
+        4、firstReader、firstReaderHoldCount，它们代表了第一次拿到读锁的线程与它的读锁加锁次数，这么做可以让单个线
+    程加读锁的消耗很低，因为不需要通过Thread类的map去拿线程变量
+
+        5、HoldCounter类型的cachedHoldCounter属性，记录了最后一次获取读锁的线程信息。这样最后一个加读锁的线程去获取
+    它的HoldCounter信息就不用通过readHolds去线程map里去拿线程变量了，而是直接比较cacheHoldCounter的线程id，如果跟当
+    前线程的线程id相等，就直接拿cacheHoldCounter来用就行了
+
+        6、逻辑顺着ReentrantLock都能想出来，基本就是在原来的基础上，share方法与非share方法会在加读写锁的时候，对对
+    方在state里的值做判断。加读锁时如果已有写锁，且写锁不是当前线程就挂起；加写锁时如果已有写锁或者已有读锁，且锁不
+    是当前线程就挂起
+
+        注意：同一线程可以先拿写锁再拿读锁，但是不能先拿读锁再拿写。因为写锁里有个判断是state != 0 && 写锁 == 0则加
+    锁失败。所以如果想有锁依然加锁，就要保证写锁 != 0，因此读锁+写锁不行，但是写锁+读锁+写锁就行。因为需要判断读锁
+    是不是全是自己加的，且判断读锁和对写锁CAS之间的原子性很难保证
+
+    方法：
+        readerShouldBlock：
+            公平锁返回队列头部是否不是当前线程，非公平锁总返回false
+
+        tryAcquireShared:
+            如果存在排它锁，且不是当前线程返回-1。如果当前线程在队列头部(公平锁才有)，且加锁次数小于最大次数，且对
+        state进行CAS成功，如果读锁的次数为0，则拿当前线程与1为firstReader和firstReaderHoldCount赋值，否则如果
+        firstReader为当前线程则firstReaderHoldCount+1，否则看cacheHoldCounter是否有值，如果没有或者cacheHoldCounter         里的线程id不是当前线程的则拿当前线程的，则用readHolds为它赋值，否则重新将cacheHoldCounter返回readHolds里，
+        这里如果不是当前线程则用当前线程的readHolds，如果是当前线程的那readHolds不是一样么，为什么要重新set，然后当
+        前线程的count++，最后返回1。
+            如果线程不在队列头部(公平锁才有)，或者读锁次数超过最大值，或者CAS失败，则调用fullTryAcquireShare
+
+        fullTryAcquireShare：
+            相当于开个死循环去跑tryAcquireShare，不过如果当前线程不是排在头部(公平锁才有)，且readHolds.count = 0，
+        则对该线程变量进行清除，然后返回-1，相当于如果此线程之前没拿到读锁，则这次直接返回-1，且被清除readhHolds，
+        否则就一直自旋，直到某一次当前线程排到AQS队列头部(公平锁才有)
+
+        readLock.unlock：
+            读锁在释放成功后，如果state=0，则将AQS队列里头部节点的waitStatus=SIGNAL对应的线程唤醒，如果期间head被改
+        了，则一直自旋进行唤醒
+
+        writeLock.unlock：
+            读锁在释放成功后，如果写锁次数=0，则将队列头部，节点waitStatus未取消里的最前面的节点唤醒
+
+        需要注意的是，读锁不支持newCondition，而写锁支持
+
+
+StampedLock：
+
+    戳记锁，比ReentrantReadWriteLock多了一个乐观读的功能，在读多写少时比较有用。能解决写锁的线程饥饿问题
+
+    线程饥饿：当线程需要某个资源却一直获取不到时，只能一直等着
+
+    StampedLock可以解决读写锁的写锁线程饥饿问题。那就是用乐观读的方式，乐观读并不加锁，而是拿到戳记后对数据进行读取
+，然后用validate方法传入戳记看看是否期间有写锁被拿，如果没有则说明修改安全，如果有则升级为读锁再读数据。如果有大量
+线程在读数据，突然一个写锁进来，那它能马上拿到锁，最多导致其它线程的数据失效，将乐观读锁升级为悲观读锁。由此解决了
+高并发读的情况下写锁线程饥饿的情况
+    不多如果仅仅保存变量到栈上就去做校验，那可能变量进行计算时值才被修改，更保险的做法应该是获取乐观锁后，在
+validate之前把值拿出来，并进行计算，之后才校验，不过这样校验失败的可能性更大，因为乐观锁持有时间更长了，还是看场景
+
+    注意：StampedLock里所有的锁都不支持Condition，且读写锁相互之间都不可重入。该锁没有实现AQS和Lock，是在自己内部另
+外写了一套，不过原理基本差不多
+
+    戳记：戳记是在加锁时返回的，它在释放锁时需要用到，并且乐观锁的validate也需要用到
+
+方法：
+    long writeLock()：
+        获取写锁，获取成功会返回一个戳记，可能会发生阻塞
+
+    long readLock()：
+        悲观获取一个共享读锁，返回一个戳记，可能会发生阻塞
+
+    long tryOptimisticRead()：
+        获取乐观锁，获取成功会返回一个不等于0的戳记，仅做位运算，不会阻塞
+
+    boolean validate(long stamp)：
+        校验在获取戳记后是否有写锁被获取，一般是在获取乐观锁后，将变量复制出来后才进行校验，如果校验失败就该拿读锁
+    再去读数据
+
+    unlockWrite(long stamp)：
+        传入戳记，并且释放对应的写锁
+
+    unlockRead(long stamp)：
+        传入戳记，并释放对应的共享读锁
+
+    unlock(long stamp)：
+        释放该戳记对应的锁，由于不知道是读锁还是写锁，所以要比unlockRead和unlockWrite做更多计算
+
+    long tryConvertToWriteLock(long stamp)：
+        传入原锁的戳记，将当前锁升级为写锁，返回一个新的戳记，戳记不等于0就算升级成功，升级成功后的锁如果要释放，就
+    要使用升级后的戳记才行，旧戳记就废弃了
+        有同样tryConvert系列开头的转换方法可以将当前锁转为读锁、乐观读锁
 
 
 
+ConcurrentLinkedQueue：
 
+    基于CAS实现的并发单向链表，Node类型的head和tail分别指向头和尾节点，头和尾初始化时都指向同一个默认节点
+
+    实现了Queue、Serializable，继承了AbstractQueue，上级也是一个Collection
+
+    Node：
+        item：
+            当前元素
+        next：
+            下一个元素
+        casNext：
+            将节点的next属性从旧值换为新值
+
+    offer：
+        往队列尾部添加一个元素，如果元素为Null则抛出空指针异常，否则由于是无界队列，所以会一直返回true。offer方法里
+    每插入两个节点才会更新一次tail
+
+    add:
+        其实就是offer
+
+    poll：
+        在队列头部获取并移除一个元素，队列为空返回null。把head节点设置为head.next，原来的head节点的next指向自己，这
+    样原被移除的节点就会被回收掉，如果发现在执行过程中head等于它的next，就会跳出循环重新执行
+
+    updateHead：
+        传入两个节点，如果两个节点不相等，就用CAS将head从第一个节点替换成第二个节点，并将原头节点的next指向自己
+
+    size：
+        遍历统计当前链表中元素的个数，通过first获取头节点，通过succ获取下一个节点
+
+    first：
+        获取头节点，拿到值或者下一个为空时则调updateHead更新头节点
+
+    succ：
+        获取传入节点的next，如果是一个自指向节点则返回head
+
+    remove：
+        从头节点开始，删除第一个item属性与传入值相等的节点，用equals判断，如果相等，则CAS将item换成null，换成功后将
+    上一个节点的next指向当前节点next，然后返回true，否则返回false
+
+    contains：
+        从first()开始，一直用succ()进行遍历，如果有节点的item属性与传入值用equals比较相等，则返回true,否则返回false
+
+    注意：使用IDEA DEBUG offer方法的时候，由于有调toString方法，所以回调队列的迭代器，而迭代器里的first方法会cas修
+改head的属性，所以debug offer方式时会看到属性非常奇怪。此时只需去settings-Build...-Debugger-Data Views-Java中将
+Enable alternative view for Collections classes和Enable 'toString()' object view关了就可以了
+
+    q代表下一个，p代表当前的，由于总是一连串参数既进行比较又进行赋值，都混在一起，如果不debug还是比较难懂的
+
+    由于使用CAS保证原子性，所以像size、conains等方法不太准，因为遍历过程中元素可能会变动
+
+    ConcurrentLinkedQueue之所以不用size属性而是使用遍历的方式进行统计，是因为追求高并发，不希望为了保证size属性的原
+子性而使得它成为并发的瓶颈，虽然使用LondAdder也是一种做法，但总归有CAS失败自旋的风险，所以牺牲了size的性能，让读写
+操作的并发能力得到进一步提升
+
+
+LinkedBlockingQueue：
+
+    用独占锁实现的阻塞队列，实现了了BlockingQueue、Serializable，继承了AbstractQueue，链表版阻塞队列
+
+    内部使用了单向链表实现，只持有首尾节点，有两个锁：takeLock和putLock，都是ReentrantLock，takeLock用来控制出队的
+原子性，putLock用来控制入队的原子性。此外还有两个Condition：notEmpty和notFull，分别用来存储入队与出队时被阻塞的线程
+，它的size使用一个AtomicInteger类型的count属性来实现
+    LinkedBlockingQueue的默认容量是Interge.MAX_VALUE，也可以自己指定容量，虽然它是链表，从一定程度上来说也算是有界
+阻塞队列。ConcurrentLinkedQueue就不支持指定容量因为它的写与读都是用CAS没加锁也不会阻塞，所以保证不了容量
+
+    boolean offer：
+        非阻塞方法，向队列尾部插入一个元素，元素不能为null。然后唤醒一个因调用put方法队列满而被阻塞的线程(notFull)
+    ，如果在入队前队列是空的，还会唤醒一个因调用take方法对列为空而被阻塞的线程(notEmpty)，使用Deque插入节点
+        线程唤醒只是将线程节点插入AQS队列尾部，不代表马上就能拿到锁并执行
+
+    void put：
+        阻塞方法，向队列尾部插入一个元素，元素不能为空。如果队列满则notFull.await()，为防止虚假唤醒，用了while进行
+    判断。被唤醒后且队列未满，则将元素插入队尾，count+1。然后唤醒下一个因为put方法导致的阻塞(notFull.signal)，如果
+    在入队之前队列是空的，还会唤醒一个因调用take方法队列为空而被阻塞的线程
+        线程唤醒只是将线程节点插入AQS队列尾部，不代表马上就能拿到锁并执行
+
+    E poll：
+        非阻塞方法，从队列头部获取并移除一个元素，如果队列为空返回null。获取putLock，如果容量不为空则拿到队列头部的
+    元素，并移除头部节点。如果依然有节点可以获取，则用notEmpty.signal唤醒因take时队列为空导致阻塞的线程。如果在移除
+    节点前队列是满的，还会唤醒一个因offer插入时队列已满而阻塞的线程
+
+    E dequeue：
+        获取head的下一个元素，然后覆盖head。head的next指向自己。进行自引用。最后将下一个节点的元素保存下来之后置为
+    null，然后返回该元素
+
+    void enqueue：
+        将旧队尾的next设置为当前节点，然后当前节点为队尾
+
+    E peek：
+        非阻塞方法，从队列头部获取元素，如果队列为空返回null。很简单的takeLock.lock，然后返回head.next的元素
+        为什么是head.next而不是head？因为poll的时候会将当前节点置为head，而不是下一个节点，所以poll后的head是那次
+    poll的节点，而不是head.next。之所以这样是因为一开始有个哨兵节点，所以每次都清理上次的，而不是这次的，这导致每次
+    拿值都要拿head.next，因为当前的head总是无效的
+
+    E take：
+        阻塞方法，从队列头部获取元素，如果队列为空则notEmpty.await()。await用了while条件防止虚假唤醒，被唤醒后走跟
+    poll差不多的逻辑，移除头部节点，计数+1，依然有元素则唤醒下一个因take而阻塞的线程，如果之前容量满了则唤醒因put而
+    阻塞的线程
+
+    boolean remove：
+        加putLock和takeLock。然后遍历队列，将从队头开始第一个与指定元素相等的节点移除，移除用的是unlink
+        两把锁获取与释放的顺序是相反的
+
+    void unlink()：
+        传入上一个节点与当前节点，将上一个节点的next指向当前节点的next。count-1，如果remove之前队列已满，则唤醒因
+    put方法而阻塞的线程
+
+    int size：
+        返回count.get()
+
+    LinkedBlockingQueue使用了独占锁保证了原子性，并且结合入队出队操作实现了一个生产消费模型。性能方面肯定没有ConcurentLinkedQueue高，但是适合如果没有值就一直等待消费的场景，比如线程池。如果不需要这种等待的行为，还是用CAS版本
+的并发队列好一些
+
+
+ArrayBlockingQueue：
+
+    用独占锁实现的阻塞队列，实现了了BlockingQueue、Serializable，继承了AbstractQueue，数组版阻塞队列
+
+    由于ArrayBlockingQueue是有界队列，所以构造函数必须传入队列大小。这里也没有像LinkedBlockingQueue那样分别在插入和
+获取各用一把锁，而是共用一把，因为插入和获取操作的数组对象是同一个。内部有个items数组，数组容量一开始就在构造器确定
+
+    offer：
+        非阻塞插入元素，参考LinkedBlockingQueue.offer()，区别是内部调的enqueue方法的实现不同
+
+    enqueue：
+        通过一个putIndex成员变量确定此次的元素下标，元素插入该下标后++putIndex，如果putIndex达到数组长度则置0，然后
+    count++。由于队列满后进不来这个方法，所以如果队列没满又到了数组最后的下标，则说明数组前面的已经被消费了
+        最后用notEmpty唤醒正在等待消费的线程
+
+    put：
+        阻塞插入元素，如果队列满了就用notFull.await()阻塞，否则调用enqueue
+
+    poll：
+        非阻塞获取元素，从头部获取并移除一个元素，如果队列为空返回null，否则就调用dequeue
+
+    dequeue：
+        通过一个takeIndex确定此次消费的元素下标，拿到元素后将该下标置null，且takeIndex++，如果加到容量上限，则值0，
+    然后count--。最后通过notFull.signal()唤醒因调用put时队列满而阻塞的线程
+
+
+    take：
+        阻塞获取元素，如果队列为空就用notEmpty.await()阻塞，否则就调用dequeue
+
+    peek：
+        加锁后返回items[takeIndex]，不加锁的话这个下标的元素刚好被消费了就可能拿到Null
+
+    size：
+        返回count，这里由于始终只有一个线程在修改数组，所以count没用原子类，而是简单的int。count本身不是volatile修
+    饰的，所以这里使用了ReentrantLock进行加锁保证count的可见性。
+        ReentrnatLock是怎么保证可见性的？它的state属性是volatile修饰的，由于每次加锁都会修改state的值，所以会有内存
+    屏障，那么在ReentrantLock的lock和unlock直接会对state先加后减，所以在这两个内存屏操作里面进行操作就能保证可见性
+
+
+PriorityBlockingQueue：
+
+    优先无界阻塞队列，可以获取优先级最高或最低的元素，内部使用平衡二叉树堆实现，所以遍历不保证元素有序，默认使用对
+象的compareTo方法做比较规则，如果要自定义比较规则，可以用自定义的comparators
+
+    实现了BlockingQueue、Serializable，继承了AbstractQueue
+
+    属性简介：
+        static int MAX_ARRAY_SIZE：
+            最大数组容量为：Integer.MAX_VALUE - 8
+
+        Object[] queue：
+            存放队列元素的数组，默认容量为11，可以在构造器指定，存放小根堆
+
+        int size：
+            队列元素数量
+
+        Comparator comparator：
+            判断元素优先级的比较器
+
+        ReentrantLock lock：
+            读写队列的独占锁
+
+        Condition notEmpty：
+            队列里消费线程无元素时阻塞的条件队列
+
+        int allocationSpinLock：
+            值只有0和1，用来在扩容时加锁
+
+        PriorityQueue q：
+            内部使用的优先级队列，仅在序列化和反序列化时使用
+
+    offer：
+        在队列中插入元素，由于是无界队列，一直返回true
+        先判断是否需要扩容，如果要扩容则一直while调用tryGrow，直到扩容完成。扩容之后再调用siftUpComparable插入一个
+    元素，最后结束时唤醒因调用take方法拿不到元素的线程
+
+    tryGrow：
+        最小堆的扩容
+        1、先进行unlock
+        2、对queue进行扩容，容量在64以下每次扩容*2+2，否则每次扩容50%，如果扩容后容量达到MAX_ARRAY_SIZE，则不再扩容
+    50%，而是转为扩容1，因为再扩50%实在太大了，再new一个新数组。最后将allocationSpinLock置0
+        3、如果对allocationSpinLock进行CAS失败，则调用Thread.yield()。使得失败的线程尽量让出CPU，让CAS成功的线程获
+    得锁，但是这得不到保证
+        4、lock，随后将旧数组用System.arraycopy复制到新数组
+        总结：一进来就unlock转而使用allocationSpinLock进行CAS是为了扩容过程不阻塞其它线程的出入队操作。如果不是扩容
+    成功的线程就Thread.yield()，是因为扩容需要改queue对象，所以要锁住所有出入队的操作，而新的数组只在扩容成功的栈里
+    可见，因此只能尽量让扩容成功的线程获得锁。就算扩容失败的线程获得锁，后面的if也进不去，而tryGrow只要扩容不成功就     一直while进来，扩容失败的线程第二次进来依然会释放锁
+        这里有个问题，如果扩容成功的锁在把allocationSpinLock置0后，如果一直没拿到锁，那其它线程一进来不就重新扩容了
+    吗？下面拿到锁会再次判断queue == array。假设后面的线程扩容成功，且拿到锁，那么它在把queue改了之后，第一次扩容成
+    功的线程就不修改queue直接返回
+    
+    siftUpComparable：
+        在堆里加入一个元素，具体算法参考最小堆的插入
+
+    poll：
+        获取最小元素，加锁后调用dequeue
+
+    dequeue：
+        将队列的头元素拿出来，然后将最后一个元素当头元素，，去执行siftDownComparable，最后返回队列头元素。如果队列
+    为空返回null
+
+    siftDownComparable：
+        在堆里移除根节点的元素，具体算法参考最小堆的移除
+
+    最小堆(数组实现的叫小根堆)，最大堆原理也一样，不过比较器的结果是相反的：
+        完全二叉树，父节点总是比子节点大或小。这里介绍是为了方便理解siftUpComparable和siftDownComparable
+
+        插入：
+            总是插入数组的size位置，也就是堆的最下层子节点，由于堆的结构是没有空隙的，所以每次插入size所在位置就行
+        。插入后为了保证父节点总是比子节点小，所以一直while判断新加入的节点是否比父节点小，如果是的话就将父节点换到
+        当前节点的位置，然后当前节点换为之前的父节点，再进行下一轮比较
+            为什么 (k - 1) >>> 1 能找到父节点？因为小根堆父节点找父节点的算法是：k * 2 +1 或 +2(左节点1右节点2)，而
+        子节点所在的位置如果是单数就是子节点，双数就是右节点。而(k - 1) >>> 1的效果就是k/2，如果k是单数就-1，如果是
+        双数就-2，因为k - 1会减一次，而后的>>> 1，会在除2的基础上，如果是单数就减1，如果是双数就不减
+
+        移除：
+            获取队列内的根节点元素，也就是最小值，然后将最后一个元素拿出来放到根节点，并在数组中原下标置Null，最后
+        将节点重新调整成最大或最小堆
+            第一步先确定while的停止条件，也就是当前所在的节点是否继续往下找。那么只需要比当前节点的子节点小就可以了
+        ，所以就是当前节点的下标除2，因为如果是同级节点那肯定不用判断，如果是上一级节点，由于当前节点是最大的节点，
+        所以如果while里操作的节点下标比当前节点的子节点下标还大，那么它肯定还没有子节点。因此while循环里判断的节点
+        下标需小于最大节点的子节点下标
+            确定了while停止条件，那么只需要拿到当前节点(第一次while时为根节点)的左右子节点，然后拿其中小的一个跟当
+        前节点比较，如果当前节点小于它就互换，然后进行下一轮比较。一直循环下去直到while停止，至此完成最小堆的自调整
+
+    put：
+        内部调用了offer，由于是无界队列，所以无需阻塞
+
+    take：
+        while去调dequeue，直到返回一个非null的元素，每次拿不到可用的元素就notEmpty.await()。获取锁用的是可被打断的
+    lock方法
+
+    size：
+        返回size属性
+
+
+DelayQueue：
+
+    DelayQueue是一个无界阻塞延迟并发队列
+
+    属性简介：
+        ReentrantLock lock ：
+            独占锁
+        PriorityQueue q：
+            内部使用优先队列
+        Thread leaderer：
+            基于Leader-Follower模式的辩题，他会等待到最近元素的延迟时间，而其它线程是无限等待。且时间到后负责唤醒一
+        个follwer线程。而后leader线程拿到元素后继续执行，而被唤醒的follower线程成为新的leader线程
+        Condition avaliable：
+            存放时间未到线程的条件队列
+
+    offer：
+        插入元素到队列，加锁后调用q.offer，如果第一个元素就是刚添加的这个，则将leader置空后唤醒一个线程
+
+    take：
+        阻塞并移除队列里最快过期的元素，如果队列里没有过期的元素则等待，如果有元素且时间已过期则返回。否则如果当前
+    leader不为null继续等待，如果leader为null则将当前线程设置为leader，然后阻塞到第一个元素过期的时间，被唤醒后如果
+    当前线程依然为leader则将leader置空
+        leader的含义就是照着最早到期元素的时间进行挂起，而其它非leader则无限挂起。leader唤醒后就会拿锁，然后尝试返
+    回一个元素，而如果leader挂起期间如果有新的更早时间过期的元素进来了，那么则offer方法里会唤醒一个线程去尝试拿第一
+    个元素。在return第一个元素之后会执行最外层的finally，如果当前没有leader在等着处理元素，并且又有元素可以消费的话
+    ，就会唤醒一个线程，让它去尝试当leader
+
+    poll：
+        先用peek尝试拿第一个元素，如果存在第一个元素，且已过期，则调用p.poll返回该元素，否则返回null
+
+    size：
+        返回q.size
+
+    drainTo(Collection c)：
+        BlockingQueue里的方法，用来将阻塞队列里所有的元素转义到传进来的集合里，每转移一个元素都会在原队列清除该元素
+
+
+ThreadPoolExecutor：
+
+    继承与AbstractExecutorService -> 实现于ExecutorService
+
+    ctl：
+        高三位用来表示线程池状态，低29位用来表示线程个数
+
+        高三位的状态：
+            111：RUNNING，运行中，此时可以接受新任务并处理阻塞队列里的任务
+            000：SHUTDOWN，尝试停止，此时拒绝新任务，但是依然处理阻塞队列里的任务
+            001：STOP，立即停止，此时拒绝新任务，并抛弃阻塞队列里的任务，同时中断正在处理的任务
+            010：TIDYING，终止前，此时所有任务(包括阻塞队列里的)都执行完毕,且线程池里的活动线程数为0,即将TERMINATED
+            011：TERMINATED，终止，terminated方法调用结束后的状态
+
+    mainLock：
+        独占锁，用来控制新增Worker线程操作的原子性
+
+    termination：
+        mainLock对应的条件队列，在线程调用awaitTermination时存放阻塞的线程
+
+    allowCoreThreadTimeOut：
+        核心线程是否允许允许在超过活跃时间后结束
+
+    termination：
+        mianLock的条件队列，用来阻塞与唤醒等待线程池状态变更为TERMINATED的线程
+
+    线程池参数：
+        corePoolSize：
+            线程池核心线程数
+
+        workQueue：
+            等待执行任务的阻塞队列
+
+        maximunPoolSize：
+            线程池最大线程数量
+
+        ThreadFactory：
+            线程工厂
+
+        RejectedExecutionHandker：
+            线程池饱和策略，当队列已满，且线程个数达到maximunPoolSize后采取的策略
+
+        keeyAliveTime：
+            存活时间，如果线程池中的线程数量比核心线程数量多，且多出的那些线程是闲置状态，则指这些线程能存活的最大
+        时间
+
+        TimeUnit：
+            存活时间的单位
+
+    Worker：
+        具体执行任务的对象，继承自AQS和Runable接口，简单实现了不可冲入独占锁，其中state=0代表未被获取，state=1代表
+    已被获取，state=-2代表创建时的默认状态。
+        firstTask记录该工作线程执行的第一个任务，thread是具体执行任务的线程
+
+    DefaultThreadFactory：
+        默认的线程工厂类。poolNumber代表DefaultThreadFactory被实例化的次数，threadNumber代表通过该工厂newThread的次
+    数。这两个值也作为线程名称的一部分，描述了这是第几个线程池的第几个线程
+
+
+    void execute(Runnable command)：
+        execute方法的作用是提交任务到线程池进行执行
+        1、如果线程个数小于核心池数，则开启新核心线程去运行该任务并返回
+        2、否则如果线程池处于Running状态，并且阻塞队列执行offer
+        3、如果第2条执行成功，则进行二次Running状态检查
+        4、如果第3条校验不通过就会从阻塞队列里删除该元素，且执行拒绝策略
+        5、如果第3条校验通过，并且池里的线程数量为0，就尝试添加一个非核心线程
+        6、如果第二条执行不成功，就尝试添加一个非核心线程，如果添加失败就执行拒绝策略
+        使用addWorker添加线程时，可以选择是否附带任务跟指定是否核心线程，一般如果添加阻塞队列能成功就不附带任务，只
+    是创建线程，否则就会附带任务去创建线程
+
+    boolean addWorker(Running firstTask, boolean core)：
+        增加新线程，可以决定是否附带任务，并且当前是否核心线程，返回线程添加是否成功
+        1、如果当前线程池状态为STOP、TIDYING、TERMINATED，且有附带任务，且队列为空则返回false
+        2、如果线程数量大于等于最大线程容量，或者当前是核心池的话线程数是否超过核心池数量，不是核心池的话线程数量是 
+    否超过核心池总数量，如果超过返回false
+        3、然后尝试对ctl用CAS进行+1
+        4、如果cas成功则返回标签，然后进入下面逻辑
+        5、如果CAS失败，则判断线程池状态是否已被改变，如果已改变则重走最外层for，重新从第1点校验，如果未改变则进入
+    内层for的下一次循环，继续尝试CAS。这里注意break标签与continue标签的区别。break是直接跳到标签位置，且放弃循环。
+    continue标签是跳到标签位置，然后继续进行下次循环
+        6、创建一个Worker对象，传入Runnable对象，在Worker的构造器里会用线程工厂创建一个新线程，并将state置-1
+        7、线程创建成功后拿mainLock进行加锁
+        8、再次判断线程池是否处于运行中状态，且传入的Runnable是否为空
+        9、第8点判断通过后，则将当前创建的Worker加入workers集合，然后更新largestPoolSize属性为wkroers.size()
+        10、释放锁，然后如果worker增加成功则调用它内部线程的start方法
+        11、如果worker添加不成功则调用addWorkerFailed方法
+
+    addWorkerFailed：
+        这个方法就是先加锁，然后将worker从workers里删除，然后ctl-1，最后调用tryTerminate方法
+
+    runWorker：
+        运行worker，在addWorker时由线程执行start方法触发，需注意的是这个线程的Runnable是worker对象
+        1、w.unlock()，这里是Worker自己实现的unlock，它会将state置0
+        2、重置线程的中断标识，因为这可能是某个任务中断的，这个任务执行完了中断标识不该带到下个任务
+        3、while去执行getTask()，第一次执行时会先执行new Worker()传进来的Runnable
+        4、加锁、执行beforeExecute、执行Runnable的run、执行afterExecute、任务执行次数+1、释放锁
+        5、退出while之后会调用processWorkerExit执行清理工作
+        6、while怎么退出？getTask方法会在线程池停止后返回null，此时while就会退出
+    书上说加锁是为了防止线程被打断时运行中的任务被中断，但是加锁是怎么防止任务中断的？
+
+    processWorkerExit：
+        worker线程的while结束后执行的清除工作
+        1、mainLock加锁
+        2、线程池的任务完成总数completedTaskCount加上当前worker的任务完成总数
+        3、从workers里删除掉当前执行清除工作的worker
+        4、调用tryTerminate，尝试将线程池状态设置为TERMINATED。前提是线程池状态为STOP且线程池没有活动线程。
+        5、如果当前线程数量小于核心线程数量，则增加一个新的非核心线程，因为worker结束可能是线程达到最大空闲时间或者
+    被打断等，当多个worker同时进来可能会发生worker过少的情况，因此如果worker数量小于允许的最小线程数时就会加一个新
+    的。最小线程数是指，allowCoreThreadTimeOut为true，且阻塞队列不为空时为1，否则就是核心线程允许的最大数量
+
+    tryTerminate：
+        尝试将线程池的状态改为TERMINATE
+        1、如果线程池状态是RUNNING，或者TIDYING、TERMINATE，或者虽然是SHUTDOWN但是阻塞队列不为空，则直接返回
+        2、否则如果workers不为空则调用interruptIdleWorkers尝试中断一个worker任务，然后返回
+        3、如果第二点不满足，也就是workers为空，则mainLock加锁，然后CAS将ctl设置为TIDYING，再执行terminated()方法
+        4、将ctl设置为TERMINATED，然后调用termination.signalAll()
+    可以看到TIDYING与TERMINATED状态之间就隔了一个terminated()方法，这个方法默认为空方法
+
+    terminated：
+        在线程池彻底结束前调用的方法，目前是空方法，让子类实现
+        
+    interruptIdleWorkers(boolean onlyOne)：
+        尝试将workers里的空闲worker中断，是否中断取决于能否用tryLock拿到锁，拿到就说明没在执行任务，就进行中断。
+        如果onlyOne为true，就仅对workers里的第一个worker执行此操作
+
+    shutdown：
+        将线程池的状态设置为SHUTDOWN，此状态下将不允许提交新任务，但阻塞队列里的任务依然会执行，因为判断里有个
+    && !workQueue.isEmpty()
+        1、校验权限，通过System.getSecurityManage()来校验，主要是看调用shutdown命令的线程是否有关闭与中断线程的权限
+        2、调用advanceRunState尝试将ctl设置为SHUTDOWN
+        3、调用interruptIdleWorkers()，内部调的是interruptIdleWorkers(false)，也就是中断所有的空闲worker
+        4、调用onShutdown()，默认为空实现
+        5、最后释放锁，然后调tryTerminate()
+
+    shutdownNow：
+        不在接收新的任务，并且丢弃工作队列里的任务，其主要流程跟shutdown差不多，不过它的状态是STOP，STOP状态会导致
+    getTask()方法不管workerQueue是否为空都会返回null
+        1、校验权限，通过System.getSecurityManage()来校验，主要是看调用shutdown命令的线程是否有关闭与中断线程的权限
+        2、调用advanceRunState尝试将ctl设置为STOP
+        3、调用interruptIdleWorkers()，内部调的是interruptIdleWorkers(false)，也就是中断所有的空闲worker
+        4、调用drainQueue()方法将阻塞队列里的任务转移到一个新的List里，然后当做方法的返回值
+        5、最后释放锁，然后调tryTerminate()
+
+    awaitTermination：
+        当前线程阻塞到线程池状态变为TERMINATED或者等待时间超时才返回，用来等待线程池终止完成
+        1、加锁，如果当前状态已经是TERMINATED则返回true
+        2、调用termination.awaitNanos(nanos)，阻塞到指定时间，超时后nanos将赋值为0，会在下次循环时返回false
+    TERMINATED成功时会调用termination.signalAll()
+
+    submit：
+        会对传进来的Runable或Callback做一层FutureTask包装，然后返回Future对象
+
+    一般情况下对worker线程进行中断不会有影响，它依然会继续跑，但是如果在线程池状态大于等于SHUTDOWN的情况下中断线程
+会导致getTask返回null，从而退出worker的while循环
+
+    状态判断经常会用c >= s来判断，好像此时如果c是RUNNING状态也会返回true，其实不是，因为高三位111是负数，比较的结果
+其实会比011还小
+
+    ThreadPoolExecutor是怎么响应中断的？我们一般shutdown会跟着一个中断空闲worker的动作，但是worker似乎没对中断标识
+进行处理。其实打断就是为了让worker别一直阻塞在从队列拿值那里，此时只要让worker结束poll或take，下一次进入循环它就能
+根据state判断是否继续getTask()了。
+    因此中断分两步，第一步从阻塞队列返回，第二部判断线程池状态。再加上一个tryLock()动作，避开了运行中的任务，从而达
+到空闲的worker响应中断，执行任务的worker由于有加锁因此不被中断。所以可以说实现AQS是为了worker的中断设计
+    再加上线程池允许动态调整核心线程数、最大线程数、活跃时间，因此每次调整都可能需要终止部分任务，因此这种中断设计
+还是很有必要的
+
+    为什么worker要实现AQS，而不是使用ReenTrantLock？因为worker是不允许重入的，而JUC里其它AQS一般都允许重入
+
+ScheduledThreadPoolExecutor：
+
+    这是一个可以在指定延迟后，或者定时执行任务调度的线程池
+
+    继承于ThreadPoolExecutor，并实现了ScheduledExecutorService接口
+
+    ScheduledFutureTask：
+        继承于FutureTask -> 实现了RunableFuture -> Runnable, Future
+
+        state：
+          表示内部的任务状态，状态如下：
+            NEW：          0，初始状态
+            COMPLETING：   1，执行中
+            NORMAL：       2，任务正常结束
+            EXCEPTIONAL：  3，任务异常结束
+            CANCELLED：    4，任务被取消
+            INTERRUPTING： 5，任务正在被中断
+            INTERRUPTED：  6，任务已被中断
+
+        period：
+          表示任务类型，类型如下：
+            0：一次性任务，执行完毕就退出
+            负数：当前为fixed-delay任务，是固定延迟的可重复执行任务
+            整数：当前为fixed-rate任务，是固定频率的可重复执行任务
+
+        new ScheduledFutureTask(Runnable r, V result, long ns)：
+            period为0，this.time为ns，调用父类FutureTask的构造器，传入r与result，父类构造器会将state设置为NEW，用
+        Executors.callable将Runnable和result转换成一个callable对象
+
+        run()：
+            Runnable被包装成ScheduledFutureTask后，线程池会先调用到该类的run()方法
+            1、调用isPeriodic()方法判断该任务是否周期执行的任务
+            2、调用canRunInCurrentRunState(periodic)判断当前任务是否可以继续运行，如果返回false则调用cancel(false)
+        进行取消
+            3、如果任务可继续运行，且不是周期执行任务，则执行ScheduledFutureTask.super.run()
+            4、如果任务可继续运行，且是周期执行任务，则执行ScheduledFutureTask.super.runAndReset()，如果该任务返回        true，就设置ScheduledFutureTask的下次执行时间，然后将该任务重新加入延迟队列
+
+
+
+        super.run()：
+            非周期性任务的方法，也就是FtureTask.run()
+            1、如果futureTask.state不是NEW，或者将runner属性CAS成当前线程失败，则返回
+            2、执行callable.call()，并拿到返回值，如果报错则返回值为null
+            3、如果正常执行成功则执行set方法()，将状态改为COMPLETING，将返回值设置到outcome属性中，然后属性改为
+        NORMAL，最后执行finishCompletion()方法
+            4、如果执行异常则执行setException()方法将状态改为COMPLETING，然后将异常设置到outcome属性中，然后属性改
+        为EXCEPTIONAL在，最后执行finishCompletion()方法
+            5、将runner清空，如果state为INTERRUPTING或者INTERRUPTED，则执行handlePossibleCancellationInterrupt方法
+        ，该方法会让当前state为INTERRUPTING的时候一直循环Thread.yield()，直到state改为INTERRUPTED
+            对上面过程的疑惑：
+                为什么都执行到父类的run()里面了，第五点还要判断任务是否中断呢？不是不中断才来到这里吗？就算因为同一
+            个command可能被提交多次，会存在并发问题，但是state是通过CAS修改的，不是NEW状态是不能中断的
+
+
+        super.runAndReset()：
+            周期性任务的方法，也就是FtureTask.runAndReset()
+            1、如果futureTask.state不是NEW，或者将runner属性CAS成当前线程失败，则返回
+            2、执行callable.call()，如果执行正常结束则忽略返回值，因为要重复执行，因此要让state保持NEW
+            4、如果执行异常则执行setException()方法将状态改为COMPLETING，然后将异常设置到outcome属性中，然后属性改
+        为EXCEPTIONAL在，最后执行finishCompletion()方法
+            5、将runner清空，如果state为INTERRUPTING或者INTERRUPTED，则执行handlePossibleCancellationInterrupt方法
+        ，该方法会让当前state为INTERRUPTING的时候一直循环Thread.yield()，直到state改为INTERRUPTED
+            6、返回是否正常结束，如果是正常结束，子类会将该任务的下次执行时间刷新，并重新加入优先队列中
+            7、如果是异常结束，这个任务就结束了，不会再刷新执行时间与加入队列
+
+
+        isPeriodic：
+            period != 0，返回该任务是否周期执行的任务
+
+        boolean cancel(boolean mayInterruptIfRunning)：
+            尝试取消任务，返回取消成功或失败，参数代表是任务状态是中断还是取消
+            尝试将ScheduleFtureTask的state设置为INTERRUPTING或者CANCELLED，取决于参数是true还是false，true为中断，
+        false为取消，如果state进行CAS失败则返回false
+            如果是中断的话，则将该任务的线程中断标识设置为true，最后执行finishCompletion()方法，然后返回true
+
+        finishCompletion：
+            将所有因get()等方法导致阻塞的线程唤醒
+
+ScheduledThreadPoolExecutor的方法与属性：
+
+    boolean canRunInCurrentRunState(boolean periodic)：
+        判断当前任务是否可以继续运行
+        参数periodic代表当前是否周期性任务；然后调用isRunningOrShutdown，根据periodic参数，如果是周期性任务则传入
+    continueExistingPeriodicTasksAfterShutdown，不是周期性参数传入executeExistingDelayedTasksAfterShutdown
+
+    boolean continueExistingPeriodicTasksAfterShutdown：
+        默认为false
+
+    boolean executeExistingDelayedTasksAfterShutdown：
+        表示其他线程调用shutdown后，当前任务是否还要执行，默认为true
+
+    isRunningOrShutdown：
+        判断线程池是否在运行中，或者已经shutdown，但是该任务shutdown后仍要运行，取决于传入的boolean值参数
+
+    构造器参数：
+        跟ThreadPoolExecutor基本一致，不过它的BlockingQueue默认是DelayedWorkQueue
+
+
+
+    ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit)：
+        提交一个延迟执行的任务，延迟时间从提交时间算起，该任务只执行一次
+        1、参数校验，command和unit不能为空
+        2、调用decorateTask进行任务转换，new 一个RunnableScheduleFuture当参数，用triggerTime()将delay和unit转为绝对
+    时间，返回一个RunnableScheduledFuture对象
+        3、调用delayedExecute将任务添加到延迟队列
+        4、返回第2步的RunnableScheduledFuture对象
+
+    ScheduleFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit)：
+        当任务执行完后，让其延迟固定的时间后再次运行，其中initialDelay代表延迟多少时间后开始第一次执行任务，delay代    表延迟多少时间后，开始再次执行任务
+        1、参数校验，command和unit不能为空，delay不能小于等于0
+        2、将Runnable转为RunnableScheduledFutureTask，比schedule()方法的多了第四个参数，它会传入-delay，代表固定延
+    迟任务
+        3、调用delayedExecute将任务添加到延迟队列
+
+    ScheduleFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long delay, TimeUnit unit)：
+        与scheduleWithFixedDelay的区别是它的下次执行时间并不是从上次的结束时开始算，而是固定的原时间 + delay
+        转RunnableScheduledFutureTask时delay是正数
+
+    也就是说如果每次执行任务需要两秒，执行周期也是两秒。那么scheduleWithFixedDelay方法需要4秒执行一次，而scheduleAtFixedRate需要两秒执行一次。也就是每个周期是否考虑任务执行花费时间的区别
+
+    
+    setNextRunTime：
+        设置下次执行任务的时间，如果period大于0，则是time + period；如果period小于0，则是now() + period
+
+    long triggerTime(long delay, TimeUnit unit)：
+        将传入的相对时间转为绝对时间
+
+    delayedExecute(RunnableScheduledFuture task)：
+        将任务添加到延迟队列
+        1、如果线程池关闭了，则执行拒绝策略
+        2、将任务添加到延迟队列，由于ScheduledFutureTask实现了Delayed接口，所以最快过期的任务总是在队列头部
+        3、重新判断线程池状态，如果已关闭则将刚才添加的任务删除，由于可能该任务已经开始执行，所以调一下cancel方法取
+    消该任务
+        4、如果线程池没关闭，则执行ensurePrestart方法，确保至少有一个线程在处理任务
+
+    ensurePrestart：
+        如果当前线程数小于核心线程数，则增加一个核心线程；否则如果当前线程数为0，则增加一个非核心线程，这里是为了防
+    止核心线程数为0
+
+
+CountDownLatch：
+
+    同步器，计数器
+
+    CountDownLatch类似于join()方法，都可以做到让某个线程等待某些线程执行完毕才唤醒不过CountDownLatch更加灵活，因为
+有时候在线程池里传递的是Runnable，拿不到线程；并且CountDownLatch可以自己决定在何处触发，而不必一定等到线程结束。
+CountDownLatch从功能与名字就知道，其实就是内部有个计数器，也就是AQS的state
+
+    await：
+        调用sync.acquireSharedInterruptibly(1)，也就是尝试去拿锁，允许中断，由于sync实现了tryAcquireShared如果state
+    不等于0总是返回-1，因此只要计数没结束，就一直拿不到锁，阻塞在AQS队列中
+
+    countDown：
+        调用sync.releaseShared(1)，sync实现里就是state-1，如果减到0则tryReleaseShared返回true
+
+    一但tryReleaseShared返回true，AQS里就会调用doReleaseShared方法去唤醒阻塞在AQS队列里的线程，然后他们由于state等
+于0，tryAcquireShare总是返回1，因此计数完成后线程总是能拿到锁
+
+    那doReleaseShare不是只唤醒一个线程吗？如果有多个线程都在await()怎么办？在doAcquireShared里面，一但某个线程
+tryAcquireShare成功后就会调用setHeadAndPropagate设置AQS的head，在设置head之后，如果AQS里依然有元素则尝试再次调用
+doReleaseShared去唤醒线程，因此这样就能依次唤醒所有await()的线程。
+    为什么setHead之后会有这个操作呢，因为share是共享锁，一般某个线程拿到共享锁后其它线程依然有可能拿到，因此就去AQS
+里继续找能唤醒的线程进行唤醒
+
+
+CyclicBarrier：
+
+    同步器，回环屏障。之所以叫回环是因为CyclicBarrier可以被重用，而不像CountDownLatch是一次性的，之所以叫屏障是因为
+线程调用await()会被阻塞，这个阻塞点就称为屏障点，等所有线程都调用await()后线程就会冲破屏障，继续运行
+
+    回环屏障可以在构造器指定屏障点与冲破屏障时执行的Runnable，屏障点是指有几个线程调用了cyclicBarrier.await()才能冲
+破屏障
+
+    也可以让多个线程分阶段完成，比如线程1和线程2共同执行一个多阶段的任务，此时屏障点为2，线程1跟线程2执行完阶段1后
+调用await()，然后就能开始阶段2，阶段2完成后再调用await()，然后就能开始下一阶段。并且可以让它们指定一个共享变量，将
+阶段结果存起来，然后在回环屏障构造器里指定的Runnable里每次冲破屏障都做聚合运算
+
+    属性：
+        ReentrantLock lock：
+            可重入锁
+
+        Condition trip：
+            lock对应的条件队列
+
+        int parties：
+            记录线程个数，这里表示要多少线程才能冲破屏障
+
+        Runnable barrierCommand：
+            冲破屏障时执行的Runnable
+
+        Generation generation：
+            该类内部只有一个broken变量，用来记录当前屏障是否被打破，由于每次使用变量都在锁内，所以不用volatile
+            其内部的broken如果为true就代表程序有问题，这个回环屏障不能再用了，因为正常情况每一轮屏障都会new新的
+
+        count：
+            当前还有多少个线程才能冲破屏障，初始等于parties，每次到0后都会重新用parties赋值
+
+    方法：
+        int await()：
+            当前线程调用该方法时会足额，只有打破屏障、或者线程被中断、或者generation对象的broken被设置为true时才会
+        返回。内部调了dowait(false, 0L)
+
+        int await(long timeout, TimeUnit unit)：
+            跟await()一致，不过它还会在超时的时候返回false。内部调了dowait(true, unit.toNanos(timeout))
+
+        int dowait(boolean timed, long nanos)：
+            实现了CycicBarrier的核心功能，timed代表是否允许超时，nanos代表超时时间
+            1、加锁，将generation赋值给局部变量
+            2、--count
+            3、如果--count后结果等于0，则如果存在command则由当前线程执行run()，然后调用nextGeneration()方法唤醒所有
+        条件队列里的线程，然后count重新等于parties，最后new一个新的generation，并返回0
+            4、第三部如果执行没成功，比如说抛异常了，会在funally里调用breakBarrier()方法
+            5、如果第2点结果大于0，说明还没打破屏障。此时如果不超时就直接调trip.await，否则就调trip.awaitNanos
+            6、如果第5点发生中断异常，会在funally里调用breakBarrier()方法
+            7、被唤醒后如果generation.broken=true则抛出BrokenBarrierException异常
+            8、如果generation已经不等于第1点的那个局部变量了，说明有线程打破了屏障，直接返回当前这个线程第2点的结果
+            9、如果是因为超时而结束的，就调用breakBarrier()方法，否则循环重回到第5点开始走
+
+        breakBarrier()：
+            将generation.broken=true，再重置count并唤醒所有条件队列里的线程。这个方法一调就说明回环屏障出问题了，此        时再调await()相关的方法都会报错，此时必须调reset重置整个回环屏障的状态
+
+        nextGeneration()：
+            唤醒所有被条件队列阻塞的线程、重置count、重新new一个generation
+
+        reset()：
+            先调breakBarrier()，再调nextGeneration()
+
+
+Semaphore：
+
+    同步器，信号量
+
+    内部的Sync继承于AQS，有公平与非公平两个版本。state代表剩余信号量个数，release会增加，acquire会扣减
+
+    方法：
+        Semaphore(int permits, boolean fair)：
+            permits是初始信号量的值，fair代表是否公平式抢占
+
+        acquire()：
+            获取一个信号量，如果当前state大于0，则当前信号量-1，并返回，否则当前线程放入AQS的阻塞队列，允许中断
+            1、调用acquireSharedInterruptibly(1)去获取资源，允许打断
+            2、调用tryAcquireShared尝试获取资源，这个方法不阻塞，返回值大于等于0说明获取成功
+            3、如果第2点返回小于0则调用doAcquireSharedInterruptibly，如果大于等于0说明获取成功，方法正常返回
+
+        acquire(int permits)：
+            跟acquire()一样，只不过会将参数传给acquireSharedInterruptibly
+
+        tryAcquireShared(int arg)：
+            获取指定信号量，如果当前的state减去获取的信号量结果小于0，就返回负数，否则CAS将state设置为减后的值
+
+        doAcquireSharedInterruptibly：
+            将当前线程加入AQS阻塞队列的尾部，再获取不到信号量则挂起，允许被中断
+            1、创建一个新Node，然后加入AQS队列尾部
+            2、调用tryAcquireShared，再次尝试获取state，如果失败就挂起
+            3、如果获取成功则调用setHeadAndPropagate去重新设置head，并唤醒其它线程
+            4、如果期间发生异常，则调用cancelAcquire将第1点加入的Node取消
+
+        acquireUninterruptibly：
+            与acquire()类似，不过该方法不会被中断
+
+        release()：
+            调用sync.releaseShared()释放信号量
+            1、用CAS将state+1，如果CAS失败就一直尝试，总是返回true
+            2、调用doReleaseShared()，将节点状态为SIGNAL的节点唤醒
+
+        release(int permits)：
+            跟release()一样，不过会将参数传给sync.releaseShared()
+
+
+QPS(Query Per Second)：
+    每秒完成的请求数
+
+RT(Response Time)：
+    一个请求花费的时间
 
 
 
