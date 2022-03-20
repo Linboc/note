@@ -399,7 +399,6 @@ CopyOnWriteArrayList：
 LockSupport：
     LockSupport是个工具类，主要作用是唤醒和挂起线程，LockSupport类与每个使用它的线程都会关联一个许可证，默认情况下
 线程是没有许可证的。LockSupport本质上是对UNSAFE的方法作了一层封装
-    LockSupport底层也是用了UNSAFE来实现的
 
     park()：
         如果调用park()方法的线程有许可证，则马上返回，否则会被挂起。挂起可以被中断标识或者unpark()方法打断，被打断
@@ -423,7 +422,7 @@ LockSupport：
         与parkNanos()类似，区别是parkNanos()的时间是指从当前时间开始算的nanos时间，而deadline的时间是指绝对时间，也
     就是从1970年到返回时间之间的毫秒数
 
-
+    LockSupport的每一次park的唤醒都需要一次unpark，且unpark不可积累
 
 AbstractQueuedSynchronizer(AQS)：
     抽象同步队列，它是实现同步器的基础组件，并发包中的锁底层就是AQS实现的，比如独占锁、读写锁、信号量、计数器等
@@ -1110,7 +1109,8 @@ ScheduledThreadPoolExecutor：
             2、调用canRunInCurrentRunState(periodic)判断当前任务是否可以继续运行，如果返回false则调用cancel(false)
         进行取消
             3、如果任务可继续运行，且不是周期执行任务，则执行ScheduledFutureTask.super.run()
-            4、如果任务可继续运行，且是周期执行任务，则执行ScheduledFutureTask.super.runAndReset()，如果该任务返回        true，就设置ScheduledFutureTask的下次执行时间，然后将该任务重新加入延迟队列
+            4、如果任务可继续运行，且是周期执行任务，则执行ScheduledFutureTask.super.runAndReset()，如果该任务返回
+        true，就设置ScheduledFutureTask的下次执行时间，然后将该任务重新加入延迟队列
 
 
 
