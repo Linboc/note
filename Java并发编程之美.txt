@@ -1352,6 +1352,63 @@ RT(Response Time)：
 
 
 
+实际应用：
+
+1、
+    Logback的日志打印用的是ArrayBolockQueue，多个生产者往队列里插日志，但只有一个队列在将日志保存到磁盘
+
+    
+
+2、
+    作者第二个例子用了Tomcat线程模型里的ConcurrentLinkedQueue，但是9.0.46版本的Tomcat那个组件已经没用ConcurrentLinkedQueue了，而是使用了SynchronizedQueue，这是Tomcat自己实现的简单版本的同步动态数组。且Poller也不是在
+处理器和2之间选较小值了，而是只能有一个Poller线程了
+    不过整体思路大概都没变：
+        依然是Server 持有 Service 持有 Connector 持有 Http11NioProtocol 持有 NioEndpoint
+        然后NioEndpoint创建Acceptor线程与Poller线程
+            Acceptor：一但连接进来Accpetor线程就将socket包装成NioSocketWrapper，再包装成PollerEvent，传给events
+            Poller：消费events，将PollerEvent转成SocketProcessor，然后丢给NioEndpoint.executor线程池去执行
+        SocketProcessor里面真正去处理请求的是Processor，里面又会用到CoyoteAdapter.service，然后是就调EngineValve了
+
+    总的来说就是Acceptor通过events进行单生产，再Poller单消费。Poller又单生产将对象转为SocketProcessor，而
+NioEndpoint.executor多消费，而最大连接数是在Acceptor生产过程中限制的
+
+
+3、
+    并发环境下使用ConcurrentHashMap，怎么保证如果相同的key能不互相覆盖呢，比如put(Strng, List)，如果并发put，那其它线程怎么知道它是不是第一个put的线程呢，如果是第一个直接put，否则就get出来addAll
+    作者给的解决方案是用putIfAbsent，这个方法是原子性的，如果key存在，就返回原value，且不作任何操作，如果key不存在
+，则返回null。那么此时就用putIfAbsent增加一个key-value，如果返回null，那说明是第一个不用管，如果返回一个list，就说
+明之前已经被put过了，那么再用返回的list.addAll当前list就行了。不过此时又要考虑list的线程安全问题了
+
+
+4、
+    SimpleDateFormat的线程不安全，每个SimpleDateFormat实例内部都有一个Calendar对象，SimpleDateFormat之所以线程不安
+全就是因为Calendar是线程不安全的。
+    因为SimpleDateFormat的parse方法每次调用都会将内部的Calendar原信息都清空，然后设置Calendar中的属性，最后返回一个
+Calendar对象。这三个操作不是原子性的，所以就有可能第一个线程清空、设置好了Calendar，准备返回的时候第二个线程进来清
+空了，返回了一个被清空的Calendar，随后getTime当然也是错误的结果。
+    执行清空、属性设置、返回的那个Calendar虽然用的是局部变量，但是它传入的参数都是SimpleDateFormat的成员变量
+    parse与format方法虽然内部操作了不同的属性，不过都用了线程不安全的属性与方法，非应该都有相同的问题。因为parse方
+法有clear操作，使用固定的pattern与日期字符串就能重现，而format需要动态参数，由于比较麻烦就只验证了parse
+
+    解决方式1：
+        每次使用都new一个SimpleDateFormat，开销大
+    解决方式2：
+        每次SimpleDateFormat时都加锁，性能低
+    解决方式3：
+        将SimpleDateFormat放在一个LocalThread里面，比较麻烦，但是开销低、性能高。使用完后要记得删除线程变量，避免内
+    存泄漏
+
+
+5、
+    Timer使用注意事项，
+
+
+
+
+
+
+
+
 
 
 

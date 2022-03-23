@@ -1411,7 +1411,7 @@ Acceptor：
 	7、addEvent会将event放入pooler.events中，SynchronizedQueue类型的events是Tomcat自己实现的同步动态数组。然后调用wakeupCounter.incrementAndGet()，Poller会根据wakeupCounter来判断是调用selectNow还是select(timeOut)
 	
 Poller：
-    套接字处理线程，每个Poller内部都有一个独有的ConcurrentLinkedQueue用来缓存请求任务，Poller从自己的队列里获取具体的事件任务，然后交给Worker进行处理。
+    套接字处理线程，每个Poller内部都有一个独有的ConcurrentLinkedQueue用来缓存请求任务(events)，Poller从自己的队列里获取具体的事件任务，然后交给Worker进行处理。新版events类型变成了SynchronizedQueue
 	旧版的Pooler线程的个数与处理器核数有关，在2与CPU核数取之间最小值，新版的(目前在看的9.0.41)Poller线程仅有一个
 	本身是个消费者，同时也是个生产者
 	
@@ -1419,15 +1419,15 @@ Poller：
 	Poller.run()：
 	1、调用events()
 	    1.1、循环从events里消费event
-		1.2、如果event.getInterestOps等于OP_REGISTER(这是event的初始值)，则调用SocketChannel.refister，将NioSocketWrapper绑定到SelectionKey.attach。InterestOps代表SelectorKey的兴趣集合
+		1.2、如果event.getInterestOps等于OP_REGISTER(这是event的初始值)，则调用SocketChannel.register，将NioSocketWrapper绑定到SelectionKey.attach。InterestOps代表SelectorKey的兴趣集合
 		1.3、如果Poller的状态正常，则将event重置后加入eventCache中
-		1.4、如果第1步消费成功，返回结果将为true
+		1.4、如果第1.1步消费到任意一个，返回结果将为true
 		events()方法是从events中消费所有的event，然后从event中将NioSocketWrapper绑定到SelectionKey.attach，且将event重置并加入eventCache中，并返回
 	2、如果wakeupCounter大于0则调用selector.selectNow()，否则调用selector.select(selectorTimeout)，看看当前是否有可用连接，然后将wakeupCounter置零。wakeupCounter代表当前需要处理的event数量，Acceptor每次addEvent()都会对它+1
 	3、判断Poller是否已关闭，如果已关闭则调用events()将事件消费完
 	4、调用selector.selectedKeys().iterator()遍历所有的SelectorKey，然后使用processKey处理它们
 	    4.1、调用processKey，然后根据selectorKey可读可写分别去调socketWrapper.readOperation.process()与socketWrapper.writeOperation.process()
-		4.2、如果可读或可写，单数而writeOperation与readOperation为空则去调用processSocket()处理socket
+		4.2、如果可读或可写， 但是writeOperation与readOperation为空则去调用processSocket()处理socket
 		4.3、processSocket就是去创建SocketProcessor，然后提交到NioEndpoint.executor去执行
 	5、如果第1点有消费到event或者第2点select时发现有可用的key，则调用timeout方法处理超时的SelectorKey
 	6、timeout()会遍历所有的SelectorKey，然后一个个看是否已超时，默认应该是20000ms
@@ -1435,7 +1435,7 @@ Poller：
 	    7.1、processSocket就是去创建SocketProcessor，然后提交到NioEndpoint.executor去执行
 	8、读与写的processor()都会用NioEndpoint的线程池executor去执行NioOperationState.run()，这个方法只要线程池能将任务加进去就返回true，run()里如果error是空的话会将缓冲的数据写入socket的写缓存，或者从socket的缓存中读出数据。
 	    8.1、如果error不为null，则调用completion.failed(error, this)，暂不清楚是做什么的
-    9、processSocket方法是让线程池去处理socket的，首先从processorCache里拿一个已有的SocketProcessor，如果没有则自己创建一个，如果已有则reset。这两种行为都需要传入socketWrapper与SocketEvent，其中SocketEvent代表当前事件类型，比如可读事件与可写事件。然后将SocketProcessor提交到NioEdnpoint的Executor，也就是Worker
+        9、processSocket方法是让线程池去处理socket的，首先从processorCache里拿一个已有的SocketProcessor，如果没有则自己创建一个，如果已有则reset。这两种行为都需要传入socketWrapper与SocketEvent，其中SocketEvent代表当前事件类型，比如可读事件与可写事件。然后将SocketProcessor提交到NioEdnpoint的Executor，也就是Worker
 	10、SocketProcessor.doRun()，SocketProcessor的父类实现了run，用监视器锁给socketWrapper对象加锁后调了子类doRun
 	
 	11、如果此时已经握手完成的话，就去执行getHandler().process(socketWrapper, event)，其中getHandler()只有一个实现，那就是ConnectionHandler，在AbstractHttp11Protocol类的构造器里创建并赋值的
