@@ -1313,7 +1313,148 @@ startInternal()方法会让服务器开始工作
 
 
 
+spring boot tomcat流程：
 
+1、SpringBootAutoConfig包的spring.factories文件里的org.springframework.boot.autoconfigure.EnableAutoConfiguration属性指定了org.springframework.boot.autoconfigure.web.servlet.ServletWebServerFactoryAutoConfiguration
+
+2、ServletWebServerFactoryAutoConfiguration通过Import去尝试加载几个Bean，比如EmbeddedTomcat、EmbeddedJetty、EmbeddedUndertow、EmbeddedNetty等。这些Bean会存在ConditionalOnClass注解去校验存在当前项目哪个服务器的包，然后返回不同服务器的ServletWebServerFactory子类的Bean。比如存在org.apache.catalina.startup.Tomcat.class就是Tomcat的、org.eclipse.jetty.server.Server.class就是Jetty的、reactor.netty.http.server.class就是Netty的。由于spring-boot-web默认包含Tomcat的包，因此默认情况下创建的Bean是TomcatServletWebServerFactory。
+如果同时存在多个服务器包，那么由于每个Bean都有@ConditionalOnMissingBean(ServletWebServerFactory.class)注解，因此只有第一个加载的ServletWebServerFactory能成功
+
+3、由于项目中存在javax.servlet.Servlet，因此ApplicationContext是ServletWebServerApplication。这个是在SpringApplication的构造器里对webApplicationType属性进行初始化时确定的
+
+4、ServletWebServerApplication重写了父类的onRefresh，除了调用父类的onRefresh之外，还调用了它的createWebServer方法，这个方法会拿到TomcatServletWebServerFactory，并调用它的getWebServer方法。
+createWebServer方法结束前会注册两个监听器，其中一个是WebServerStartStopLifecycle，WebServerStartStopLifecycle会在它的生命周期start()方法被触发时调用webServer.start()方法去启动服务器
+
+5、TomcatServletWebServerFactory.getWebServer会去启动服务器
+    5.0、创建一个Tomcat对象，这是Tomcat用来启动内嵌服务器用的
+    5.1、创建一个Connector，默认协议是org.apache.coyote.http11.Http11NioProtocol，因此Connector内部的protocolHandler是org.apache.coyote.http11.Http11NioProtocol
+	5.2、tomcat.getService().addConnector(connector)，在这里表面上只是简单的get然后add，其实内部还包含了Server的创建、Service的创建。getService()会去调用getServer()，而getServer()会创建一个StandardServer与一个StandardService，并将这个StandardService放进StandardServer内部。而后的addConnector会在Connector可用的情况下调用它的start方法，其实就是启动服务器，不过它是刚new出来的，state=NEW，所以不会现在启动
+	
+    5.3、tomcat.getHost().setAutoDeploy(false)，这里其实包含了创建StandardEngine、StandardHost，并将Engine加入Service，然后Host加入Engine，最后关闭Host的自动部署功能
+	
+	5.4、通过prepareContext方法做一些初始化配置
+	
+	5.5、最后通过getTomcatWebServer(tomcat)去创建并启动一个服务器，并返回一个TomcatWebServer对象
+	
+	5.6、TomcatWebServer会在内部调用initialize方法来启动服务器
+	
+	5.7、initialize主要做了两件事，第一件事调用tomcat.start()启动服务器，第二件是启动一个非守护线程，这个线程在TomcatWebServer的监视器锁对象monitor内调用了wait()，这是因为所有Tomcat线程都是守护线程，为了避免其它线程结束后导致整个应用的退出，因此这里用一个守护线程来保证应用持续的运行
+	
+	5.7.1、这里的tomcat.start()并不一定会启动到服务器，因为Connector和Executor可能会为空，另外一个可能的启动时机看第4点
+
+    5.8、tomcat.start()会触发server.start()，然后server.start()会触发service.start()
+	
+	5.9、service.start()内部做了很多事，比如Engine容器的start、Executor的start、Connector的start、mapperListener的start()
+
+6、在容器刷新完成后执行AbstractApplicationContext.finishRefresh()时，会去执行getLifecycleProcessor.onRefresh()，也就是去刷新所有生命周期处理器，然后生命周期处理器会去执行注册到Spring的所有生命周期处理器的start方法。然后DefaultLifecycleProcessor会执行注册在它里面生命周期bean的start方法，其中包括WebServerStartStopLifecycle。具体注册时机看第4点
+
+7、WebServerStartStopLifecycle.start()会调用TomcatWebServer.start()，然后里面再调用addPreviouslyRemovedConnectors()，然后service.addConnector(connector)的时候，方法内部getState().isAvailable()已经能返回ture了，此时就会去调用connector.start()创建服务器
+
+8、connector内部的protocolHandler默认是org.apache.coyote.http11.Http11NioProtocol，然后protocolHandler内部又有一个endpoint默认是NioEndpoint，他们都是在对应父对象的构造器里默认创建的
+
+9、endpoint父类的start会去通过bindWithCleanup() -> bind()创建服务器，其中bind()方法是NIO的原生方法，接受ip、port、acceptCount等参数，这些参数可以在ServerProperties中配置，其中acceptCount代表允许积压的套接字数量。
+acceptCount的作用：连接数量达到Tomcat的maxConnections后，Tomcat将不会对新的TCP请求进行三次握手，也就是调用socket.accept()方法，因此套接字堆积在操作系统维护的半连接队列中，acceptCount表示系统里允许的套接字最大堆积数量
+
+10、执行setStopLatch(new CountDownLatch(1))，这个计数器是用来在Tomcat停止的时候等待Selector轮询停止的，Selector停止后Executor才会停止，防止有些请求未处理。也就是Tomcat不会马上停止，而是调用getStopLatch().await(selectorTimeout + 100, TimeUnit.MILLISECONDS)等待，如果超时了依然未停止，则打印警告日志
+NioEndpoint的run()方法跳出while(true)时会调用getStopLatch().countDown()
+
+11、调用initialiseSsl()初始化Ssl
+
+12、调用NioSelectorPool.open()，开始准备处理请求
+
+13、Selector sharedSelector = Selector.open()，初始化一个NIO的Selector
+
+14、将NIO的Selector用创建Tomcat的NioBlockingSelector的参数，然后调用它的opne方法
+
+15、Tomcat的NioBlockingSelector构造器内会创建一个BlockPoller，它继承于Thread，然后将NIO的Selector传递给它，随后start启动线程，它是一个守护线程。这个BlockPoller的作用暂时不明，它不是处理请求的，接下来回到第9点
+
+
+1、SpringBootAutoConfiguration 自动配置 ServletWebServerFactoryAutoConfiguration ↓
+2、ServletWebServerFactoryAutoConfiguration.@import(EmbeddedTomcat.class) ↓
+3、class EmbeddedTomcat {@Bean TomcatServletWebServerFactory } ↓
+4、由于存在javax.servlet.Servlet，所以ApplicationContext.webApplicationType = servlet，因此创建的ApplicationContext是ServletWebServerApplicationContext类型 ↓
+5、ServletWebServerApplicationContext.onRefresh() ↓
+6、ServletWebServerApplicationContext.createWebServer() ↓
+7、getBeanFactory().registerSingleton("webServerStartStop", new WebServerStartStopLifecycle(this,this.webServer))，由于IOC里的ServletWebServerFactory是TomcatServletWebServerFactory，因此这里创建的webServer是TomcatWebServer ↓
+8、WebServerStartStopLifecycle.start() ↓
+9、webServer.start() ↓
+10、service.addConnector(connector); ↓
+11、connector.start(); ↓
+12、(AbstractProtocol)http11NioProtocol.start() ↓
+13、(AbstractEndpoint)nioEndpoint.start() ↓
+14、nioEndpoint.startInternal() ↓
+    14.1、new Thread(Poller).start()
+	14.2、new Thread(Acceptor).start()
+
+
+Connector connector：接受请求
+    ProtocolHandler protocolHandler：Http11NioProtocol：协议版本，内部固定了Endpoint处理请求
+	    AbstractEndpoint<S, ?> endpoint：NioEndpoint extends AbstractJsseEndpoint<NioChannel,SocketChannel>
+以上三个组件是一对一的关系，上级对象在内部持有一个下级对象
+这是一个桥梁，把Server和Engine连接起来，Connector接受用户请求，把请求用Endpoint处理后交给Engine
+    
+	Connector属于Service
+    NioEndpoint在startInternal里创建了Poller与Acceptor，并创建线程去运行它们
+
+Acceptor：
+    套接字接受线程，用来接受用户请求，并把请求封装为Worker（SocketProcessor）放入Poller的队列，每个Connector里只有一个Acceptor
+	内部有个state状态，初始是NEW、run里的while开始后，endpoint.isPaused()为true就是PAUSED，否则就是RUNING，每次循环都有机会刷新这两个状态、while结束后是ENDED
+	
+    Acceptor.run()：
+	1、如果stopCalled不为true就一直while循环，如果endpoint.isPaused()为true就一直循环sleep
+	2、调用endpoint.countUpOrAwaitConnection()，使connectionLimitLatch计数+1，也就是总连接数
+	    2.2、LimitLatch内部实现了AQS，countUpOrAwaitConnection()方法会调用sync.acquireSharedInterruptibly(1)，所以如果无法+1会阻塞。它没用AQS的 state，而是自己用了一个AtomicLong类型的count，很简单的如果超过限制数量就返回-1，否则就返回1。所以Tomcat是在这里限制了最大请求数量
+	3、调用endpoint.serverSocketAccept()拿到一个SocketChannel socket，若发生异常则调用endpoint.countDownConnection()使connectionLimitLatch计数-1
+	4、调用endpoint.setSocketOptions(socket)
+	5、创建一个新的NioSocketWrapper，并调用poller.register(socketWrapper)
+	6、poller.register里会先拿到一个PollerEvent，PollerEvent其实就是对NioSocketWrapper的包装，如果eventCache里有就拿一个出来，reset后使用，如果没有就自己new一个，然后addEvent(event)
+	7、addEvent会将event放入pooler.events中，SynchronizedQueue类型的events是Tomcat自己实现的同步动态数组。然后调用wakeupCounter.incrementAndGet()，Poller会根据wakeupCounter来判断是调用selectNow还是select(timeOut)
+	
+Poller：
+    套接字处理线程，每个Poller内部都有一个独有的ConcurrentLinkedQueue用来缓存请求任务，Poller从自己的队列里获取具体的事件任务，然后交给Worker进行处理。
+	旧版的Pooler线程的个数与处理器核数有关，在2与CPU核数取之间最小值，新版的(目前在看的9.0.41)Poller线程仅有一个
+	本身是个消费者，同时也是个生产者
+	
+	
+	Poller.run()：
+	1、调用events()
+	    1.1、循环从events里消费event
+		1.2、如果event.getInterestOps等于OP_REGISTER(这是event的初始值)，则调用SocketChannel.refister，将NioSocketWrapper绑定到SelectionKey.attach。InterestOps代表SelectorKey的兴趣集合
+		1.3、如果Poller的状态正常，则将event重置后加入eventCache中
+		1.4、如果第1步消费成功，返回结果将为true
+		events()方法是从events中消费所有的event，然后从event中将NioSocketWrapper绑定到SelectionKey.attach，且将event重置并加入eventCache中，并返回
+	2、如果wakeupCounter大于0则调用selector.selectNow()，否则调用selector.select(selectorTimeout)，看看当前是否有可用连接，然后将wakeupCounter置零。wakeupCounter代表当前需要处理的event数量，Acceptor每次addEvent()都会对它+1
+	3、判断Poller是否已关闭，如果已关闭则调用events()将事件消费完
+	4、调用selector.selectedKeys().iterator()遍历所有的SelectorKey，然后使用processKey处理它们
+	    4.1、调用processKey，然后根据selectorKey可读可写分别去调socketWrapper.readOperation.process()与socketWrapper.writeOperation.process()
+		4.2、如果可读或可写，单数而writeOperation与readOperation为空则去调用processSocket()处理socket
+		4.3、processSocket就是去创建SocketProcessor，然后提交到NioEndpoint.executor去执行
+	5、如果第1点有消费到event或者第2点select时发现有可用的key，则调用timeout方法处理超时的SelectorKey
+	6、timeout()会遍历所有的SelectorKey，然后一个个看是否已超时，默认应该是20000ms
+	7、如果出现超时，则将selectorKey对应的socketWrapper感兴趣事件设置为0，然后设置error为new SocketTimeoutException()，最后根据是读超时还是写超时再尝试一次调socketWrapper.readOperation.process()或者socketWrapper.writeOperation.process()。而writeOperation与readOperation为空则去调用processSocket()处理socket，如果返回不成功调用cancelledKey关闭selectorKey和socketWrapper
+	    7.1、processSocket就是去创建SocketProcessor，然后提交到NioEndpoint.executor去执行
+	8、读与写的processor()都会用NioEndpoint的线程池executor去执行NioOperationState.run()，这个方法只要线程池能将任务加进去就返回true，run()里如果error是空的话会将缓冲的数据写入socket的写缓存，或者从socket的缓存中读出数据。
+	    8.1、如果error不为null，则调用completion.failed(error, this)，暂不清楚是做什么的
+    9、processSocket方法是让线程池去处理socket的，首先从processorCache里拿一个已有的SocketProcessor，如果没有则自己创建一个，如果已有则reset。这两种行为都需要传入socketWrapper与SocketEvent，其中SocketEvent代表当前事件类型，比如可读事件与可写事件。然后将SocketProcessor提交到NioEdnpoint的Executor，也就是Worker
+	10、SocketProcessor.doRun()，SocketProcessor的父类实现了run，用监视器锁给socketWrapper对象加锁后调了子类doRun
+	
+	11、如果此时已经握手完成的话，就去执行getHandler().process(socketWrapper, event)，其中getHandler()只有一个实现，那就是ConnectionHandler，在AbstractHttp11Protocol类的构造器里创建并赋值的
+	12、ConnectionHandler.process()，拿到一个Processor，这个是处理请求的对象。如果SocketWrapper不是第一次进来，那么就SocketWrapper.getCurrentProcessor()那它内部的，不然尝试从recycledProcessors里拿一个，这是一个线程安全的集合。如果还拿不到，就创建一个新的。后面用完了会用release清除processor里的信息，并push回recycledProcessors里面
+	
+	13、processor.process(wrapper, status)，processor开始处理socket，如果SocketEvent status是OPEN_READ的话，就代表可以处理了，然后调用service(socketWrapper)方法
+	
+	14、然后就是一系列的请求解析，如果一切正常，会执行到getAdapter().service(request, response)，getAdapter()只有一个实现，那就是CoyoteAdapter，这是在Connector的initInternal方法中创建并设置的，在第12点new Http11Processor时传了进去
+	
+	15、CoyoteAdapter.service()里会调用postParseRequest，这里在处理请求前做一些处理，包括对当前请求与各个容器的mapping的关系
+	
+	16、connector.getService().getContainer().getPipeline().getFirst().invoke(request, response)这里就开始执行engine的valve了，因为getService().getContainer()返回的肯定是StandardEngine
+	
+	17、请求从这里顺着几个容器走下去，最后在StandardWrapperValve里构建FilterChain，将servlet放入FilterChain后它会在所有Filter结束后调用servlet.service
+	
+	18、至此Tomcat的流程结束，下面就是Spring Mvc的逻辑了
+	
+Worker：
+    Worker是实际处理请求的线程，Worker只是组件名称，真正做事的是SocketProcessor。其实就是线程池而已
 
 
 
