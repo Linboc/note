@@ -124,8 +124,43 @@ HashMap，默认情况下这两个变量都为Null，只有第一调用ThreadLocal的get或set方法时才
         ThreadLocalMap getMap(Thread t)：
             返回传入线程的threadLocals属性
 
+        int expungeStaleEntry(int staleSlot)：
+            主要是用来清除无效Entry，比如key为null的，然后还有个Entry重Hash的操作
+            1、将传入的索引的Entry与其value清除掉，传入的一般都是被remove的索引
+            2、从传入的索引开始遍历，直到遇到为null的位置
+            3、遍历过程中碰到key为null的Entry，就对它与它的value进行清除，也就是它的value置空，然后它在数组中置空
+            4、如果key的Entry不为null，且它当前位置与用hashCode & len-1计算出的位置不同，那么就尝试重Hash。因为这代
+        表它插入时Hash已被占用，它是被迫后移的。此时就将它原位置置空后，再从hashCode & len-1位置开始，一直往后，直  
+        到找到一个为null的位置。此举是为了将它的位置尽量前移，最差就是放回原位，这能尽量减少查询时要找节点的次数
+
     由于每个线程的本地变量都存放在线程自己的变量threadLocals中，如果当前线程一直不消亡，这些本地变量就会一直存在，
 所以有可能会造成内存溢出，因此使用完毕要记得调ThreadLocal的remove方法删除线程threadLocals中的本地变量
+
+关于ThreadLocalMap的设计：
+    索引位置通过ThreadLocal的hashCode & arr.length - 1来决定，假如发生Hash碰撞，那么就一直往后找下一个元素
+    例如set时，如果索引位置已有元素，那就拿下一个位置的元素，最后一个索引的下一个是0，由于上次插入后会判断是否容量
+已满，如果已满则扩容，因此总会存在空位置。而get时，也是通过这种方式，找到索引，然后从索引开始一直往后找，判断key是
+否相等，相等就返回。
+    因此ThreadLocalMap处理Hash碰撞的方式就是只管往后塞，哪怕降低效率
+    这里有个问题，假如第一次set时索引已被占用，然后往后面塞，第二次重新set前面的索引已被删除，那岂不是第二次进去后
+会优先找到一个空位置，而不是key相同的Entry，将导致同一个ThreadLocal会有两个存在于Map中？当然，由于前面的总是最新的
+，因此数据方面不会出问题，只是会有冗余数据
+
+
+关于ThreadLocal里ThreadLocalMap的Entry为何继承了WeakReference<ThreadLocal<?>>：
+    ThreadLocalMap的Entry在构造器里会将key传入父类构造器，也就是ThreadLocal<?>将是弱引用的，可以注意到，它的类里只
+定义了value属性，而key属性保存在父类的WeakReference中
+
+    这代表如果是new出ThreadLocal的实例，并且set过值的话，ThreadLocalMap就会保留它的WeakReference，用户线程里就保留
+了强引用，此时如果用户线程将它变量的值换了，也就是丢弃了引用，那么ThreadLocalMap的key里保存的ThreadLocal将会在下次
+GC时被清除
+
+    而如果key被GC清除了，那么value将在每次ThreadLocal每次进行操作时，一但发现计算出来的hashCode索引的位置那个地方存
+在Entry，也就是发生Hash碰撞，但是key又为null，就会将那个下标的Entry对应的value进行进行清除，然后用一个新的Entry覆盖
+
+    总结：ThreadLocal里ThreadLocalMap的Entry继承了WeakReference<ThreadLocal<?>>，所以它的key是在线程里的强引用失去
+时的下次GC进行清除，而value是ThreadLocalMap刚好hashCode碰撞到那里，发现key是null之后进行清除，并重置Entry。因此每次
+set、get、remove等方法时都会清除一个，但是终究是不及时的，因此依然会产生内存泄漏
 
 
 InheritableThreadLocal：
@@ -153,6 +188,7 @@ ThreadLocal，它提供了一个特性，那就是让子线程可以访问父线程中设置的本地变量
     子线程还有多种使用父线程变量的方式，在线程start之前将参数传给线程实现类，然后在它的run里面就能this调用，或者写
 lambda表达式的时候外层放final变量，里面也能直接使用，不过这些都会改变使用习惯，而InheritableThreadLocal就比较方便，
 前提是不用线程池
+
 
 
 
@@ -1161,10 +1197,10 @@ ScheduledThreadPoolExecutor的方法与属性：
     continueExistingPeriodicTasksAfterShutdown，不是周期性参数传入executeExistingDelayedTasksAfterShutdown
 
     boolean continueExistingPeriodicTasksAfterShutdown：
-        默认为false
+        代表shutdown后重复类型的任务是否仍要继续运行，默认为false
 
     boolean executeExistingDelayedTasksAfterShutdown：
-        表示其他线程调用shutdown后，当前任务是否还要执行，默认为true
+        代表shutdown后一次性类型的任务是否仍要继续运行，默认为true
 
     isRunningOrShutdown：
         判断线程池是否在运行中，或者已经shutdown，但是该任务shutdown后仍要运行，取决于传入的boolean值参数
@@ -1358,7 +1394,6 @@ RT(Response Time)：
     Logback的日志打印用的是ArrayBolockQueue，多个生产者往队列里插日志，但只有一个队列在将日志保存到磁盘
 
     
-
 2、
     作者第二个例子用了Tomcat线程模型里的ConcurrentLinkedQueue，但是9.0.46版本的Tomcat那个组件已经没用ConcurrentLinkedQueue了，而是使用了SynchronizedQueue，这是Tomcat自己实现的简单版本的同步动态数组。且Poller也不是在
 处理器和2之间选较小值了，而是只能有一个Poller线程了
@@ -1400,20 +1435,60 @@ Calendar对象。这三个操作不是原子性的，所以就有可能第一个线程清空、设置好了Calend
 
 
 5、
-    Timer使用注意事项，
+    Timer使用注意事项，Timer是固定的多生产单消费，且一但任务报错整个定时任务就结束了。而ScheduledThreadPollExecutor
+报错虽然也会导致线程退出，但是下次添加任务时又会重新addWorker，并且消费线程是可以配置的，而生产数量取决于使用者，所以开发中定时器功能应该优先使用ScheduledThreadPollExecutor
+
+
+6、
+    对需要复用但是会被下游修改的参数要进行深复制
+    这里的例子大概含义是，同一个消息对象发给两个不同的服务监听器进行处理，先处理的那个监听器将对象改了，导致第二个
+服务监听器拿到了异常的数据，像这种情况下应该保证每一个监听器拿到的消息都是互不干扰的。所以消息发送时应该对消息进行
+深复制再发送。注意这里是深复制，因为浅复制会将引用传过去，那么依然可以相互修改
+
+
+7、
+    创建线程和线程池时要指定与业务相关的名称，以便出现问题时方便进行定位
+    如果不指定线程名，那么抛出异常时展示的线程名将是Thread-当前线程类的静态自增变量，线程将会很不清晰
+    同理，创建线程池时也需要指定线程池的名称，否则顶多会在原线程名称前加上poll-当前线程工厂的静态自增变量。由于线程
+池的线程工厂是用它的namePrefix在前面进行拼接，然后再new Thread的时候传进去做线程名前缀，因此我们只需要将线程工厂的
+namePrefix修改成需要的业务名就行了。不过原有的DefaultThreadFactory不给改，所以需要自己复制一份来做类似的实现。
+    如果不写名称，虽然线程名会不明确，但是单看线程堆栈也能看出个大概，不过如果把栈dump下来想查问题估计面对一堆
+thread-xx、poll-xx-thread-xx估计也要崩溃
+    
+
+8、
+    在线程池使用FutureTask导致线程一直阻塞。线程池中有两种拒绝策略：DiscardPolicy与DiscardOldestPolicy，他们一个是
+拒绝时啥都不干，一个是拒绝时清理掉一个旧任务，然后新任务再尝试重新提交。
+    假如我们提交的任务是FutureTask类型的，并且在提交后主线程进行get，通过看源码我们可以发现，get时是否返回结果主要
+依靠FutureTask的状态，如果状态未完成就一直阻塞，等待被完成任务的线程唤醒。那么上面那两个拒绝策略都是会不管任务的，
+如果我们主线程提交任务，但是任务被拒绝了，而主线程不知道接着进行get，那么此时任务永远不会完成，主线程就会一直陷入阻
+塞当中
+    因此如果线程池想用DiscardPolicy与DiscardOldestPolicy拒绝策略，要么不用FutureTask，要么在get时指定阻塞时间，否则
+就要小心线程无限阻塞了
+
+9、
+    关于在线程池中使用ThreadLocal导致内存泄漏的问题。
+    假设Tomcat的Executor里的线程池有200个核心线程，而我们业务Servlet里有一个ThreadLocal类型的大对象，当超过150个对
+象存在时就会发生OOM。我们每次访问这个Servlet都会重新set这个ThreadLocal对象
+    此时如果我们用完不remove，那么这个大对象就一直存在线程的threadLocals中，当我们用150个线程执行过这个Servlet后，
+此时即使只有一个请求，只要这个请求刚好就用一个新线程来执行，那么出现第151个大对象就会导致应用内存溢出。
+    而此时如果我们用完就remove，那么除非同时进来151个线程，那我们就不会出现OOM。并且线程不在任务执行期间，这些变量
+是不占用内存的
+    因此线程变量用完不清除，只要用过这个变量的线程够多，并且这种变量够大或者够多，那应用就可能发生内存溢出，就算不
+溢出也会导致大量这种没在运行任务的线程占用大量内存，导致其它地方出现内存不足
 
 
 
-
-
-
-
-
-
-
-
-
-
+关于线程组，ThreadGroup：
+    线程组可以方便的管理一组线程，每个线程默认的线程组是当前线程的线程组，线程组下面可以嵌套线程或线程组，所以线程
+组是一个树状结构，线程组有相关方法可以管理组内的所有线程，比如获取组内的所有线程与打断组内的所有线程，并且操作支持
+递归，也就是组下的组也可以递归获取到
+    线程toString()时会把组名也带上
+    感觉使用场景不是很多，因为批量管理线程一般是线程池使用的场景，而线程池本身就对线程有分组的效果，包括线程名也是
+带有线程池对应的特征，组名就有点多余了。
+    如果想对每个线程池的线程进行分组也是可以的，比如每个线程工厂里都有一个新的线程组，而线程名就是线程组名+线程名。
+相当于线程工厂管理线程组，而线程组管理线程，感觉更复杂了，不过起码能通过线程工厂拿到所有线程，而不是通过线程池的
+workers才能拿
 
 
 
