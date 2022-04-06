@@ -1,0 +1,71 @@
+
+    1、TtlRunnable()构造器里会调用com.alibaba.ttl.TransmittableThreadLocal.Transmitter.capture()，它是静态import
+的。capture()主要是将当前线程的跨线程变量捕获出来，并放入当前的TtlRunnable对象的captureRef属性里
+
+    2、capture()方法要捕获的信息分两个方法，分别是captureTtlValues()与captureThreadLocalValues()
+
+    3、captureTtlValues()方法会将当前线程的TransmittableThreadLocal.holder属性复制到一个新的Map并返回，这个属
+性是一个InheritableThreadLocal类型包着的Map，这意味着它是默认跨线程的，当然，不含包线程池，它保存的都是
+TransmittableThreadLocal类型的元素，它是被当作Set来用的，也就是value都是空的
+
+    4、captureTtlValues()方法会将当前线程的Transmitter.threadLocalHolder属性复制到一个新的Map并返回，这个属性
+是一个Map，与上面那个map不同，这个Map的value是有在用的，它存放了TtlCopier类型的对象，这个对象可以指定在
+进行跨线程的属性复制时对被复制的值进行想要的转换
+
+    5、上面几步都是在父线程进行数据保存的，下面就是在子线程对数据的使用了
+
+    6、在TtlRunable.run()里，会将captureRef对象传入replay()里，replay主要调用了replayTtlValues()与
+replayThreadLocalValues()方法，它们对应了前面的captureTtlValues()与captureThreadLocalValues()
+
+    7、replayTtlValues()
+        7.0、将原holder里的信息备份到一个backup临时Map中，稍后进行返回，backup里保存的value是当前线程的value
+
+        7.1、执行setTtlValuesTo()，将之前captureRef里的ttl2Value属性取出来重新在TransmittableThreadLocal里set
+    一遍，因为前面第2点里，ttl2Value里保存了TransmittableThreadLocal里的所有key与value保存到map里，因此现在
+    就算在子线程也能拿到父线程对应的TransmittableThreadLocal与它的value，然后再当前线程重新对它set，就能把该
+    值绑定到当前线程中
+
+        7.2、执行doExecuteCallback()，它会执行holder里所有TransmittableThreadLocal对象的beforeExecute方法，
+    可以在里面进行一些在run()之前想要的处理
+
+    8、replayThreadLocalValues()，将captureRef里的threadLocal2Value拿出来进行遍历，保存到backup里，backup里
+保存的value是当前线程的value。在同一个循环里，将线程变量与在父线程里的value拿出来，在子线程里重新进行set。Map
+里保存了父线程里面的value，因此可以跨线程
+
+    9、run()之后，根据前面保存的backup执行restore，restore也是分两部分，分别是restoreTtlValues与
+restoreThreadLocalValues。
+
+    10、restoreTtlValues()，这里处理的是backup.ttl2Value
+
+        10.1、执行doExecuteCallback，它会执行holder里所有TransmittableThreadLocal对象的afterExecute方法，
+    可以在里面进行一些在run()之后想要的处理
+
+        10.2、将当前线程里TransmittableThreadLocal.holder属性里有的，backup.ttl2Value里没有的
+    TransmittableThreadLocal对象从holder集合里删掉，然后执行触发父类的ThreadLocal.remove
+
+        10.3、执行setTtlValuesTo()，将backup.ttl2Value里的所有TransmittableThreadLocal重新拿备份的value
+    进行set。10.2跟10.3总的来说就是将子线程里新加的TransmittableThreadLocal删掉，然后将备份起来的value
+    重新进行set，将线程变量恢复原状
+
+    11、restoreThreadLocalValues()，这里处理的是backup.threadLocal2Value。遍历backup，将备份起来的所有
+ThreadLocal的value对它重新进行set，将线程变量恢复原状
+
+    由上可知所有操作都是针对TransmittableThreadLocal.holder变量与Transmitter.threadLocalHolder变量，
+    其中TransmittableThreadLocal.holder变量是用户每次对TransmittableThreadLocal对象进行get与set时添加，
+remove时删除的
+    而Transmitter.threadLocalHolder是在用户每次Transmitter.registerThreadLocal()时添加，在
+Transmitter.unregisterThreadLocal()时删除的
+
+    这代表如果使用TransmittableThreadLocal类型的对象就能自动添加进来，因为它会重写父类的ThreadLocal
+从而自动加入集合，而Transmitter.threadLocalHolder就需要用户手动注册了
+    因此前者是使用TtlRunnable后自动支持的，后者则用户根据需求自己去注册才支持的
+
+
+
+
+
+
+
+
+
+threadLocalHolder
