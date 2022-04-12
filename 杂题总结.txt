@@ -268,12 +268,20 @@ clearAutomatically = true就会清空缓存了
     group_id请求头在服务器收不到，nginx因为一些标准，-和_都会转为_，所以默认情况下不支持_，所以通过nginx转发的请求，
 请求头里包含_的都会丢失，可以通过在http下面增加属性：underscores_in_headers on来支持请求头的_(下划线)
 
-    https请求提示什么证书错误，可以设置一下连接属性，以下数hutool的处理方式：
+    https请求提示什么证书错误，可以设置一下连接属性，以下是hutool的处理方式：
         urlConnection.setSSLSocketFactory(CommonUtils.uncheck(() -> SSLSocketFactoryBuilder.create().build()));
         urlConnection.setHostnameVerifier(new TrustAnyHostnameVerifier());
         注意连接类是HttpsURLConnection类
 
     Runtime执行curl，输入流一直读不到数据，线程一直阻塞，是因为runtime.exec执行，如果命令有间隔要用数组的重载方法，如果有大量空格依然只传一个字符串，就会阻塞住
+
+    找不到对应类型的Bean引发Spring启动异常：
+    Bean明明存在，但是注入报找不到对应类型的Bean。因为byType注入的时候，是根据BeanDefinition里定义的类型去匹配
+的，而这个类型时取决于@Bean注解的方法返回值。比如@Bean类型是ThreadPoolExecutor，而返回类型是Executor，此时
+BeanDefinition里定义的类型就是Executor。如果去根据BeanType进行匹配，由于是用BeanDefinition里的类型去匹配指定
+参数的，因此无法匹配，找不到对应的ThreadPoolExecutor类型
+    此时要么注入Executor，要么将返回值改为ThreadPoolExecutor
+
 
     记一次kafka broker启动时报InconsistentClusterIdException，明明已经把meta.properties改了，zookeeper里的cluster/id也
 改了，不知道哪里有缓存，就是报clusterId不匹配，改不成新的。最终反向操作，将zookeeper和meta.properties的clusterId改成旧
@@ -286,6 +294,9 @@ clearAutomatically = true就会清空缓存了
     kafka broker启动一段时间后，报java.nio.file.FileSystemException:xxxx另一个程序正在使用此文件，进程无法访问。这个是
 清理线程报的，windows下才会出现，目前解决方式是删除tmp下的kafka和zookeeper所有配置，很多问题在windows下才会有，如果不想
 踩坑最好用linux
+
+
+
 
 
 
