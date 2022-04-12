@@ -1,0 +1,266 @@
+canal：
+    基于数据库增量日志解析，提供增量数据订阅与消费，主要支持了mysql，纯java开发
+
+工作原理：
+    canal模拟mysql slave的交互协议，将自己伪装成mysql slave，向mysql master发送dump协议。然后mysql master推送
+binary log给canal，canal再进行binary log解析
+
+mysql主从复制：
+    1、master将变更记录到binary log中，这些记录叫做二进制日志时间，可以通过show binlog events进行查看
+    2、slave将master的binary log events拷贝到它的中继日志
+    3、slave重做中继日志中的事件
+
+binary log：
+    简单来说mysql的binlog是多文件存储，定位一个LogEvent需要通过binlog filename + binlog position进行定位
+    binlog的数据格式，按照生成的方式，主要分为：statement-based、row-based、mixed
+        statement-based：
+            写入sql语句，有点是写入log文件的数据更少，恢复数据也更快。缺点是一些DML语句无法使用，或者一些LIMIT语句
+        也无法确定。而且需要加更多的行锁
+
+        row-based：
+            写入行修改记录，所有改变都可以写入日志，也是最安全的方式，也有更好的性能，这是默认的方式。缺点是binlog会
+        更大。canal一般建议用这种模式
+
+        mixed：
+            以上两种的混合
+
+canal的架构：
+    server -> instance -> EventParser
+                                 -> EventSink
+                                 -> EventStore
+                                 -> MataManager
+              -> instance...
+
+    server：代表一个canal实例，对应一个jvm
+    instance：对应一个数据队列，也就是一个从库，一个server对应多个instance
+    eventParser：数据源接入，模拟slave协议与master进行交互，协议解析
+    eventSink：进行数据过滤、加工、分发，同时是eventParser和eventStore的链接器
+    eventStore：数据存储
+    metaManager：增量订阅与消费信息管理器
+
+EventParser的设计：
+    1、Connection获取上一次解析成功的偏移量
+    2、Connection建立连接，发送BINLOG_DUMP指令，从指定偏移量开始
+    3、MySql开始推送Binary Log
+    4、接收到的bin log通过Binlog parser进行协议解析，补充一些信息，比如字段名字、字段类型、主键信息
+    5、传递给EventSink模块进行数据存储，这是一个阻塞操作，直至存储成功
+    6、存储成功后，定时记录Binary Log位置
+
+EventSink的设计：
+    1、数据过滤：支持通配符的过滤模式，对表名、字段等信息进行过滤
+    2、数据路由、分发：解决1个parser对应多个store(1:n)，比如有多个业务方需要这个数据
+    3、数据归并：解决多个parser对应一个store(n:1)，比如有进行水平拆分和垂直拆分，需要将数据整合到一起，这会有一个
+数据顺序问题，可以用时间戳或者全局id进行排序归并。垂直拆分：将多个表根据业务分到不同的库中。水平拆分：将数据分
+到不同的库表中，也就是分库分表。
+    4、数据加工：在进入store之前进行额外的处理，比如join
+
+EventStore的设计：
+    1、目前仅实现了Memory内存模式
+    2、借鉴了Disruptor的RingBuffer的实现思路
+        定义了3个cursor游标，用于递增，用long存储：
+            1、Put：Sink模块进行数据存储时最后一次写入的位置，数据写到哪里了
+            2、Get：数据订阅获取的最后一次提取位置，用户读到哪里了
+            3、Ack：数据消费成功的最后一次消费位置，用户Ack到哪里了
+
+Instance的设计：
+    instance代表一个实际运行的数据队列，包括了EventPaser,EventSink,EventStore等组件
+    instance抽象了一个CanalInstanceGenerator，它有两个实现：ManagerCanalInstanceGenerator和
+SpringCanalInstanceGenerator。这样设计主要是考虑配置的不同管理方式。一种是基于spring配置；一种是基于内部的web
+控制台，可以给公司内部使用
+
+Server的设计：
+    server代表一个canal的运行实例，抽象了一个CanalServer，有两种实现：
+        Embeded：
+            内嵌的Server，对延迟性和可用性有比较高的要求，如果自己能hold住分布式的相关技术，比如故障转移就可以用
+
+        Netty：
+            基于Netty封装了一层网络协议，由canal server保证可用性，采用pull模型，因为push在数据量大的时候会有些问题
+
+订阅、消费协议的设计：
+    canal协议的基本介绍
+
+    1、connect：
+        客户端与服务器建立连接
+            1、服务器发起握手
+            2、客户端进行验证
+            3、服务器返回验证结果
+    2、subscribe：客户端发起消费
+    3、get或getWithoutAck：
+        客户端获取数据，其中getWithoutAck，允许指定get的批次数量，一次获取多条，返回Message对象，里面包含
+    batchId和对象数据
+    4、ack或roolback：
+        ack：客户端确认已经消费成功，通知server删除数据，基于batchId进行操作
+        rollback：客户端回滚上次的get请求，重新获取数据，基于batchId进行操作
+    5、unsubscribe：客户端取消订阅
+    6、disconnect：客户端断开连接
+
+流式api：
+    以上的get/ack/rollback是允许异步处理的，比如连续调用多次get，然后按照顺序进行ack和rollback
+    1、每次get，都会在meta中产生一个mark，mark标记会递增，保证运行过程mark的唯一性
+    2、每次get，都会在上一次的mark操作的cursor继续往后取，如果mark不存在，则在last ack cursor往后取
+    3、ack需要按照mark顺序进行ack，不能跳跃ack，因为ack会删除当前mark标记，并将对应mark位置更新为
+last ack cursor
+    4、rollback会删除所有mark，并清理get请求位置，下次get会从last ack cursor继续获取
+
+    大概就是，用一个临时mark标记记录当前get到了什么位置，每次ack都会将最早的mark更新为last ack cursor，如果回滚
+就清除所有mark，然后从最近一次ack的mark开始读
+
+
+数据对象的格式：
+
+Entry：
+    Header
+        logfileName [binlog文件名]
+        logfileOffset [binlog position]
+        executeTime [binlog里记录变更发生的时间戳]
+        schemaName [数据库实例]
+        tableName [表名]
+        eventType [insert/update/delete类型]
+    entryType 	[事务头BEGIN/事务尾END/数据ROWDATA]
+    storeValue 	[byte数据,可展开，对应的类型为RowChange]
+
+RowChange：
+    isDdl		[是否是ddl变更操作，比如create table/drop table]
+    sql		[具体的ddl sql]
+    rowDatas	[具体insert/update/delete的变更数据，可为多条，1个binlog event事件可对应多条变更，比如批处理]
+    beforeColumns [Column类型的数组]
+    afterColumns [Column类型的数组]
+
+Column：afterColumns和beforeColumns的元素内容
+    index		[column序号]
+    sqlType		[jdbc type]
+    name		[column name]
+    isKey		[是否为主键]
+    updated		[是否发生过变更]
+    isNull		[值是否为null]
+    value		[具体的内容，注意为文本]
+
+HA(高可用)机制：
+    canal的HA分为两部分：
+        canal server：为了减少对mysql dump请求，不同server上的instance同时只能有一个在running，其他的处于standby
+    (备用)状态
+        canal client：为了保证有序性，一份instance同时只能由一个canal client进行get/ack/rollback
+
+    整个HA机制主要是依赖了zookeeper的临时节点与监听特性，其中canal server的HA机制如下：
+        1、canal server启动某个canal instance时先向zookeeper进行一次启动判断，zookeeper临时节点创建成功谁启动
+        2、创建成功的canal server就启动canal instance，不成功的就进行watch处于standby状态
+        3、一但zookeeper发现canal server节点消失后，就通知其他节点进行步骤1的操作，重选一个canal server启动instance
+        4、canal client每次进行connect时，会先向zookeeper询问当前是谁启动了canal instance，获取到主机信息后与其建
+    立连接，一旦连接不可用，会尝试重新获取主机信息并建立链接
+        canal client的方式与canal server也类似，也是通过zookeeper的临时节点与监听特性
+
+
+canal使用服务启动：
+
+    1、my.ini(windows)或my.cnf(linux)下增加配置：
+        # 开启binlog
+        log-bin=mysql-bin
+
+        # 选择ROW模式
+        binlog-format-ROW
+
+        # server_id，注意别与集群里的其它mysql机器的id冲突，比如从库(canal)
+        server_id=1
+
+    2、为从库生成一个具有从复制权限的用户：
+        CREATE USER canal IDENTIFIED BY 'canal';  
+        GRANT SELECT, REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'canal'@'%';
+        -- GRANT ALL PRIVILEGES ON *.* TO 'canal'@'%' ;
+        FLUSH PRIVILEGES;
+
+    3、去下载一个canal包：
+        https://github.com/alibaba/canal/releases
+        例如：canal.deployer-1.1.5.tar.gz，注意是deployer
+
+    4、修改canal配置：
+        conf\example\instance.properties：
+            修改成自己的主库地址：
+                canal.instance.master.address
+            修改成自己的从复制账户信息：
+                canal.instance.dbUsername = canal  
+                canal.instance.dbPassword = canal
+
+    5、启动canal，直接跑这个脚本就行：
+        bin\startup.sh
+        linux还提供了stop
+
+
+canal客户端的增量更新：
+
+    1、确定canal server和mysql启动完成
+
+    2、可以去logs目录下看canal的日志和对应instance的日志，如果都正常启动完成就可以写客户端了
+
+    3、加依赖包
+        <dependency>
+            <groupId>com.alibaba.otter</groupId>
+            <artifactId>canal.client</artifactId>
+            <version>1.1.0</version>
+        </dependency>
+
+    4、
+        // 创建链接
+        CanalConnector connector = CanalConnectors.newSingleConnector(new InetSocketAddress(AddressUtils.
+    getHostIp(),1111), "example1", "", "");
+        // 连接
+        connector.connect();
+        // 订阅
+        connector.subscribe(".*\\..*");
+        // 可以通过循环去拿到消息
+        Message message = connector.getWithoutAck(batchSize);
+        // 然后自己决定ack还是rollback
+
+    如果canal客户端挂了，然而mysql还一直在变更，那么下次canal客户端启动时会从上次的偏移量进行消费，期间的数据不
+会丢失
+
+    全量更新：
+
+        1、改instance.properties文件里的偏移量信息
+            # 主库的binlog文件名，记得一定要去主库确认binlog的文件名，网上的文件名和我本地不同，导致一直不能全量消费
+            canal.instance.master.journal.name=binlog.000001
+            # 从上面那个binlog.000001文件的指定偏移量开始读，这里是从头开始
+            canal.instance.master.position=0
+            # 时间戳，改0就行了
+            canal.instance.master.timestamp=0
+
+        2、关闭canal server
+            因为canal本身会缓存偏移量，并且关闭时还会持久化偏移量，因此要先关闭才能删除文件
+
+        3、删除一些canal的缓存文件：
+           1、conf\example\meta.dat(这里记录了每个instance当前消费的偏移量信息)
+
+客户端的一些类：
+
+    1、ClientIdentity：
+        canal客户端与服务器之间交流的身份标识，clientId是写死的，这是为多客户端模式预留的，目前无需理会
+
+    2、CanalConnector：
+        这是客户端连接接口，它有两种实现：
+            SimpleCanalConnector：
+                这是针对简单的ip直连模式
+            ClusterCanalConnector 
+                这是针对多ip的模式，可以依赖CanalNodeAccessStrategy进行failover控制，实现HA机制
+
+    3、CanalNodeAccessStrategy
+        这是server故障转移接口，有两种实现：
+            SimpleNodeAccessStrategy：
+                这是使用给定的初始ip列表进行failover
+            ClusterNodeAccessStrategy：
+                这是使用zookeeper上的cluster节点动态选择正在运行的server进行failover
+
+    4、ClientRunningMonitor/ClientRunningListener/ClientRunningData：
+        这几个类是为了解决client自身的failover机制。可以启动多个canal client，通过running机制，保证只有一个client在工
+    作。其它client做备用
+
+
+
+
+
+
+
+
+
+
+
+
+
