@@ -137,6 +137,15 @@ broker：
         机架名称，kafka会在为broker分配分区副本时，尽量将一个分区的不同副本分布在不同的机架上，以防止机架故障导致
     某个分区的多个副本不可用
 
+    delete.topic.enable：
+        指定broker是否允许删除主题，如果为false删除主题的请求就会被忽略
+
+    group.initial.rebalance.delay.ms：
+        空消费组第一次被consumer加入后延迟多久才再均衡。
+        考虑到一种场景，如果broker刚启动，此时有多个consumer连接进来，那么每个consumer都会触发一次再均衡。因此提供了这
+    个参数，让消费者刚加入的一定时间内不进行再均衡
+        这个配置默认在server.properties里是0，这是为了方便测试与开发时的开箱即用，生产环境建议改为3s
+
 主题的配置：
     num.partittons：
         自动创建主题时的分区数量
@@ -816,15 +825,183 @@ epoch来避免脑裂(指两个节点同时认为自己是当前的控制器)
         参数能限制最少存在个同步副本才能写入
 
 
+管理kafka：
+
+    kafka的大部分命令都是直接操作zookeeper上的元数据，并不会连接到broker上
+
+主题操作：
+    kafka-topic.sh：
+        该工具可以执行主题的大部分操作，可以用它来创建、修改、删除和查看集群里的主题
+
+        创建主题：
+            创建主题需要3个参数：主题名字、复制系数(副本数量)、分区数量。其中主题名字可以包含：字母、数字、下划线、英文
+        破折号、英文句号。
+            集群内部的主体一般都是以两个下划线开始的，比如__consumer_offsets用于保存消费者群组的偏移量。因此不建议这么
+        做。句号和下划线也不建议，老老实实用大小写最好
+
+    创建topic：
+        kafka-topics.bat --zookeeper localhost:2181/kafka --create --topic boc-1 --replication-factor 1 --partitions 4 
+    --if-not-exists --disable-rack-aware：
+            kafka-topics.bat：脚本文件
+            --zookeeper localhost:2181/kafka：zookeeper的路径，后面的kafka对应broker的server配置中的zookeeper.connect
+        ，指的是broker在zookeeper中的存储路径
+            --create：指令类型，这里是创建topic
+            --topic boc-1：创建的topic名为boc-1
+            --replication-factor 1：复制系数为1，也就是只有一个副本，本机测试只能填1，因为复制系数超过broker数量就报错
+            --partitions 4：topic的分区数量
+            --if-not-exists：默认情况下如果topic已存在会报错，加上这个参数如果已存在啥都不干
+            --disable-rack-aware：指定不需要基于机架的分配策略
+
+    修改topic，为topic增加分区：
+        如果增加分区，会导致键到分区间的映射发生变化。所以基于键的主题最好一开始就设置好分区的数量，避免做出调整
+        kafka-topics.bat --zookeeper localhost:2181/kafka --alter --topic boc-1 --partitions 8
+            kafka-topics.bat --zookeeper localhost:2181/kafka：参考上面
+            --alter：指令类型，这里是修改主题
+            --topic boc-1：修改的topic名为boc-1
+            --partitions 8：将分区数量修改为8
+            --if-exists：这个参数指定如果主题不存在就会被忽略，不过主题不存在时应该创建主题，而不是隐藏错误，不建议使用
+
+    减少分区：
+        由于删除分区会导致分区里的数据也一并删除，会导致数据不一致。而且如果把消息分配给其它分区会导致消息乱序，因此不
+    支持删除分区，只能删除整个主题
+
+    删除主题：
+        如果要删除主题，brker的delete.topic.enable必须设置为true，否则删除主题的请求会被忽略
+        kafka-topics.bat --zookeeper localhost:2181/kafka --delete --topic boc-1
+            kafka-topics.bat --zookeeper localhost:2181/kafka：参考上面
+            --delete：指令类型，这里是删除主题
+            --topic boc-1：删除的topic名为boc-1
+        删除并不会马上删除，而是先标记为删除，随后清理线程再进行删除，list和describe指令会提示topic已被标记为删除
+
+    主题列表：
+        注意，这里查询的是集群里的所有主题，而非单个broker的主题
+        kafka-topics.bat --zookeeper localhost:2181/kafka --list
+            kafka-topics.bat --zookeeper localhost:2181/kafka：参考上面
+            --list：指令类型，这里是主题列表
+        每行数据都包含：主题名、分区数量、副本清单、主题的覆盖配置
+
+    主题详细信息：
+        注意，这里查询的是集群里的所有主题，而非单个broker的主题
+        kafka-topics.bat --zookeeper localhost:2181/kafka --describe --topic-with-overrides --under-replicated-
+    partitions --unavailable-partitions
+            kafka-topics.bat --zookeeper localhost:2181/kafka：参考上面
+            --describe：指令类型，这里是主题详细描述
+            --topic-with-overrides：表示只找出包含覆盖broker配置的主题
+            --under-replicated-partitions：表示只找出包含不同步副本的分区
+            --unavailable-partitions：表示只找出没有首领的分区
+        每行数据都包含：主题名、分区数量、leader所在分区、副本清单、主题的覆盖配置
 
 
+消费者群组操作：
+
+    consumer-groups.sh：
+        consumer-group工具可以列出旧版和新版的消费者群组，也可以删除消费者群组和偏移量信息。
+        旧版本的消费者信息保存在zookeeper上，新版本的保存在broker上，因此旧版消费者群组需要加--zookeeper参数指定zk的地
+    址，新版的要加--bootstrap-server参数指定broker的地址
+
+    查询消费组信息：
+        kafka-consumer-groups.bat --bootstrap-server localhost:9092 --list
+            kafka-consumer-groups.bat --bootstrap-server localhost:9092：参考上面
+            --list：指令类型，这里是查询消费组列表
+
+        kafka-consumer-groups.bat --bootstrap-server localhost:9092 --descrube --[group | all-groups]
+            kafka-consumer-groups.bat --bootstrap-server localhost:9092：参考上面
+            --descrube：指令类型，这里是查询消费组详情
+            --descrube --[group | all-groups]：如果是group，则需指定消费组名称，通过--list或--descrube --all-groups获取
+        ，然后只查指定消费组。如果是all-groups，则查所有消费者组
+            返回信息：
+                GROUP：消费者组名称
+                TOPIC：主题名称
+                PARTITION：消费组消费的分区id
+                CURRENT-OFFSET：消费组最近提交的偏移量
+                LOG-END-OFFSET：最近一个被读取消息的偏移量
+                LAG：CURRENT-OFFSET与LOG-END-OFFSET之间的差距，也就是ack与实际读取的差距
+                CONSUMER-ID：正在读取该分区的消费者id
+                HOST：正在读取该分区的消费者主机
+                CLIENT-ID：正在读取该分区的客户端id
+
+    删除群组：
+        删除群组前必须保证关闭所有的消费者，否则会导致消费者出现不可预测的行为，旧版客户端才支持，这里就不写了
 
 
+偏移量管理：
+    通过kafka-run-class.sh来实现，用导入导出文件实现的，还不如启动一个客户端手动提交偏移量
 
 
+动态配置变更：
+    通过kafka-config.sh来实现，可以查询被覆盖的配置，或者运行时修改一些配置，或者移除被覆盖的配置，感觉用的比较少，有需
+要再查
+
+分区管理：
+
+    首领选举：
+        让broker重新为分区分配理想的首领，感觉用的场景较少，就不写了
+
+    修改分区副本：
+        使用场景：
+            1、主题的分区在整个集群里分布的不均衡，比如一开始就两个broker，导致分区都在上面，如果broker增加了就会不均衡
+            2、broker离线造成分区不同步
+            3、新加入的broker需要从集群里获得负载
+        kafka-reassign-parritions.sh：
+            1、创建一个包含了主题清单的JSON文件：
+                {"topics" : [{"topic" : "foo"}, {"topic" : "foo1"}], "version" : 1}
+        要搞一系列挺复杂的配置，放弃了，需要时再去查吧
+
+    修改复制系数：
+       可以增加和减少复制系数，也是用上面的kafka-reassign-parritions.sh工具，配置也麻烦，需要再查
+
+    查询日志文件里的消息：
+        kafka-run-class.bat kafka.tools.DumpLogSegments --files F:\tmp\kafka-logs\Canal_User-0\00000000000000000000.log 
+    --print-data-log
+        kafka-run-class.bat：脚本，这个脚本意味着要通过一些类来达成目标
+        kafka.tools.DumpLogSegments：此次用到的类
+        --files F:\tmp\kafka-logs\Canal_User-0\00000000000000000000.log：要查看哪个日志文件的消息
+        --print-data-log：是否打印出消息详情，如果不加这个，那么只会打印分区偏移量等信息，加了才有key和value等信息
+        --max-message-size：输出的最大消息大小，因为有时候日志会很大
+        --key-decoder-class：key的解码类，如果用了序列化就需要指定这个，并且该类的包要放在kafka/libs目录下
+        --value-decoder-class：value的解码类，如果用了序列化就需要指定这个，并且该类的包要放在kafka/libs目录下
+        操蛋的是不能指定偏移量查询
+
+    副本的同步验证：
+        该工具会从指定分区的副本上获取消息，并检查所有副本是否具有相同的消息，因此必须使用正则表达式将要验证的主题名传
+    给它，否则会校验所有的主题
+        kafka-replica-verification.sh --broker-list kafka1.example.com:9092,kafka2.example.com:9092 --topic-white-list
+    'my-*'
+        kafka-replica-verification.sh：脚本名称
+        --broker-list kafka1.example.com:9092,kafka2.example.com:9092：必须显示地指定broker地址清单，它只会校验清单里的
+        --topic-white-list 'my-*'：要校验的topic名称表达式
 
 
+消费者控制台：
 
+    kafka-console-consumer.bat --bootstrap-server localhost:9092 --topic Canal_Item --offset 5 --partition 0：
+        从偏移量5开始消费Canal_Item的0分区消息，具体信息如下：
+        kafka-console-consumer.sh：消费者脚本
+        --bootstrap-server localhost:9092：broker地址列表，可指定多个，用逗号分割
+        --topic Canal_Item：要消费的topic名为Canal_Item
+        --from-beginning：从开始的地方消费
+        --max-messages 1：读取多少个消息就会退出，这里只读一个
+        --partition 2：只读取分区id为2的分区
+        --property print.offset=true：同时输出偏移量
+        --offset 5：从偏移量5开始消费，如果指定--offset，就必须指定--partition，且不能再指定--from-beginning
+    可以通过offset、topic、partition、max-messages来读取某一主题、分区下的指定偏移量
+
+    kafka-console-consumer.bat --bootstrap-server localhost:9092 --topic __consumer_offsets --offset 2 --partition 42
+ --formatter "kafka.coordinator.group.GroupMetadataManager$OffsetsMessageFormatter"
+    消费__consumer_offsets消费组偏移量主题的消息
+    --formatter "kafka.coordinator.group.GroupMetadataManager$OffsetsMessageFormatter"：因为消费组偏移量主题用了特殊的
+编码方式，因此要额外指定格式化类
+
+控制台生产者：
+
+    kafka-console.producer.bat --bootstrap-server localhost:9092 --topic Canal_Item --sync
+        每行被视为一个消息，key和value用Tab字符分割，如果没有Tab字符，则key视为null
+        --topic Canal_Item：往Canal_Item主题写入消息
+        --sync：必须等待当前消息得到确认才能发送下一条
+
+
+客户端ACL：
+    kafka-acls.sh是用于客户端访问控制的工具，文档可以在Kafka官网找到，书上也没细说
 
 
 

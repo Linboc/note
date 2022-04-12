@@ -275,3 +275,26 @@ clearAutomatically = true就会清空缓存了
 
     Runtime执行curl，输入流一直读不到数据，线程一直阻塞，是因为runtime.exec执行，如果命令有间隔要用数组的重载方法，如果有大量空格依然只传一个字符串，就会阻塞住
 
+    记一次kafka broker启动时报InconsistentClusterIdException，明明已经把meta.properties改了，zookeeper里的cluster/id也
+改了，不知道哪里有缓存，就是报clusterId不匹配，改不成新的。最终反向操作，将zookeeper和meta.properties的clusterId改成旧
+的clusterId，得以启动成功
+
+    kafka broker启动时报AccessDeniedException一次，因为在删除主题时的zookeeper路径时/，然后重启时改为了/kafka，因此导致
+配置无法匹配，因为本地标记了删除，而zookeeper却没有，此时要么把配置移过去，要么把zookeeper的路径改回去，或者干脆把日志
+删了
+
+    kafka broker启动一段时间后，报java.nio.file.FileSystemException:xxxx另一个程序正在使用此文件，进程无法访问。这个是
+清理线程报的，windows下才会出现，目前解决方式是删除tmp下的kafka和zookeeper所有配置，很多问题在windows下才会有，如果不想
+踩坑最好用linux
+
+
+
+
+
+
+
+
+
+
+
+
