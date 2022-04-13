@@ -1058,20 +1058,36 @@ epoch来避免脑裂(指两个节点同时认为自己是当前的控制器)
 客户端ACL：
     kafka-acls.sh是用于客户端访问控制的工具，文档可以在Kafka官网找到，书上也没细说
 
+重选举集群控制器：
+    zookeeper里kafka的节点下面，有一个节点叫/controller，它的data如下：
+        {"version":1,"brokerid":0,"timestamp":"1649779618539"}
+    里面记录了当前集群控制器是哪个brokerId，如果手动删除这个节点，其它broker就会监听到，集群将进行新的控制器选举
+
+取消正在进行的分区重分配：
+    如果在重分配进行到一半时，broker发生了故障并无法立即重启，就会导致重分配过程无法结束，进而影响到其它重分配任
+务，一般重分配流程如下：
+        1、发起重分配请求(创建zookeeper节点)
+        2、集群控制器将分区添加到broker上
+        3、新的broker开始复制分区，直到副本到达同步状态
+        4、集群控制器从分区副本清单里移除旧的broker
+    zookeeper里kafka的节点下面，有一个节点叫/admin/reassign_partitions，只要把它删除，并重选举集群控制器就可以取
+消分区重分配
+
+移除待删除的主题：
+    使用命令行工具删除主题时，命令行工具会在zookeeper上创建一个/admin/delete_topic/topicName节点。
+    正常情况下是会立即执行删除的，不过命令行工具不知道集群是否启用了主题删除功能，因此如果集群没有启用主题删除功
+能，命令行的请求就会被挂起。如果要移除这个挂起请求，就把/admin/delete_topic/下对应的主题删掉
+
+手动删除主题：
+    如果集群禁用了主题删除，那么可以进行手动删除，不过这要求先关闭集群里所有的broker，因为在broker运行中去修改
+zookeeper的元数据是很危险的，会造成集群的不稳定
+    1、关闭集群里所有broker
+    2、删除zookeeper里kafka节点下的/brokers/topics/节点里对应的topic
+    3、删除每个broker里对应topic的分区目录，一般在/tmp/kafka-logs/里，文件夹一般是topicName-分区id
+    4、重启所有的broker
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+Kafka监控：
 
 
 
