@@ -229,6 +229,11 @@ canal客户端的增量更新：
         3、删除一些canal的缓存文件：
            1、conf\example\meta.dat(这里记录了每个instance当前消费的偏移量信息)
 
+多实例：
+    在canal.properties文件里的canal.destinations配置里指定所有实例，逗号分隔。然后在canal.conf.dir配置指定的目录里为
+每个实例创建同名目录，每个目录各自有一份instance.properties
+    也可以在canal.properties文件里的canal.auto.scan开启自动扫描
+
 客户端的一些类：
 
     1、ClientIdentity：
