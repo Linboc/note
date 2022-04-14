@@ -294,6 +294,7 @@ SQL执行加载顺序：
 
     用了复合索引的前半部分，可以在order by或group by后面跟着剩下的索引部分，MySQL会自动续上剩下的索引，当然如果是in和or就续不上，因为MySQL认为in和or是range，而range后面是无法衔接索引的，就只能重新在order by或group by引用完整索引了
 
+
     查询后面加/G，会把查询结果竖着排，默认是横着排，/G之前不能有分号，否则就会提示：No query specified
 
 
