@@ -407,6 +407,9 @@ show profile：
     可以通过：SET profiling_history_size;来记录保存执行SQL信息的数量
     可以通过：SHOW VARIABLES LIKE '%have_profiling%;来查看是否支持PROFILE
 
+    1、通过SHOW PROFILES得到queryId
+    2、通过show profile ALL for query queryId查询生命周期
+
     SHOW PROFILES：注意后面有个s
 	显示最近profiling_history_size参数指定数量个SQL的分析信息
 	Query_ID：查询的id
@@ -581,9 +584,14 @@ MVCC：
 列表来判断，如果那条记录的事务id在这个列表中，就说明当时还未提交，直接拿上个版本，如果数据的事务id不在列表中，那就
 说明那个事务在当前事务开启时就已经提交或回滚了，已提交说明就是这个版本，回滚的话会删掉改数据
 
-
-
-
+关于ORDER BY使用复合索引失效的问题：
+    某张表有两个字段有索引：A、B
+    SELECT * FROM t GROUP BY A, B，索引type为index
+    SELECT * FROM t ORDER BY A, B，索引type为all
+    网上这方面的答案也没找到，只能猜测，是因为对于GROUP BY来说，如果最后分组的结果很少，那么它仅需要查每一组里
+的任意一条数据就行了，特别是大量重复分组的情况下。而对于ORDER BY来说，就算利用索引对数据进行了排序，那也要去
+表里拿全部数据。而mysql的策略是如果判断要查的数据大于全表的30%，那就会认为查索引还不如直接扫全表，因为扫全表还
+能避免二次io。因此如果对ORDER BY的结果进行limit，只要limit的数量不超过30%，索引也能生效
 
 
 
