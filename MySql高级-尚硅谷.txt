@@ -607,6 +607,7 @@ mysql基于binlog的数据恢复：
             1、通过基于时间的方式先拿到大致范围的binlog
             2、一行行去找到自己要恢复的那条sql的位置，然后找到它前面那个事件的结束偏移量，一般会是这个格式：
         end_log_pos 2179，这个意思是该事件的结束偏移量是2179
+            3、通过sql去查：show binlog events in 'binlog.000002'，每次只能查一个文件，还可以指定查询条件，具体网上查
     3、决定了基于时间还是基于偏移量，就可以去提取binlog了：
     mysqlbinlog F:\tool\mysql\mysql-8.0.27-winx64\data\binlog.000001 F:\tool\mysql\mysql-8.0.27-winx64\data\binlog.000002 -d canal --base64-output=decode-rows  -v --result-file=C:\Users\boc\Desktop\1.binlog --skip-gtids --start-datetime="2022-01-01 00:00:00" --stop-datetime="2022-04-15 14:46:00"
     解释如下：
