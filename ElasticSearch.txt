@@ -1,4 +1,4 @@
-﻿
+
 elasticsearch：
     它是一个开源的搜索引擎，建立在Apache Lucene的基础之上，但Lucene仅仅是一个Java编写的库，并且原理非常复杂。Elasticsearch通过封装隐藏Lucene的复杂性，提供一套简单的RESTful API来使用
 
@@ -34,14 +34,14 @@ Elastic Stack：
     ElasticSearch使用JSON作为文档的序列化格式，因为几乎所有语言都支持对JSON的处理
 
 es和solr的比较：
-		       es				          solr
-底层                  lucene		                     lucene
-访问方式              RESTful		                     web service
-数据格式              JSON		                     多格式(JSON/XML/CSV)
-性能	              查询速度，建索引加数据快	             查询快，建索引加数据慢
-分布式管理            自带分布式协调管理		     zookeeper
-功能	              第三方插件提供		             solr官方很多自带
-社区	              维护者较少			      有更多的用户，开发和贡献者社区
+		es				solr
+底层      	              lucene			                lucene
+访问方式	              RESTful			                web service
+数据格式	              JSON			                多格式(JSON/XML/CSV)
+性能	              查询速度，建索引加数据快	                查询快，建索引加数据慢
+分布式管理             自带分布式协调管理		                zookeeper
+功能	              第三方插件提供		                solr官方很多自带
+社区	              维护者较少			                有更多的用户，开发和贡献者社区
 综上所述，如果数据和索引是不断增加的，es会更合适，如果数据变动较少，solr更合适
 
 索引：
@@ -809,7 +809,7 @@ _source为upsert的内容
         "aliases" : []					别名数组
         "settings" : {
             "number_of_shards" : 1,			主分片数量，默认5，不可变
-            "number_of_replicas" : 0,			每个主分片的副分片数量，默认1，可变。这里意味着一共10个分片
+            "number_of_replicas" : 0,			副分片数量，默认1，可变
             "analysis" : {				分析器配置
                 "char_filter" : {				自定义字符过滤器
                     "&_to_and" : {				定义一个叫&_to_and的字符过滤器

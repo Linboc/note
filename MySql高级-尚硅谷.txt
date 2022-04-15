@@ -589,18 +589,40 @@ MVCC：
     某张表有两个字段有索引：A、B
     SELECT * FROM t GROUP BY A, B，索引type为index
     SELECT * FROM t ORDER BY A, B，索引type为all
-    网上这方面的答案也没找到，只能猜测，是因为对于GROUP BY来说，如果最后分组的结果很少，那么它仅需要查每一组里
-的任意一条数据就行了，特别是大量重复分组的情况下。而对于ORDER BY来说，就算利用索引对数据进行了排序，那也要去
-表里拿全部数据。而mysql的策略是如果判断要查的数据大于全表的30%，那就会认为查索引还不如直接扫全表，因为扫全表还
-能避免二次io。因此如果对ORDER BY的结果进行limit，只要limit的数量不超过30%，索引也能生效
+    这是因为由于对ORDER BY查询时，需要查全表的数据，此时如果去拿索引来排序，就意味着走双路排序算法，此时需要读
+索引，然后在根据索引的顺序根据row id去读全表，意味着此时产生了两次IO，而如果直接扫全表，也就是走单路排序，只要
+一次io就行了，哪怕多了一步排序的操作，但是mysql优化器认为重新排序都比双路排序算法读两次io强
+    而对于GROUP BY来说，虽然它也需要对全表做排序，但是它不需要读全表的数，因为它只要每一组随便读一行记录就行了
+，因此虽然GROUP BY也要发生二次io，但是它第二次io只需要读部分数据，而不是全表的，因此mysql优化器认为双路排序比
+较合适
 
 
-
-
-
-
-
-
+mysql基于binlog的数据恢复：
+    1、show BINARY logs，通过这条语句获得当前所有的binlog文件
+    2、binlog提取有两种方式：
+        1、基于时间，一般情况下基于时间只能用大概的时间去判断，因此不会很准确
+        2、基于偏移量，基于偏移量可以自己去查看binlog文件里的记录，然后找到自己要恢复的那个点，找到对应的偏移量，
+    这种方式能精确地恢复到某条sql，但是会比较麻烦
+        2.1：这里讲一下如何获得偏移量：
+            1、通过基于时间的方式先拿到大致范围的binlog
+            2、一行行去找到自己要恢复的那条sql的位置，然后找到它前面那个事件的结束偏移量，一般会是这个格式：
+        end_log_pos 2179，这个意思是该事件的结束偏移量是2179
+    3、决定了基于时间还是基于偏移量，就可以去提取binlog了：
+    mysqlbinlog F:\tool\mysql\mysql-8.0.27-winx64\data\binlog.000001 F:\tool\mysql\mysql-8.0.27-winx64\data\binlog.000002 -d canal --base64-output=decode-rows  -v --result-file=C:\Users\boc\Desktop\1.binlog --skip-gtids --start-datetime="2022-01-01 00:00:00" --stop-datetime="2022-04-15 14:46:00"
+    解释如下：
+        mysqlbinlog：mysql自带的工具，在mysql根目录下的bin目录里
+        F:\tool\mysql\mysql-8.0.27-winx64\data\binlog.000001 F:\tool\mysql\mysql-8.0.27-winx64\data\binlog.000002：这代表这次binlog的结果从binlog.000001和binlog.000002这两个文件中获得，可指定多个文件
+       -d canal：对数据库进行过滤，代表只读取库名为canal的binlog记录
+        -base64-output=decode-rows：binlog文件里是base64格式，而binlog写入有：基于行、基于SQL、混合模式，这里是指将base64解码为基于行的格式，注意和自己库里的写入模式一致
+        -v：将binlog重构成伪sql格式
+        --result-file=C:\Users\boc\Desktop\1.binlog：生成的binlog输出位置
+        -skip-gtids：跳过全局事务id，也就是不输出全局事务id的相关binlog
+        --start-datetime="2022-01-01 00:00:00"：从binlog里指定的开始时间开始解析，如果不指定结束时间则解析到结束
+        --stop-datetime="2022-04-15 14:46:00"：从binlog里指定的结束时间结束解析，如果不指定开始时间则从最前解析
+        --start-position：从binlog里指定的开始偏移量开始解析，如果不指定结束偏移量则解析到结束，需要注意的是，每个binlog文件的偏移量都是从0开始的，因此如果基于偏移量解析，就不能一次性指定全部文件了
+        --stop-position：从binlog里指定的结束偏移量结束解析，如果不指定开始偏移量则从最前解析
+        --help：更多选项可以用help去获取
+    4、经过第3步就已经拿到了包含想要结果的binlog文件，下一步就是将binlog重新解析成sql，可以上github或gitee或百度去找，应该都能找到，目前已gitee也找到了一个基本能用的，只是不能处理DDL语句
 
 
 
