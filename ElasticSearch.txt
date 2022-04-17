@@ -897,6 +897,151 @@ _source为upsert的内容
     POST /index1/_optimize?max_num_segments=1：强制将索引中所有的段合并成一个段
     将index1索引的所有段合并成一个段，es会自动将小段合并成大段，这会占据服务器的io资源，并且可能会占据节点的所有资源
 
+    GET /index1/_search：对title字段查询的所有词项都匹配才返回
+    {
+        "query": {
+            "match": {
+                "title": {
+                    "query": "查询 语言"
+                    "operator" : "and"
+                }
+            }
+        }
+    }
+    match的operator默认为or，也就是任意一个词项匹配都能返回文档，把operator改为and后，就只返回所有词项都满足的文档
+
+    GET /index1/_search：对title字段查询的词项满足足够比例的文档才返回
+    {
+        "query": {
+            "match": {
+                "title": {
+                    "query": "查询 结构 语言 接口"
+                    "minimum_should_match" : "75%"
+                }
+            }
+        }
+    }
+    这里有4个词项，而匹配比例是75%，因此满足其中至少3个词项的文档才会返回，它也可以是一个绝对的数字，这代表具体数目的词
+项
+
+    GET /index1/_search：查询相同的字段，但是词项不同，且每个词项的分值权重也不同
+    {
+        "query": {
+            "bool": {
+                "should": [
+                    {
+                        "match": {
+                            "content": {
+                                "query": "elasticsearch"
+                                "boost": 3
+                            }
+                        }
+                    },{
+                        "match": {
+                            "content": {
+                                "query": "lucene"
+                                "boost": 2
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    }
+    boost代表这个语句的权重，如果大于1就是有更高的权重，小于1则是更小的权重
+
+    GET /index1/_analyze：获取词项被指定字段解析器解析后的结果
+    {
+        "field": "user.name",
+        "text": "Foxes"
+    }
+    返回user.name字段的解析器对Foxes的解析结果，通过这种方式可以得知解析器的工作结果与自己想要的是否一致
+
+    GET /index1/_validate/query?explain：对整个查询进行解析，返回解析结果
+    {
+
+        "query": {
+            "bool": {
+                "should": [
+                    {"match": {"title": "Foxes"}}
+                    {"match": {"english_title": "Foxes"}}
+                ]
+        }
+    }
+    跟_analyze有点类似，不过这里不再是返回单个字段的解析结果，而是返回整个查询里所有字段的解析结果
+
+    GET /index1/_search：用多个bool进行搜索，以降低一些搜索的评分
+    {
+      "query": {
+        "bool": {
+          "should": [
+            { "match": { "title":  "War and Peace" }},
+            { "match": { "author": "Leo Tolstoy"   }},
+            { "bool":  {
+              "should": [
+                { "match": { "translator": "Constance Garnett" }},
+                { "match": { "translator": "Louise Maude"      }}
+              ]
+            }}
+          ]
+        }
+      }
+    }
+    相同层级的语句总是有相同的权重，如果把语句放到子级，那么子级的所有语句权重加起来才能和一个父级语句相等，以这个查询
+为例，外层的两个match各占2/3的评分，里层的两个match各占1/6的评分
+
+    GET /index1/_search：分离最大化查询，就是将多个语句的评分分开计算
+    {
+        "query": {
+            "dis_max": {
+                "queries": [
+                    { "match": { "title": "Quick Brown fox", "minimum_should_match": "30%" }},
+                    { "match": { "body":  "Quick Brown fox", "minimum_should_match": "30%" }}
+                ]
+                "tie_breaker": 0.3
+            }
+        }
+    }
+    默认情况下，查询的分值是所有语句的值的和乘语句数量，这意味着会有一些评分低的语句将评分高的语句给平均掉，这会导致一
+些看起来更加匹配的文档排在没那么匹配的文档下面，因此dis_max就是将所有语句的评分分开算，只去其中最高的评分
+    但是仅仅是分离最大化查询，会出现可能单语句的评分一样高，但是一个文档其它字段还匹配成功了，但是排在只有一个字段匹配
+的文档下面，因为dis_max只考虑最高评分的语句，因此tie_breaker给了一种折中方案，它允许填0-1之间的值，可以将非最高分值的
+语句分值乘以tie_breaker，既能让最佳匹配生效，但是又兼顾了其它匹配，而且尽量不影响dis_max的结果
+    而minimum_should_match属性为30%代表了至少有一个词项被满足文档才会被返回
+
+    GET /index1/_search：对上面的分离最大化查询简写
+    {
+        "multi_match": {
+            "query":                "Quick brown fox",
+            "type":                 "best_fields", 
+            "fields":               [ "title", "body" ],
+            "tie_breaker":          0.3,
+            "minimum_should_match": "30%" 
+        }
+    }
+    分离最大化查询简写，其中"type":"best_fields"是默认值，可以不写，multi_match代表一个子句中同时对多个字段进行match
+
+    GET /index1/_search:对查询的字段进行表达式匹配
+    {
+        "multi_match": {
+            "query":  "Quick brown fox",
+            "fields": "*_title"
+        }
+    }
+    multi_match代表一个子句中同时对多个字段进行match，"fields":"*_title"代表对_title结尾的字段进行查询
+
+    GET /index1/_search:对查询的字段进行表达式匹配，并调整其权重
+    {
+        "multi_match": {
+            "query":  "Quick brown fox",
+            "fields": ["*_title", "book_title^1.5"]
+        }
+    }
+    其余与上面的查询一致，不过对book_title字段的权重按1.5倍计算，这里的1.5其实就是boost
+
+
+    停止于：深入搜索 - 多字段搜素 - 多数字段
+
 es的集群与分片：
 
     垂直扩容：通过提升机器性能来提升服务器性能
@@ -949,5 +1094,33 @@ es的集群与分片：
 
     对于多文档(mget、bulk)：协调者会向每个节点转发请求，等收到所有节点的响应后协调者再向客户端响应
 
+
+聚合：
+
+    桶(Buckets)：
+        满足特定文件文档的集合，桶之间可以嵌套，桶相当于SQL中的GROUP BY
+
+    指标(Metrics)：
+        对桶内的文档进行统计计算，指标相当于SQL中的聚合函数
+
+    每个聚合都是一个或多个桶与零个或多个指标的组合
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
 
 
