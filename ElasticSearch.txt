@@ -1105,6 +1105,177 @@ es的集群与分片：
 
     每个聚合都是一个或多个桶与零个或多个指标的组合
 
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：对索引中的数据进行分组并聚合
+    Authorization: Basic ZWxhc3RpYzpyZWFiYW0=：登录后的token，如果服务器需要身份校验时带上这个才能请求成功
+    {
+      "size" : 2,   
+      "aggs" : {
+        "companyNameGroup" : {    
+          "terms" : {
+            "field" : "companyName"
+          }
+        }
+      }
+    }
+    这个请求与参数是从测试环境拷过来的，对指定品牌的订单门店进行统计，解释如下：
+        dorder-61ff8013a1fa494dbdcf718cbcb8e05b：索引名(订单前缀加品牌号)
+        size：从这次聚合中返回的文档数量，配合排序效果应该不错
+        aggs：聚合的关键字参数，也可以完整形势：aggregations，效果完全一样
+        companyNameGroup：聚合的名称，完全可以自定义，返回时要根据这个名称来获取聚合结果
+        terms：代表这个聚合是用来计算桶的
+        "field" : "companyName"：要进行分组的字段
+    返回的主要字段如下，下面的缩进代表了个个属性的层级关系：
+        hits：与size对应，返回指定数量的文档
+        aggregations：代表聚合的关键字
+          companyNameGroup：自己写的聚合名称
+            buckets：这是个数组，代表分组的结果，桶的集合，里面的每个元素都是桶
+              ket：分组的key，这个例子中是门店名称，
+              doc_count：每一组的数量，这个例子中是每个门店的数量，这算是自带count聚合
+
+
+   GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：对索引中的数据进行分组并聚合
+    {
+      "size" : 2,   
+      "aggs" : {
+        "companyNameGroup" : {    
+          "terms" : {
+            "field" : "companyName"
+          },
+          "aggs": {
+            "sumRealPrice" : {
+              "sum" : {
+                "field" : "realMoney"
+              }
+            },
+            "avgRealPrice" : {
+              "avg" : {
+                "field" : "realMoney"
+              }
+            }
+          }
+        }
+      }
+    }
+    这里相比上一个请求，aggs多了里面加了一个aggs，外层的aggs是用来生成桶的，里层的aggs代表基于外层的桶添加指标
+，也就是基于分组做聚合，下面的参数讲的都是里面第二层的aggs：
+      aggs：在桶中添加度量指标
+        sumRealPrice：指标名称
+          sum：指标函数，计算总值
+          "field" : "realMoney"：对实付金额进行汇总
+        avgRealPrice：指标名称，同一层级里聚合名称相同会报错
+          avg：指标函数，计算平均值
+          "field" : "realMoney"：对实付金额进行平均计算
+    返回的主要字段如下，相比上个请求，主要是buckets里的桶结构有了变化，下面的缩进代表了个个属性的层级关系：
+        buckets：这是个数组，代表分组的结果，桶的集合，里面的每个元素都是桶
+          ket：分组的key，这个例子中是门店名称，
+          doc_count：每一组的数量，这个例子中是每个门店的数量，这算是自带count聚合
+          sumRealPrice：指标名称
+            value：指标的计算结果
+          avgRealPrice：指标名称
+            value：指标的计算结果
+    其实效果等同于：SELECT COUNT(*), SUM(realMoney), AVG(realMoney) FROM order GROUP BY CompanyName
+
+
+   GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：在上面例子的基础上进行嵌套桶
+    {
+      "size" : 2,   
+      "aggs" : {
+        "companyNameGroup" : {    
+          "terms" : {
+            "field" : "companyName"
+          },
+          "aggs": {
+            "sumRealPrice" : {
+              "sum" : {
+                "field" : "realMoney"
+              }
+            },
+            "payStatusNameGroup": {
+              "terms": {
+                "field": "payStatusName"
+              },
+              "aggs": {
+                "maxRealPrice": {
+                  "max": {
+                    "field": "realMoney"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    相比于上个请求，这个请求在内层的aggs里加了一个payStatusNameGroup桶，然后再为这个桶添加指标：
+      payStatusNameGroup：聚合名称
+        terms：代表这次聚合是个桶
+        field：payStatusName对支付状态描述进行聚合
+        aggs：一个新的聚合，这个聚合基于payStatusNameGroup桶进行计算
+          maxRealPrice：聚合名称
+            max：指标函数，取桶里的最大实付金额
+            "field": "realMoney"：对同一门店里同一支付状态的实付金额进行统计
+    返回的结果也有所变化，但是之前已有的数据保持不变，只是加了新的桶信息：
+      buckets：这是个数组，代表分组的结果，桶的集合，里面的每个元素都是桶，这是第一层桶
+        ket：分组的key，这个例子中是门店名称，
+        doc_count：每一组的数量，这个例子中是每个门店的数量，这算是自带count聚合
+        sumRealPrice：指标名称
+          value：指标的计算结果
+        payStatusNameGroup：桶名
+          buckets：桶集合
+            key：支付状态名称
+            doc_count：在该门店下，该支付状态名称的数量
+            maxRealPrice：自己输入的统计名称
+              value：同一门店里同一支付状态的最大实付金额
+
+    上面一共举例了桶，桶+指标，桶+指标+嵌套桶+嵌套桶的指标，这些还可以继续嵌套，可以自己灵活改变
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：对桶内的数据按间隔分组
+    {
+      "size" : 2,
+      "aggs" : {
+        "realMoney" : {
+          "histogram" : {
+            "field" : "realMoney",
+            "interval": 200
+          },
+          "aggs": {
+            "sumRealPrice" : {
+              "sum" : {
+                "field" : "realMoney"
+              }
+            }
+          }
+        }
+      }
+    }
+    这里的例子是每隔200的算一组，然后算每一组的总金额
+    realMoney：聚合名称
+      histogram：代表以直方图的方式进行分桶，其实就是间隔
+        field：要间隔的字段
+        interval：字段间隔的值
+      aggs：新的指标聚合
+        sumRealPrice：指标聚合名称
+          sum：聚合函数
+            "field" : "realMoney"：聚合的字段
+    响应结果，与其它聚合的区别就是只有桶里的数据有变化，因此这里只写桶的结构：
+    buckets：桶集合
+      key：间隔的起点，如果间隔是200，则key会是0,200,400,600...
+      doc_count：这个桶内有多少数据
+      sumRealPrice：桶的聚合名称
+        value：这个区间内的值总和
+    注意：虽然书上的例子是中间没有值的桶直接忽略了，但是经测试这些空桶依然后返回一个计数与总值为0的数据，如果此时
+有一个极大的值就会将桶的数量无限拉大，导致报错，默认情况下不能超过65536，如果要超过需要配置
+
+
+
+
+
+
+
+
+
+
+
 
 
 
