@@ -1113,6 +1113,7 @@ es的集群与分片：
         "companyNameGroup" : {    
           "terms" : {
             "field" : "companyName"
+            "size": 5
           }
         }
       }
@@ -1124,6 +1125,7 @@ es的集群与分片：
         companyNameGroup：聚合的名称，完全可以自定义，返回时要根据这个名称来获取聚合结果
         terms：代表这个聚合是用来计算桶的
         "field" : "companyName"：要进行分组的字段
+        "size": 5：代表只返回数量最多的5个桶
     返回的主要字段如下，下面的缩进代表了个个属性的层级关系：
         hits：与size对应，返回指定数量的文档
         aggregations：代表聚合的关键字
@@ -1263,20 +1265,98 @@ es的集群与分片：
       doc_count：这个桶内有多少数据
       sumRealPrice：桶的聚合名称
         value：这个区间内的值总和
-    注意：虽然书上的例子是中间没有值的桶直接忽略了，但是经测试这些空桶依然后返回一个计数与总值为0的数据，如果此时
+    注意：虽然书上的例子是中间没有值的桶直接忽略了，但是经测试这些空桶依然会返回一个计数与总值为0的数据，如果此时
 有一个极大的值就会将桶的数量无限拉大，导致报错，默认情况下不能超过65536，如果要超过需要配置
 
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：对桶内的数据进行多种指标聚合
+    {
+      "size" : 2,
+      "aggs" : {
+        "companyNameGroup" : {
+          "terms": {
+            "field": "companyName",
+            "size" : 5
+          },
+          "aggs": {
+            "stats": {
+              "extended_stats" : {
+                "field": "realMoney"
+              }
+            }
+          }
+        }
+      }
+    }
+    stats：聚合名称
+      extended_stats：对桶内的数据进行多种指标统计
+    响应里每个桶的数据如下：
+    {
+      "key": "广州番禺会江巨大创意园店",
+      "doc_count": 208,
+      "stats": {
+        "count": 208,
+        "min": 0.0,
+        "max": 834.08,
+        "avg": 26.5375,
+        "sum": 5519.8,
+        "sum_of_squares": 970449.5996,
+        "variance": 3961.38416875,
+        "variance_population": 3961.38416875,
+        "variance_sampling": 3980.521290338164,
+        "std_deviation": 62.939527871997896,
+        "std_deviation_population": 62.939527871997896,
+        "std_deviation_sampling": 63.09137255075502,
+        "std_deviation_bounds": {
+          "upper": 152.4165557439958,
+          "lower": -99.3415557439958,
+          "upper_population": 152.4165557439958,
+          "lower_population": -99.3415557439958,
+          "upper_sampling": 152.72024510151005,
+          "lower_sampling": -99.64524510151003
+        }
+      }
+    }
+    什么最大、最小、平均、总和、计数、还有下面那些一大堆，基本包全了
 
-
-
-
-
-
-
-
-
-
-
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：按时间分桶
+    {
+      "size" : 1,
+      "aggs" : {
+        "createDates": {
+          "date_histogram": {
+            "field": "createDate",
+            "interval": "month",
+            "format": "yyyy-MM-dd"
+          },
+         "aggs": {
+           "totalMoney": {
+             "sum": {
+               "field": "realMoney"
+             }
+           }
+         }
+        }
+      }
+    }
+    createDates：聚合名称
+      date_histogram：时间分桶函数
+        "field": "createDate"：分桶的时间
+        "interval": "month"：分桶的间隔，这里是按月份，因此每个key如下：2020-01-01、2020-02-01、2020-03-01...
+        "format": "yyyy-MM-dd"：时间的格式，可以不用完全匹配，比如yyyy-MM-dd也能匹配2020-02-01 15:30:05.000
+    返回的每个桶元素如下：
+    {
+      "key_as_string": "2022-04-01",
+      "key": 1648771200000,
+      "doc_count": 776,
+      "totalMoney": {
+        "value": 4212798.79
+      }
+    }
+    "key_as_string": "2022-04-01"：为了方便浏览额外加了个格式化的时间字符串，且格式随着请求输入的format变
+    "key": 1648771200000：key的毫秒数
+    "doc_count": 776：桶内的文档数量，也就是这个月的文档数量
+    "totalMoney"：自己定义的分析聚合
+    "value": 4212798.79：每个月的订单实付金额总和
 
 
 
