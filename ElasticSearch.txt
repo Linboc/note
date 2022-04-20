@@ -1,4 +1,4 @@
-
+﻿
 elasticsearch：
     它是一个开源的搜索引擎，建立在Apache Lucene的基础之上，但Lucene仅仅是一个Java编写的库，并且原理非常复杂。Elasticsearch通过封装隐藏Lucene的复杂性，提供一套简单的RESTful API来使用
 
@@ -1358,6 +1358,234 @@ es的集群与分片：
     "totalMoney"：自己定义的分析聚合
     "value": 4212798.79：每个月的订单实付金额总和
 
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：按月份分桶，并指定最小桶的统计数量
+    {
+      "size" : 0,
+      "aggs" : {
+        "sales": {
+          "date_histogram": {
+            "field": "createDate",
+            "interval": "month",
+            "format": "yyyy-MM-dd",
+            "min_doc_count": 0,
+            "extended_bounds": {
+              "min": "2020-01-01",
+              "max": "2020-12-13"
+            }
+          }
+        }
+      }
+    }
+    解释如下：
+    min_doc_count：桶的最小统计梳理满足多少才返回，如果为0的话那么返回所有桶，但是我试过默认就是0的效果
+    extended_bounds：强制保留指定范围内的空桶，但是我这个版本默认就返回空桶
+      "min": "2020-01-01"：如果min_doc_count为0，则强制返回时间大于2020-01-01的空桶
+      "min": "2020-12-31"：如果min_doc_count为0，则强制返回时间小于2020-12-21的空桶
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：多重桶多重指标
+    {
+      "size" : 0,
+      "aggs" : {
+        "quarterGroup": {
+          "date_histogram": {
+            "field": "createDate",
+            "interval": "quarter",
+            "format": "yyyy-MM-dd"
+          },
+          "aggs": {
+            "quarterMoneySum": {
+              "sum": {
+                "field": "realMoney"
+              }
+            },
+            "quarterCompanyGroup": {
+              "terms": {
+                "field": "companyName"
+              },
+              "aggs": {
+                "quarterCompanyMoneySum": {
+                  "sum": {
+                    "field": "realMoney"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    前面没有出现过的重要属性解释：
+    quarterGroup：季度桶名
+      interval: "quarter"：代表季度分隔
+      quarterMoneySum：季度金额统计指标名，按季度进行实付金额统计
+      quarterCompanyGroup：门店桶名，在季度统计的基础上，再进行门店分桶
+        quarterCompanyMoneySum：季度门店金额指标名，按季度分桶后，再按照门店分桶，统计每个门店每个季度的金额
+    返回数据大概格式：
+    quarterGroup：季度桶名
+      buckets：季度桶数组
+        quarterMoneySum：季度金额统计指标名
+        quarterCompanyGroup：季度门店桶名
+          buckets：季度门店桶数组
+            quarterCompanyMoneySum：季度门店金额统计指标名
+    由于这里结构较复杂，碰到了一些问题：
+      1、聚合的具体格式是：aggs -> 多个聚合名 -> (一个桶聚合 + aggs) || 一个指标聚合
+        1.1、aggs：没什么好说，意味着一次聚合
+        1.2、aggs下级的多个聚合名：对前面的aggs可以进行多次指标聚合，或者多次桶聚合
+        1.3、(一个桶聚合 + aggs) || 一个指标聚合：如果是桶聚合，意味着可以用下级聚合去进行桶聚合或指标聚合，但是如果是
+      指标聚合，那么下级聚合就无意义，es就会提示例如：sum类型的聚合器不支持子聚合
+
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：聚合加查询
+    {
+      "size": 5,
+      "query": {
+        "match": {
+          "payTypeName": "现金"
+        }
+      },
+      "aggs": {
+        "companyNameGroup": {
+          "terms": {
+            "field": "companyName"
+          }
+        }
+      }
+    }
+    对支付名称里包含“现金”的订单进行搜索，然后对搜索结果进行按门店名称聚合
+    实测效果无问题，如果不行可以去看一下_mapping的分析器类型和用_analyze去试试参数的实际解析token
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：全局聚合
+    {
+      "size": 0,
+      "aggs": {
+        "all": {
+          "global": {},
+          "aggs": {
+            "allMoney": {
+              "sum": {
+                "field": "realMoney"
+              }
+            }
+          }
+        }
+      }
+    }
+    第一层aggs下面可以有多个子聚合，而all子聚合里面定义了一个global，这代表全局聚合，也就是忽略了其它所有的分组，对全
+  文档进行聚合，global是个空元素，不需要任何参数。而且global只能卸载最顶级的aggs中，不能写在里面的子聚合aggs里
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：对搜索结果和聚合结果过滤
+    {
+      "size": 5,
+      "query": {
+        "constant_score": {
+          "filter": {
+            "payTypeName": "现金"
+          }
+        }
+      },
+      "aggs": {
+        "companyNameGroup": {
+          "terms": {
+            "field": "companyName"
+          }
+        }
+      }
+    }
+
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：聚合加constant_score查询
+    {
+      "size": 5,
+      "query": {
+        "constant_score": {
+          "filter": {
+            "range": {
+              "realMoney": {
+                "gte": "100"
+              }
+            }
+          }
+        }
+      },
+      "aggs": {
+        "companyNameGroup": {
+          "terms": {
+            "field": "companyName"
+          }
+        }
+      }
+    }
+    聚合是对查询的文档进行聚合，因此从本质上讲，使用match和constant_score的聚合结果都是一样的，constant_score还有可能会
+  用到缓存结果，还不用评分。不过如果需要返回文档那就需要评分了
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：过滤桶，只过滤聚合结果，不过滤搜索
+    {
+      "size": 0,
+      "aggs": {
+        "companyNameGroup": {
+          "terms": {
+            "field": "companyName"
+          },
+          "aggs": {
+            "groupFilter": {
+              "filter": {
+                "range": {
+                  "realMoney": {
+                    "from": "1000"
+                  }
+                }
+              },
+              "aggs": {
+                "realMoneySum": {
+                  "sum": {
+                    "field": "realMoney"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    过滤桶就是满足条件的文档才加入聚合，它跟聚合查询的区别是：不会影响到文档的搜索结果，只会影响到聚合结果，并且它可以
+  和其它聚合嵌套，所有嵌套的聚合都会继承父聚合的过滤桶
+    以这里为例，companyNameGroup先对门店名称进行聚合，然后groupFilter聚合桶就过滤只有realMoney大于1000的文档才能加入下
+  一步的reamMoneySum聚合统计，因此realMoneySum的结果就是每个门店大于1000的订单金额总和
+
+    GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：后过滤器，只过滤搜索结果，不过滤聚合
+    {
+      "size" : 2,
+      "query": {
+        "match": {
+          "payTypeName": "现金"
+        }
+      },
+      "post_filter": {
+        "match": {
+          "companyName": "睿本化妆品体验店"
+        }
+      },
+      "aggs" : {
+        "realMoney" : {
+          "terms" : {
+            "field" : "companyName"
+          },
+          "aggs": {
+            "sumRealPrice" : {
+              "sum" : {
+                "field" : "realMoney"
+              }
+            }
+          }
+        }
+      }
+    }
+    query：代表对搜索结果和聚合结果都进行过滤，因此搜索与聚合都会受到这个过滤的影响
+    aggs：代表聚合，这里是对门店名称聚合，然后算每个门店的实付金额
+    post_filter：代表在聚合结束后再对返回的文档进行过滤，也就是说不会影响聚合的结果，只会影响文档的搜索结果。一般而言
+  ，如果忽视聚合的话，post_filter看起来能达到和query一样的结果，但是它的特性是查询之后执行，因此任何过滤对性能的提升都
+  会完全无法生效
+
     对聚合结果进行排序：
       如果感觉asc的统计结果不正确，那么可以把terms里的size调大一点，因为asc排序前面的数据经常会是很少的数字
 
@@ -1371,20 +1599,18 @@ es的集群与分片：
       "order": {"指标名.max" : "desc"}
 
       3、深度度量排序，也就是对子桶、孙子桶进行排序：terms内增加属性："order": {"子桶1>指标名" : "asc"}  ：需要注意的
-    是，这里的>代表父聚合指向子聚合。如果想用这种方式，子桶必须是单值桶，比如：filter、global、reverse_nested。
+    是，这里的>代表父聚合指向子聚合。如果想用这种方式，子桶必须是单值桶，比如：filter、global、reverse_nested。类
+    似terms这种多值桶是不支持的
 
+    近似聚合：
+        目前的聚合分析有三个需要保证的问题：大数据、实时、精确，但是通常只能同时保证其中之二
+          精确+实时：单台机子
+          大数据+精确：比如Hadoop，可以处理PB级别的数据，但是可能要几周才能提供这个答案
+          大数据+实时：精确无法马上保证，可能过几秒钟才能返回正确结果
 
+    es提供两种大数据+实时，但不是100%精确的结果，它们以一点估算错误作为代价，换来高速执行和极小的内存消耗：
+      cardinality
 
-
-
-
-
-
-
-
-
-
-
-
+      percentiles
 
 
