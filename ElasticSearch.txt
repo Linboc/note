@@ -1602,6 +1602,7 @@ es的集群与分片：
     是，这里的>代表父聚合指向子聚合。如果想用这种方式，子桶必须是单值桶，比如：filter、global、reverse_nested。类
     似terms这种多值桶是不支持的
 
+
     近似聚合：
         目前的聚合分析有三个需要保证的问题：大数据、实时、精确，但是通常只能同时保证其中之二
           精确+实时：单台机子
@@ -1609,8 +1610,125 @@ es的集群与分片：
           大数据+实时：精确无法马上保证，可能过几秒钟才能返回正确结果
 
     es提供两种大数据+实时，但不是100%精确的结果，它们以一点估算错误作为代价，换来高速执行和极小的内存消耗：
-      cardinality
 
-      percentiles
+      第一种：cardinality
+        GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：除重后统计
+        {
+          "size": 0,
+          "aggs": {
+            "months": {
+              "date_histogram": {
+                "field": "createDate",
+                "interval": "month",
+                "format": "yyyy-MM-dd"
+              },
+              "aggs": {
+                "distinctCompanyName": {
+                  "cardinality": {
+                    "field": "companyName",
+                    "precision_threshold": 1000
+                  }
+                }
+              }
+            }
+          }
+        }
+        months：这个聚合是按月进行分桶，具体解释看上面
+          distinctCompanyName：这个子聚合是在按月分桶后，对每个桶里的门店数量进行除重后统计
+            cardinality：近似聚合的指标函数
+              "field": "companyName"：除重统计的字段
+              precision_threshold：精度基数，越小精度越高，可以选择0-40000，当为100时，能保证100W数据里仅有5%的误差
+        返回的数据就是每个桶下面会有一个distinctCompanyName聚合名称，里面的value就是桶里除重后的不同值数量
+
+      cardinality的速度优化：
+        cardinality基于HyperLogLog算法，简称HLL。它想要获取唯一值，就要查询整个数据集合，然后计算字段内容的哈希值，这
+      已经很快了，但是当文档非常多，那每个查询都将会耗时更久，因此可以把hash这一步放到索引时来做，以提升查询的效率：
+
+      1、在建立索引时，为需要去重统计的属性增加一个hash类型的下级属性：
+      {
+        "mappings": {
+          "transactions": {
+            "properties": {
+              "companyName": {
+                "type": "string",
+                "fields": {
+                  "hash": {                  companyName属性下面有个hash属性
+                    "type": "murmur3"        hash属性的type为murmur3，这是一个hash函数
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      2、然后当我们使用cardinality进行聚合时，field不再是companyName了，而是companyName.hash
+      3、完成以上两步，就能把hash的计算放到添加索引时进行了
+
+      第二种：percentiles
+        GET http://192.168.1.65:9200/dorder-61ff8013a1fa494dbdcf718cbcb8e05b/_search：百分位度量
+        {
+            "size" : 0,
+            "aggs" : {
+                "zones" : {
+                    "terms" : {
+                        "field" : "zone" 
+                    },
+                    "aggs" : {
+                        "load_times" : {
+                            "percentiles" : { 
+                              "field" : "latency",
+                              "percents" : [50, 95.0, 99.0] 
+                            }
+                        },
+                        "load_avg" : {
+                            "avg" : {
+                                "field" : "latency"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        详细解释如下：
+        zones：区域桶
+          load_times：请求延迟指标
+            percentiles：百分位度量函数
+              "field" : "latency"：对延迟字段进行分析
+              percents：需要统计的百分比位置数组
+          load_avg：平均延迟指标，用来跟百分位度量做比较
+        返回的数据：
+          zones：区域桶
+            load_times：请求延迟指标
+              values：一个数组，key是percents指定的百分比，value是这些百分比之上的平均值。比如95，就是只统计延迟在桶里            大于95%以上的文档的平均值。如果值是610，这意味着最高延迟的5%的数据里，他们的平均延迟是610
+
+      第2.1种：percentile_ranks
+        它的作用与percentile类似，不过percentile计算的是指定百分位以上的数据的平均值，而percentile_ranks是指定分级来计
+      算，比如：
+        用上面的请求，将percentile属性与里面的信息替换成如下：
+        "percentile_ranks" : {
+          "field" : "latency",
+          "values" : [210, 800] 
+         }
+         percentile_ranks：代表百分位等级函数
+         "field" : "latency"：代表计算的字段
+         "values" : [210, 800]：代表两个分级，分别是210和800
+        返回的数据会在每个桶里对应的聚合名称下有个values属性，它的每个key对应着percentile_ranks.values的每个值，210的值
+      代表latency在210以下的占桶里总数据的百分比是多少，如果是32，就说明有32%的数据延迟在210ms以下。800的值如果是100，
+      则代表100%的数据延迟在800ms以下
+
+      以上两种百分位度量同样可以通过一个属性来调整准确度：
+        compression：默认是100，数值越小，越准确，但是也需要更多内存。基于TDigest算法，这个算法的特性是，越极端的百分位
+      值越准确，比如1%和99%的百分位的结果要比50%百分位的结果要准确
+
+
+
+
+
+
+
+
+
+
+
 
 
