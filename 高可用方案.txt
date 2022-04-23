@@ -48,9 +48,10 @@ Redis的Sentinel高可用方案：
 
     首先必须至少有一个主与一个从，关于数据一致性，Redis的master可以配置至少有多少个slave是处于状态时master才是可写的：
 min-replicas-to-write 3，代表只有3个或以上dslave连接到master，master才可写
-    然后就是Redis Sentinel，sentinel使用了Raft分布式强一致性协议来保证节点的一致性，这个协议采取了少数服从多数的原则，
-因此如果想要sentinel高可用，就至少要有3台进行集群。
-    然后sentinel就可以监控Redis主从的状态，当主节点挂了之后，通过判断从节点的断开连接时长、优先级(配置文件里设置
+    然后就是Redis Sentinel，Sentinel使用了Raft分布式强一致性协议来保证节点的一致性，这个协议采取了少数服从多数的原则，
+因此如果想要sentinel高可用，就至少要有3台进行集群。Sentinel以一定频率向所有的master、slave、sentnel发送PING命令，以期待
+对方返回一个PONG响应，如果对方超过own-after-milliseconds配置的时间未响应，对方就会进入主观下线
+    然后Sentinel就可以监控Redis主从的状态，当主节点挂了之后，通过判断从节点的断开连接时长、优先级(配置文件里设置
 replica-priority 100，越小优先级越高)、从节点的偏移量、进程id等信息选出一个从节点，这些选举条件是前面的如果一直就判断
 后面的条件，最终选好后就将从节点晋升为主节点，然后将其余从节点的主节点切换为新的主节点，如果此时旧的主节点连接上来，它
 就会成为一个从节点
