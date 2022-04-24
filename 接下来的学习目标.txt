@@ -1,1 +1,15 @@
 Linux、Kafka、JVM、Apollo、分布式事务、分布式锁的实际应用、高并发场景处理、领域事件驱动、Docker、Shiro
+
+
+
+
+
+
+
+为自己找一些能进行高并发的场景，写入项目的高并发经验中
+seata二阶段、三阶段、tcc原理
+eureka原理，并理解与nacos的优缺点和选型
+数据库b+tree的原理，hash索引的使用场景
+复习一下redis的基础
+秒杀系统
+限流
