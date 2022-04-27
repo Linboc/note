@@ -418,6 +418,11 @@ Unsafe：
             核心方法，包含了threadLocalRandomProbe的初始化、cells的初始化、cells元素的创建、cells的扩容、base的CAS
         、cells里元素的CAS
 
+        相比于Atomic系列类，它并不支持整个数组的CAS。比如Tomcat需要对最大连接数进行限制，是先incrementAndGet，
+    然后判断是否超出，如果超出则减少，并返回-1，而LongAdder只支持increment，如果它自己再get，就可能出现两个线
+    程刚好一起判断，然后发现超出了，一起减一，其实只有一个线程超出了。这里只是举个例子，其实Tomcat的Acceptor是
+    单线程的，用了long类型都行
+
 
 LongAccumulator：
     提供的功能和LongAdder类似，不同的是LongAccumulator可以指定初始值，而LongAdder的初始值只能是0。并且

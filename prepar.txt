@@ -55,7 +55,7 @@ XA：
       没有commit，为了保险一点就只能rollback了
     3PC的劣势：
         1、如果出现网络超时，参与者自动commit，但其实TC想要的是rollback，就会出现数据不一致
-
+        2、3PC步骤更多，导致并发更低
 
 
 柔性事务的最终一致性：
@@ -95,6 +95,11 @@ Seata：
         Resource Manager(RM，资源管理器)：
             管理分支事务上的资源，向TC注册分支事务，汇报分支事务状态，驱动分支事务的提交或回滚，向TC注册分支事务，
         分支事务回滚
+
+    关于Seata的疑惑：
+        1、如果A服务调用B服务，B服务要返回结果就必须prepare然后commit，但是B服务不返回A服务就无法prepare：
+            B服务可以做到prepare不commit，直接返回结果，等收到TC的commit或rollback后再进行，因为事务的提交或回滚
+        也是通过AOP进行的，完全可以做到Seata自定义的事务在方法结束后不提交，而是等TC的调用
 
 Seata支持的4种工作模式：
 
@@ -171,7 +176,113 @@ Seata支持的4种工作模式：
 
 
 Seata的默认模式是AT，因此这里分析AT模式核心模块：
+
+    TC(事务协调器)以独立的服务启动，作为Server，维护全局事务和分支事务的状态，驱动全局事务提交或回滚
+    启动流程如下：
+        1、获取NettyServer启动端口，默认是8091
+        2、监控初始化，可用于接入prometheus
+        3、UUID生成器初始化，用于生成事务ID
+        4、会话管理器初始化，支持file、db、redis模式
+        5、TC处理器初始化，支持AT、TCC、SAGA、XA等模式
+        6、定时任务创建，用于异步处理
+        7、启动NettyServer
+
+    TM(事务管理器)，TM集成在应用中启动，负责定义全局事务的范围、开始事务、提交事务、回滚事务。TM所在应用需要
+配置GlobalTransactionScannerBean
+    启动流程如下：
+        1、初始化TMClient，包括：注册TC响应处理器，注册心跳处理器、启动NettyClient
+        2、初始化RMClient，包括：注册分支事务处理器，注册TC响应处理器，注册心跳处理器、启动NettyClient
+        3、注册shutdown hook，用于关闭TMClient、RMClient
+        4、对使用@GlobalTransactional注解的Bean进行动态代理
+
+    RM(资源管理器)，RM集成在应用中启动，负责管理分支事务上的资源，向TC注册分支事务，汇报分支事务状态，驱动分支
+事务的提交或回滚。RM所在的应用除了要跟TM一样配置GlobalTransactionScanner以启动RMClient外，还要配置
+DataSourceProxy，以实现对数据源访问代理。该数据源代理实现了sql的解析、生产undo log -> 将业务sql和undo log一起
+提交到本地事务等操作
+
+一下以一个简单的例子来说明：
+
+    @GlobalTransactional(timeoutMills = 30000, name = 'demo-tx')
+    public void buy(String userId, String itemId, int itemCount) {
+        stockClient.deuct(itemId, itemCount);
+        ......
+    }
+    以上代码很简单，第一行开启全局事务，第二行定义了一个购买商品的方法，第三行调用库存服务扣库存
+
+正常流程：
+    1、TM应用里@GlobalTransactional注解的方法被代理，被调用时执行GlobalTransactionalInterceptor.invoke过滤器
+    2、GlobalTransactionalInterceptor.invoke向TC注册，申请全局事务XID
+    3、TC生产全局事务ID，并返回给TM
+    4、执行buy方法
+    5、调用stockClient.deuct()，RPC框架，比如Dubbo的ApacheDubboTransactionPropagationFilter.invoke会将XID设置
+到Dubbo上下文
+    6、在stock服务中，这里是RM，Dubbo的ApacheDubboTransactionPropagationFilter.invoke从dubbo上下文中拿到XID
+    7、stock服务的RM获取sql执行前的镜像，然后执行sql，再获取sql执行后的镜像，然后通过镜像生成undo-log，这里的镜
+像是原数据？
+    8、向TC注册BranchID，然后TC返回分支事务ID
+    9、RM将undo-log插入数据库，然后提交本地事务
+    10、此时RM执行结束，回到TM
+    11、TM发现调用完成，向TC发起提交全局事务
+    12、TC给全局会话加锁，然后关闭会话设置，进行会话清理，将全局事务设置为提交中，最后异步去进行commit
+    13、TC异步删除undo-log，然后清理分支会话，并提交全局事务
+
+异常流程：
+    从上面第10点开始
+    10、TM出现异常，执行结束，异常抛回给TM
+    11、TM回调TC进行回滚
+    12、TC全局会话加锁，并将全局事务设置为提交中
+    13、TC回滚分支事务，回滚后删除会话分支，删除全局事务
+    14、TC事务回滚能成功，TM调用结束抛出异常
+
+AT模式的写隔离：
+    考虑到一种情况，两个线程同时调用A服务的业务，其中A服务内部又调了B服务。此时线程1先执行，它调用B服务成功，由
+于AT模式是先提交后补偿的机制，因此直接提交事务。但是线程1回到A服务后执行失败，TC对B服务进行补偿性回滚，而TC对
+B服务回滚之前，B服务的数据已经被线程2读到了，这种情况就出现了脏数据
+    为了解决这种事务之间资源隔离的问题，Seata使用了全局锁，锁的key是表名:复合主键，这个锁在每个RM的分支事务开始
+时加，在TM提交或回滚全局事务后释放。如果全局事务A已经拿到锁了，另外一个事务还来拿锁就会一直重试，直至事务A释
+放锁
+
+AT模式的读隔离：
+    也就是全局事务提交后，分支事务的修改才能被读到，Seata会对加了FOR UPDATE的SELECT语句进行代理，也就是说如果
+在Seata代理的数据源中使用FOR UPDATE，Seata会先去拿全局锁，拿到了才允许执行，否则就会进行重试
+
+
+
+注册中心：
+
     
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
