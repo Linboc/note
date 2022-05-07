@@ -251,6 +251,7 @@ JDK命令行工具：
 
     如果要监控运行中的程序，在程序启动时要添加参数：-Dcom.sun.management.jmxremote，开启JMX（Java 管理扩展）功能，否则由于部分工具是基于JMX的，将会无法使用。JDK1.6以上是默认开启的，启动时无需加参数
 
+    java -XX:+PrintFlagsFinal -version：查看所有虚拟机参数的默认值
 
     jps(JVM Process Status Tool)：显示指定系统内所有的HotSpot虚拟机进程
 	-q：只输出LVMID（Local Virtual Machine Identifier），本地虚拟机唯一ID，通常也是进程ID
@@ -306,7 +307,7 @@ JDK命令行工具：
 	-heap：显示堆的详细信息，比如使用的收集器、收集器的参数、各个分区分代的使用情况
 	-histo：显示堆中数量的统计，比如每个类的实例数量、合计占用空间
 	-permstat(jdk1.8下是-clstats)：以ClassLoader为统计口径显示永久代的内存状态
-	-F：当虚拟机进程对-dump选项没有相应时，可使用这个选项强制生成dump快照
+	-F：当虚拟机进程对-dump选项没有响应时，可使用这个选项强制生成dump快照
 
 
     jhat(JVM Heap Dump Browser)：用于分许heapdump文件，它会建立一个HTTP服务器，让用户可以在浏览器上查看分析结果
