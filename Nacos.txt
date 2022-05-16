@@ -35,6 +35,9 @@ spring nacos：
     @NacosValue：
         和@Value类似，但是它支持自动更新
 
+    @NacosInjected
+        可以用来注入Nacos客户端，比如：@NacosInjected NamingService namingService，通过这个客户端可以向服务器
+    获取服务信息，内部有个本地化缓存Map，如果Map里没有就会向服务器获取，还会定时更新
 
 
 
