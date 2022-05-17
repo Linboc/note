@@ -307,9 +307,14 @@ BeanDefinition里定义的类型就是Executor。如果去根据BeanType进行匹配，由于是用Bean
 心跳线程暂停了，导致无法维持心跳，测试环境的心跳间隔才5s，因此会很频繁的被剔除实例。只需要把debug断点改为只暂
 停当前线程就不会出现这种问题了
 
+    spring cloud或spring cloud alibaba启动报找不到Bootstrap类，可能是spring cloud版本与spring boot版本不匹配导致的
 
-
-
+    nacos配置动态刷新无效，可能是bootstrap.perproties文件没生效，需要确认是否加了以下依赖：
+    <dependency>
+          <groupId>org.springframework.cloud</groupId>
+          <artifactId>spring-cloud-starter-bootstrap</artifactId>
+          <version>3.1.2</version>
+      </dependency>
 
 
 

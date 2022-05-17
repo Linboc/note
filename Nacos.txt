@@ -1,6 +1,136 @@
 
+Nacos是Dynamic (Na)ming (Co)nfiguration (S)ervice的首字母简称
+
+Nacos的功能有：服务发现与管理、动态DNS服务、动态服务管理
+
+nacos架构分层：
+    用户层：
+        解决用户的易用性问题
+        比如：OpendAPI、控制台、SDK、Agent、客户端
+
+    业务层：
+        解决服务发现和配置管理的功能问题
+        比如：服务的CRUD、DNS(域名)的CURD、负载策略、健康检查、配置CURD、版本管理、灰度管理、元数据CURD、打
+    标服务
+
+    内核层：解决分布式系统一致性、存储、高可用等核心问题
+        比如：插件机制、事件机制、日志模块、回调机制、寻址机制、传输通道、容量管理、流量管控、缓存机制、启动模式、
+    一致性协议、存储
+
+    插件：
+        解决扩展性问题
+        比如：角色管理、用户管理、接入管理、权限管理、审计系统、通知系统、监控诊断、NameService
+
+
+概念介绍：
+
+    配置(Configuration)：
+        在系统开发过程中，通常会将一些需要变更的参数、变量等从代码中分离出来独立管理，以独立配置文件的形式存在。目
+    的是让静态的系统共建或者交付物(如WAR、JAR包等)更好地与实际物理运行环境进行适配
+
+    配置管理(Configuration Management)：
+        在Nacos中，系统中所有配置的存储、编辑、删除、灰度管理、历史版本管理、变更审计等所有与配置相关的活动统称为配
+    置管理
+
+    配置服务(Configuration Service)：
+        在服务或应用运行过程中，提供动态配置或者元数据以及配置管理的服务提供者
+
+    配置项(Configuration Item)：
+        一个具体的可配置的参数与其值域，通常以key-value形式存在，例如logLevel=ERROR就是一个配置项
+
+    配置集(Configuration Set)：
+        一组相关或者不相关的配置项的集合称为配置集。在系统中，一个配置文件通常就是一个配置集。例如一个配置集包含了
+    数据源、线程池、日志级别等配置项
+
+    命名空间(Namespace)：
+        用户进行租户粒度的配置隔离。不同的命名空间下，可以存在相同的Group或Data ID配置。Namespace的常用场景之一是不
+    同环境的配置的区分隔离，例如开发环境、生产环境的资源隔离等。如果不指定Namespace则默认使用public命名空间
+
+    配置组(Group)：
+        Nacos中的一组配置集，是配置的纬度之一。通过一个字符串对配置集进行分组，从而区分Data ID相同的配置集。如果不
+    指定配置组名称则默认采用DEFAULT_GROUP。配置组常见常见如不同应用使用了相同的配置项
+
+    配置ID(Data ID)：
+        Nacos中某个配置集的ID。配置集ID是划分配置的纬度之一。Data ID通常用于划分系统的配置集。一个应用可以包含多个
+    配置集，每个配置集都可以被一个有意义的名称标识。Data ID尽量保障全局唯一，例如Nacos Spring Cloud中的命名规则：
+    ${prefix}-${spring-profiles.active}-${file-extension}
+
+    配置快照(Configuration Snapshot)：
+        Nacos的客户端SDK会在本地生成配置的快照。当客户端无法连接到Nacos Server时，可以使用配置快照显示系统的整体容
+    灾能力。配置快照类似于缓存，会在适当的时机更新，但并没有缓存过期的概念
+
+    Nacos配置管理基础模型：
+        控制台 ---↘
+        SDK     ->  Nacos Server -> Mysql
+    基本上就是不同客户端连接服务器，服务器连接Mysql
+    1、控制台可以对配置进行发布、更新、删除、灰度、版本管理等功能
+    2、SDK可以提供发布配置、更新配置、监听配置变更(通过GRPC长连接监听)等功能。Server端会对比Client端的MD5是否和本地
+相等，如果不相等则推送配置。SDK会保存配置的快照，当Server不可用时从本地获取
+
+
+Namespace的设计目的：
+    Namespace的设计就是用来进行资源隔离的：
+        从单个租户的角度来看，我们要配置多套环境的配置，可以用不同的环境来创建Namespace，比如dev、test、prod。如果
+    同一个环境内想有多套配置，可以用Group来区分，比如：g1、g2、g3。这个例子在不同环境下可以让每个小组都有自己的配置
+
+        从多个租户的角度来看，每个租户都可以有自己的命名空间。我们可以为每个用户创建一个命名空间。比如：zhangsan、
+    lisi、wangwu。然后用group来区分不同环境的配置，比如dev、test、prod。这个例子可以让每个用户在不同环境下有自己的
+    配置
+
+
+Nacos存储配置中较重要的表：
+    config_info：存储配置信息的主表，里面包含dataId、groupId、content、tenantId、encryptedDataKey等数据
+    config_info_beta：灰度测试的配置信息表，内容和config_info基本类似，有一个beta_ips字段存储用来判断是否灰度的ip
+    config_tags_relation：配置的标签表，在发布配置的时候如果指定了标签，就会把标签和配置的关联信息存储在该表
+    his_config_info：配置的历史信息表，配置的发布、更新、删除等操作都会记录一条数据，可以用来做多版本管理与快速回滚
+
+
+Nacos的一致性协议：
+    Nacos是一个需要存储数据的组件，因此需要在Nacos内部实现数据存储。单机下使用简单的内嵌关系型数据库即可；但是集群
+模式下，就需要考虑如何保障各个节点之间的数据一致性以及数据同步，而要解决这个问题，就需要引入共识算法，通过算法来保
+障各个节点之间的数据一致性
+
+Nacos的协议：
+    Nacos选择了Raft以及Distro协议，因此Nacos里同时有CP和AP两种协议。因为Nacos是一个集服务注册发现与配置管理于一体的
+组件，因此：
+
+    从服务注册发现中心来看：
+        可用性比一致性更重要，因为就算缺了部分服务器，整个系统可能依然是可用的，并且可以通过心跳机制快速弥补不一致
+    的数据。所以为了满足服务发现注册中心的可用性，这里采用了最终一致性算法
+        以上那些都是针对于Nacos中的非持久化服务，既需要客户端上报心跳进行续约的服务。对于持久化服务，所有数据都是直
+    接调用Nacos服务端直接创建的，因此需要保障各个节点之间的强一致性，因此此类型的服务选择了强一致性算法
+
+    从配置管理来看：
+        配置数据必须保证不会丢失，因此只有大部分节点都保存成功了才认为配置被成功保存了，否则如果只有小部分服务保存
+    计算成功，那么保存后刚好那些服务挂了就会出现配置丢失，这会引起严重故障。因此对于配置数据的管理，必须要求及群众
+    大部分的节点是强一致的，因此这里只能使用强一致性算法
+
+    强一致性共识算法：
+        当前工业生产中，最多使用的就是Raft协议，并且Raft协议更容易让人理解，并且有很多成熟的工业算法实现，比如蚂蚁
+    金服的JRaft、Zookeeper的ZAB、Consul的Raft、百度的braft与Apache Ratis。由于Nacos是Java技术栈，因此只能选择JRaft
+    、ZAB、Apache Ratis，其中ZAB与Zookeeper强绑定，在剩下两个中选择阿里自己的JRaft也是情理之中，选百度的反而会奇怪
+
+    最终一致性协议：
+        最终一致性协议有很多，比如Gossip、Eureka的数据同步算法。Nacos用了阿里自研的Distro算法，集合了前两者的优点
+    (自己说的)
+
+    Raft：一致性算法(CP，一致性与分区容错性)，基本介绍：
+        在Raft体系中，有一个强leader，它负责接收客户端的请求，并将命令作为日志条目赋值给其它服务器，在确认安全的时
+    候，将日志命令提交执行。leader故障时会选举产生一个新的leader，Raft将一致性问题分解为三个子问题：
+        1、leader选举，当已有的leader故障时必须选出一个新的leader
+        2、日志复制，leader接收来自客户端的命令，记录为日志，并复制给其它服务器，并强制其它节点与leader保持一致
+        3、安全safety措施，通过一些措施确保系统安全性，比如确保所有状态机按照相同顺序执行相同命令
+
+    Distro：最终一致性算法(AP，可用性与分区容错性)，基本介绍:
+        Distro算法是阿里巴巴自研集Gossip与Eureka协议的优点并加以优化而来的。原生Gossip，会随机选取发送消息的节点，
+    这也就不可避免的存在消息重发给同一个节点的问题，而Distro算法引入了权威Server的概念，每个节点负责一部分数据，以
+    及将自己的数据同步给其它节点，有效降低了消息冗余
+
+
+使用:
+
 启动nacos：
-    bin/startup.cmd -m standalone(standalone代表单机模式，非集群模式)
+    bin/startup.cmd -m standalone：standalone代表单机模式，非集群模式
 
 关闭nacos：
     bin/shutdown.cmd
@@ -24,7 +154,14 @@
         GET http://127.0.0.1:8848/nacos/v1/cs/configs?dataId=boc.config.data1&group=test
         向地址为127.0.0.1:8848的nacos服务器获取，数据id为：boc.config.data1，分组为：test的配置，基于上面的请求会在body返回HelloWorld
 
-spring nacos：
+spring boot nacos：
+
+    加依赖：
+    <dependency>
+        <groupId>com.alibaba.boot</groupId>
+        <artifactId>nacos-config-spring-boot-starter</artifactId>
+        <version>${latest.version}</version>
+    </dependency>
 
     @NacosPropertySource：
         和@PropertySource类似，将配置加入spring的环境中，但是它支持自动更新
@@ -35,11 +172,28 @@ spring nacos：
     @NacosValue：
         和@Value类似，但是它支持自动更新
 
+    @NacosInjected
+        可以用来注入Nacos客户端，比如：@NacosInjected NamingService namingService，通过这个客户端可以向服务器
+    获取服务信息，内部有个本地化缓存Map，如果Map里没有就会向服务器获取，还会定时更新
 
 
+spring cloud nacos：
 
+    加依赖，下面分别是配置中心与服务发现：
+    <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+        <version>${latest.version}</version>
+    </dependency>
+    <dependency>
+          <groupId>com.alibaba.cloud</groupId>
+          <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+          <version>2021.1</version>
+      </dependency>
 
-
+    bootstrap.properties提供配置中心所需的基本配置：
+        spring.cloud.nacos.config.server-addr=127.0.0.1:8848：配置中心地址
+        spring.application.name=example：之所以需要应用名称是因为它是dataId的一部分
 
 
 
