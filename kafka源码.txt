@@ -1,0 +1,137 @@
+
+客户端：
+
+
+生产者：
+
+    生产流程：
+        1、生产者调send方法进行消息发送：KafkaProducer.send
+        2、一进来直接走生产者拦截器的onSend方法
+        3、拉取集群的信息，也就是构建一个Cluster对象，这个对象包含了生产者感兴趣的topic对应的分区与节点信息，包括集
+    群控制器是哪个节点、当前集群里有哪些节点、每个节点里有哪些分区、每个topic有哪些分区、每个分区的leader是哪个节
+    点等等，都保存在一大堆Map里面，主要有两种对象：Node：节点信息，PartitionInfo：分区信息，每个对象代表一个分
+    区，包含了leader节点是哪个、副本在哪些节点、同步节点是哪些、非同步节点是哪些等信息
+        4、通过key与value序列化器对key与value进行序列化，将它们转成byte数组
+        5、如果消息未指定分区，则用分区器进行分区，默认是DefaultPartitioner分区器。它通过key进行分区。如果key为null
+    ，则通过一个topic独有的计数器进行自增与可用分区进行取模来分区。如果key不为null，则将key计算哈希，并与总分区数
+    进行取模来分区
+        6、将record.headers()设置为只读，这意味着消息头的内容后续无法被修改
+        7、估算出这条消息的大小，然后判断是否超出单条消息的最大限制或者生产者缓冲区大小
+        8、将消息加入RecordAccumulator累加器
+            8.1：为指定topic分区获取一个ProducerBatch泛型的队列，如果已有则拿旧的，否则创建新的
+            8.2：尝试将消息加入队列的最后一个批次里面，如果它还有空间，也就是原大小(可能是压缩过的)+当前消息的大小小
+        于batch.size。或者批次里连一个消息都没有，那么就不管大小，至少让批次放一个消息
+            8.3：如果该队列里没有批次，则从BufferPool类型的free里分配一段ByteBuffer缓存出来，分配的内存在batch.size与
+        当前消息大小之间取大的值。缓存池里的缓存是可以被复用的，它将在批次发送之后回收(待确定)
+            8.4：创建一个新的ProducerBatch批次，并未它分配缓存内存，然后加入分区队列里，并尝试将消息加入这个批次，
+        由于这是一个全新批次，因此这次总会成功。
+            8.5：加入成功后会将future与用户的callback绑定在Thunk对象并保存在batch的thunks里，这个似乎是为了触发
+        callback时保证消息回调的顺序与生产的顺序相同
+            8.6：所有ProducerBatch的append都是同步代码块下进行，因此不会因为并发导致批次大小溢出
+        9、sender线程，sender线程是在KafkaProducer的构造器里启动的
+        10、sender线程的内容大概为：
+            1、如果处于running状态下，则一直尝试消费RecordAccumulator累加器并发送消息
+            2、如果不处于running状态，且不是强制关闭，且累加器里还有消息，则将累加器里剩余的消息发送完成
+            3、如果是强制关闭，则中断累加器里所有的消息，就是批次不允许再追加、删除队列里所有批次、完成批次的future
+        、回收分配的内存
+            4、关闭客户端
+        11、sendProducerData方法从累加器里获取批次并发送
+            11.1：拿到累加器里所有分区的leader节点，如果没有leader且批次队列里有数据，则将topic加入
+        unknownLeaderTopics，也就是无leader的topic集合
+            11.2：判断队列里的第一个分区是否就绪，例如是否达到批次等待最大时间、批次是否已满、缓存池是否有线程在等待
+        分配、累加器是否已被关闭等待，如果满足这些条件任意一个，且不是重试批次且小于重试间隔，就会将leader加入就绪
+        节点中返回去，此外还有一个下次重试时间，它会取所有批次重试间隔里最短的返回去，用来跟单次请求间隔取最小值来
+        进行nio的select(timeout)操作，而它默认是Integer.max，因此可发送的情况下用的是请求超时的参数
+            11.3：因此上面两步操作返回的值包括：无leader的topic列表、批次可以发送的leader列表、下次select时间
+            11.4：如果未知leader的topic列表不为空，则将对应的topic加入metadata中，并尝试去更新集群的元数据
+            11.5：如果ready的leader节点列表不为空，则判断每个节点是否就绪，例如客户端中节点同时发送的最大请求是否达
+        到上限、客户端的各种组件状态是否正常，例如selector与channel等等，如果客户端判断该节点未就绪则将该节点从就
+        绪集合中移除，并根据节点的重连接时间配置来决定下次select的时间，依然是跟上面的下次select时间取最小值
+            11.6：调用accumulator.drain方法，去拿到可用leader里所有可发送的批次
+            11.7：isMuted方法是用来判断该分区是否有正在发送的消息，如果有说明配置要求保证消息顺序，因此只能等上次消
+        息发送完成后才能发送，而这次跳过这个分区
+            11.8：如果不是重试且未满足重试间隔、且未到达最大请求字节数，就从队列里poll出第一个批次，将这个批次关闭，
+        然后加入批次就绪集合中返回。每次sender线程轮询都只会拿每个批次队列里的第一个批次，哪怕后面也有就绪的也要等
+        下次
+            11.9：如果要保证消息的顺序性，也就是guaranteeMessageOrder为true，也就是
+        max.in.flight.requests.per.connection等于1，就会将分区加入累加器的muted集合中，在muted集合中已有的分区就不
+        会发送消息，只能等上次发送完后从muted中清除对应的分区才能发下次
+            11.10：查找累加器中的过期批次，比如批次创建时间大于请求最大等待时间，就会将批次删除，传入超时异常回调批
+        次里的future、回收缓存、记录指标等等，通过这种方式进行的超时是不会重试的，因为它直接进行回调了
+            11.11：更新生产者请求的各项指标
+            11.12：如果有就绪的leader节点，就将下次select的时间设置为0
+            11.13：调用sendProduceRequests正式发送批次消息
+            11.14：遍历batches发送消息，这是个map，key为nodeId，value为批次队列，因此每次只给一个发送节点
+            11.15：包装成一个RequestCompletionHandler callback对象，这个对象里有一个外部构建的map，key是TopicPartition
+        ，value是此次该分区发送的批次，每次每个分区只会发送一个批次，回调里也包含了TopicPartition，因此可以根据响应
+        从map里拿到批次，然后进行回调
+            11.16：创建一个clientRequest对象，这个client是跟节点绑定的业务request，然后KafkaClient.send，这个client是
+        共用的client
+            11.17：将请求构建成一个InFlightRequest inFlightRequest对象，然后保存到inFlightRequests中，这里记录的是当
+        前所有正在发送的请求
+            11.18：以上只是将request注册到selectKey里，它们通过一个KafkaChannel对象来关联
+            11.19：client.poll，进行select
+            11.20：client.poll后，里面有个metadataUpdater.mybeUpdate，这是发送更新元数据请求的，还有个selector.poll
+        ，这是处理就绪的SelectionKey
+            11.20：select到key之后，就会调用pollSelectionKeys方法处理key，这个方法里面有个attemptRead(key)操作，这是
+        用来将读到的数据转成NetworkReceive的，NetworkReceive就是响应数据的包装，然后保存到stagedReceives里
+            11.21：selector.poll的最下一行会调用addToCompletedReceives，将所有receive都加入completedReceives里
+            11.22：然后再client.poll里，调用handleCompletedReceives方法，将receive用AbstractResponse.parseResponse
+        转成AbstractResponse对象，这个对象会根据api的key转成不同的响应类型，如果这些响应是元数据或者api版本响应，
+        则去更新元数据与api版本的信息，否则就都转成ClientResponse类型加入List<ClientResponse> responses对象中
+            11.23：在client.poll里，调用completeResponses方法去处理所有的responses，也就是调用它们的callback
+            11.24：在handleCompletedReceives中，response和callback的关联保存在inFlightRequests集合里，这个集合保存
+        了所有正在请求的对象，每个响应 都从对应的节点请求集合里拿一个最早发起的请求对象，那么怎么保证最早发起的请求
+        一定是最早响应的。因为对于相同的node，每个KafkaProducer只会创建一个连接，因此响应都是顺序返回的。
+            
+
+    kafka缓存池的消息存储：
+        每个批次都会分配一段内存，批次的发送结束后回收内存，内存指的是一个ByteByffer对象，消息写入批次时，会按照
+    key、value、headers的顺序写入，先写入key的长度，再写key的内容，value也一样，headers则先写入header的数量，
+    然后再写每个header的长度与内容
+
+    metadata的更新：
+        在client.poll里，有个metadataUpdater.maybeUpdate(now)方法，里面会调用maybeUpdate，里面会构建一个
+    metadataRequest请求，然后注册到select上，这里会选择一个调用最少的节点进行元数据拉取
+
+    ApiVersions：
+        这里的Api指的是操作的类型，比如生产消息、心跳、元数据拉取等待，都在ApiKeys里，由于Kafka有多个不同的版本，
+    因此通过从节点拉取api版本列表的确定broker支持哪些api的哪个版本
+
+    错误重试：
+        重试是在处理响应的callback时处理的，会将批次进行重新发送，直接加入累加器的队列中，且会加在头部。可以在
+    sender的sendProduceRequest方法中看到，里面会创建一个RequestCompletionHandler callback用来构建客户端，这里
+    面就包含了重试逻辑，比如重试次数判断，是否是重试异常等等
+
+    好像过期的批次，进行回调后依然会进行发送？
+
+
+消费者：
+
+        假设消费者消费到的偏移量是7，那么此时提交的偏移量就是8，也就是提交的偏移量总是会比消费到的+1，在日志里的
+    偏移量也一样
+
+        由于消费者是线程不安全的，因此大部分操作内部都会先调用acquire()，结束时调用release()，这是一个加锁操作，通过
+    CAS获取当前线程id进行加锁，如果CAS失败，就代表多个线程在同时操作consumer，就会抛出异常
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -316,7 +316,7 @@ BeanDefinition里定义的类型就是Executor。如果去根据BeanType进行匹配，由于是用Bean
           <version>3.1.2</version>
       </dependency>
 
-
+    测试环境访问mysql，首次连接需要等很久，或者一段时间不访问，重新连接也要根据，据说阿里云服务器加白名单就好了
 
 
 
