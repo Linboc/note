@@ -168,11 +168,11 @@ ISR(In-Sync Replicas)：
 
         v0版本：
             消息分为两部分：
-                LOG_OVERHEAD，也即消息头，它包含了：
+                LOG_OVERHEAD，即消息头，它包含了：
                     offset(8B)：消息偏移量
                     message size(4B)：消息大小
 
-                RECORD，也即消息本身，它包含了：
+                RECORD，即消息本身，它包含了：
                     crc32：校验值，校验后面的所有其余信息，4B
                     magic：消息版本号，1B
                     attributes：低三位表示消息压缩类型比如NONE、GZIP、LZ4等，其余位保留，1B
@@ -193,8 +193,39 @@ ISR(In-Sync Replicas)：
             因此v1版本的消息会比v0版本的大8个字节
 
         v2版本：
-            
+            消息分为两部分：
+                Record Batch Header，既批次头，它包含了：
+                    first offset：当前消息批次的起始偏移量，8B
+                    length：从partition leader epoch字段到整个批次末尾的长度，4B
+                    partition leader epoch：分区leader纪元，可以看做分区leader的版本号或更新次数，4B
+                    magic：消息格式版本号，1B
+                    crc32：校验值，4B
+                    attributes：消息属性，低三位代表压缩格式，第四位代表时间戳类型，第五位标识此批次是否处于事务中，第六
+                位表示是否控制消息，2B
+                    last offset delta：消息批次中最后一个记录的偏移量与first offset的差值，4B
+                    first timestamp：消息批次中第一条记录的时间戳，8B
+                    max timestamp：消息批次中最大的时间戳，一般情况下是指最后一个消息的时间戳，8B
+                    producer id：生产者id，用来支持幂等和事务，8B
+                    producer epoch：生产者纪元，用来支持幂等和事务，2B
+                    first sequence：用来支持幂等和事务，4B
+                    records count：消息批次中的消息个数，4B
 
+                Records：既批次列表，每个批次包含了：
+                    length：消息总长度，varint
+                    attributes：弃用，但是还存在着，1B
+                    timestamp delta：基于批次头时间戳的增量，varlong
+                    offset delta：基于批次头偏移量的增量，varint
+                    key length：key长度，varint
+                    key：key内容
+                    value length：value长度，varint
+                    value：value内容
+                    headers count：header数量，varint
+                    headers：header内容
+                        header key length：header key的长度
+                        header key：header key内容
+                        header value length：header value的长度
+                        header value：header value的内容
+                以上很多地方都采用了增量存储，因为增量配合着变长字段可以进一步节省占用的字节数
 
     消息压缩：
         常见的压缩算法是数据量越大压缩效果越好，但是一条消息通常不会太大，这就导致了压缩效果不太好。而kafka实现压缩的方
