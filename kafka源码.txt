@@ -291,6 +291,107 @@ ISR(In-Sync Replicas)：
     稀疏索引是在磁盘空间、内存空间、查找时间多个方面之间的一个折中方案
 
 
+    零拷贝：
+        正常如果要将数据从磁盘读出来到通过网络发送出去，那么要经过4步：
+            1、将数据从磁盘读到内核读缓存中
+            2、从内核态切换到用户态，并将数据复制到用户模式下
+            3、从用户态切换到内核态，并将数据复制到内核模式下(将数据写入socket)
+            4、将内核态的数据写复制到网卡设备中传输
+
+        如果使用零拷贝，相当于省去了切换到用户态复制的操作，只剩下：
+            1、将数据从磁盘复制到内核读缓存
+            2、将读缓存的数据复制到网卡设备中进行传输
+
+
+Kafka协议：
+
+    协议数据类型：
+        boolean：用0和1代表false和true
+        int8：有符号整型，占8位
+        int16：有符号整型，占16位
+        int32：有符号整型，占32位
+        int64：有符号整型，占64位
+        unit32：无符号整型，占32位
+        varint：变长整型，变长类型参考前面的介绍
+        varlong：变长长整型
+        string：string类型，开头是int16，代表字符串的长度，后面跟着长度个数的UTF-8编码的字符
+        nullable_string：可以为空的字符串，与string一样，如果开头的int16是-1，代表此值为null
+        bytes：一个字符序列，开头是int32，代表字符序列的长度，后面跟着长度个数的字节
+        nullable_bytes：一个可以为空的字符写，为空时int32为-1，其余情况与bytes类型相同
+        records：表示kafka中的一个消息序列，可以看做一个nullable_bytes
+        array：数组，元素类型可以是任意其它类型，开头是int32，代表元素个数，int32为-1时表示空数组
+
+    kafka请求协议分为两部分：
+
+        RequestHeader(请求头)：
+            api_key：API类型表示，比如PRODUCE、FETCH，16位int
+            api_version：API版本号，16位int
+            correlation_id：由客户端指定的一个数字来标识这次请求的id，服务端响应时会返回相同的id，客户端就能将请求和响
+        应对应起来了，32位int
+            client_id：客户端id，string
+
+        RequestBody(请求体)：
+            请求体的结构由不同的API类型决定
+
+
+    kafka响应协议分为两部分：
+
+        ResponseHeader(响应头)：
+            correlation_id：请求的id，响应会原样返回，32位int
+
+        ResponseBody(响应体)：
+            响应体的结构由不同的API类型决定
+
+
+    消息生产协议：
+      请求：
+        ReauestHeader：请求头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        RequestBody：请求体
+
+          transactional_id：事务id，不使用事务时为null，nullable_string类型
+
+          acks：对应生产者的acks参数，int16类型
+
+          timeout：请求超时时间，对应生产者request.timeout.ms，默认为30000，int32类型
+
+          topic_data：生产者发送的消息集合，每个主题都是一个元素，array类型
+
+            topic：主题名称，string类型
+
+              data：主题对应的消息，每个分区都是一个元素，array类型
+
+                partition：分区号，int32类型
+
+                record_set：records类型，分区的消息
+                        
+      响应：
+        ResponseHeader：响应头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        ResponseBody：响应体
+
+          throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
+
+          response：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+
+            topic：主题名称，string类型
+
+            partition_responses：主题内所有分区的响应集合，array类型
+
+              partition：分区编号，int32类型
+
+              error_code：错误码，用来表示错误类型，int16类型
+
+              base_offset：消息集合的起始偏移量，该参数+发送消息的数量=发送消息最大的偏移量，int64类型
+
+              log_append_time：消息写入broker端的时间，int64类型
+
+              log_start_offset：所在分区的起始偏移量，int64类型
+
+
+
+
+
 
 
 
