@@ -343,7 +343,7 @@ Kafka协议：
             响应体的结构由不同的API类型决定
 
 
-    消息生产协议：
+    消息生产协议(produce)：
       请求：
         ReauestHeader：请求头，这部分格式是统一的，可参考上面描述，不在赘述
 
@@ -389,16 +389,46 @@ Kafka协议：
               log_start_offset：所在分区的起始偏移量，int64类型
 
 
+    消息拉取协议(Fetch)：
+      请求：
+        ReauestHeader：请求头，这部分格式是统一的，可参考上面描述，不在赘述
 
+        RequestBody：请求体
 
+          replica_id：副本的brokerId，用于follower副本向leader发起FetchRequest请求，普通消费者传-1，int32类型
 
+          max_wait_time：最大拉取等待时间，与消费者的fetch.max.wait.ms参数对应，默认为500，int32类型
 
+          min_bytes：最小拉取字节数，与消费者的fetch.min.bytes对应，默认值为1，int32类型
 
+          max_bytes：最大拉取字节数，与消费者的fetch.max.bytes对应，默认值为52428800(50MB)，int32类型
 
+          isolation_level：事务隔离级别，与消费者的isolation_level对应
 
+          session_id：fetch session的id，int32类型
 
+          epoch：fetch session的epoch纪元，int32类型
 
+          topics：所要拉取的主题集合，array类型
 
+            topic：主题名称，string类型
+
+            partitions：分区集合，array类型
+
+              partition：分区编号，int32类型
+
+              fetch_offset：从分区的哪个位置开始读取消息，int64类型
+
+              log_start_offset：专门用于follower副本发起FetchRequest请求，用来指明分区的起始偏移量，普通消费者为-1
+            ，int64类型
+
+              max_bytes：该分区最多能拉取的字节数，对应消费者的max.partition.fetch.bytes参数，默认1MB，int32类型
+
+          forgotten_topics_data：从fetch session中指定要去除的拉取信息，array类型
+
+            topic：主题名称，string类型
+
+            patitions：分区编号集合，array类型
 
 
 

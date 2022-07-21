@@ -417,6 +417,9 @@ broker集群的基本配置：
     send.buffer.bytes：
         功能同receive.buffer.bytes，不过这个是发送数据时的TCP缓冲区大小
 
+    isolation.level：
+        消费者的事务隔离级别，可以填read_uncommitted和read_committed。区别在于是否能读到未提交事务的消息
+
 消费者方法：
     kafkaConsumer.subscribe(List topicList)：
         订阅指定的topic列表，且topic可以写正则表达式，比如：test.*
