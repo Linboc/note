@@ -372,7 +372,7 @@ Kafka协议：
 
           throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
 
-          response：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+          responses：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
 
             topic：主题名称，string类型
 
@@ -429,6 +429,69 @@ Kafka协议：
             topic：主题名称，string类型
 
             patitions：分区编号集合，array类型
+
+      关于fetch session：
+        由于fetch请求是非常频繁的，且大多数时候是不会变的，除了起始偏移量，那么如果能将这些信息保存起来，就可以节省这
+      部分带宽，且拉取的分区越多节省的就越多
+        session_id创建或变更时会发送全量式的FetchRequest，全量式拉取就是请求体中包含所有要拉取的分区信息，当session_id
+      稳定时则发送增量式的FetchRequest，里面的topics为空，因此topics里的内容已经被缓存在了客户端与broker，如果需要从当
+      前session中取消某些分区的拉取订阅，则使用forgotten_topics_data字段来实现
+        epoch应该就是同一个session_id，每次拉取都会+1，用来保证客户端与broker端的一致性
+        fetch session机制在大规模分区拉取或同步时很有用，不过这对客户端来说是无感知的，因为一般而言客户端不会订阅太多
+      分区
+
+      响应：
+        ResponseHeader：响应头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        ResponseBody：响应体
+
+          throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
+
+          error_code：错误码，用来表示错误类型，int16类型
+
+          session_id：对应请求的session_id
+
+          responses：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+
+            topic：topic名称，string类型
+
+            partition_responses：分区响应数组，array类型
+
+              partition：分区号，int32类型
+
+              error_code：错误码，用来表示错误类型，int16类型
+
+              high_watermark：消费者可以读到的最大偏移量(暂且这么理解，书上对Fetch的响应解释很少)，int64类型
+
+              last_stable_offset：该分区相应的最大偏移量，int64类型
+
+              log_start_offset：该分区相应的最小偏移量，int64类型
+
+              aborted_transactions：事务相关信息，array类型
+
+                producer_id：生产者id
+
+                first_offset：生产者偏移量？事务相关的没介绍
+
+              record_set：该分区的消息集合，records类型
+
+
+时间轮：
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
