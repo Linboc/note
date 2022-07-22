@@ -372,7 +372,7 @@ Kafka协议：
 
           throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
 
-          response：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+          responses：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
 
             topic：主题名称，string类型
 
@@ -429,6 +429,87 @@ Kafka协议：
             topic：主题名称，string类型
 
             patitions：分区编号集合，array类型
+
+      关于fetch session：
+        由于fetch请求是非常频繁的，且大多数时候是不会变的，除了起始偏移量，那么如果能将这些信息保存起来，就可以节省这
+      部分带宽，且拉取的分区越多节省的就越多
+        session_id创建或变更时会发送全量式的FetchRequest，全量式拉取就是请求体中包含所有要拉取的分区信息，当session_id
+      稳定时则发送增量式的FetchRequest，里面的topics为空，因此topics里的内容已经被缓存在了客户端与broker，如果需要从当
+      前session中取消某些分区的拉取订阅，则使用forgotten_topics_data字段来实现
+        epoch应该就是同一个session_id，每次拉取都会+1，用来保证客户端与broker端的一致性
+        fetch session机制在大规模分区拉取或同步时很有用，不过这对客户端来说是无感知的，因为一般而言客户端不会订阅太多
+      分区
+
+      响应：
+        ResponseHeader：响应头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        ResponseBody：响应体
+
+          throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
+
+          error_code：错误码，用来表示错误类型，int16类型
+
+          session_id：对应请求的session_id
+
+          responses：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+
+            topic：topic名称，string类型
+
+            partition_responses：分区响应数组，array类型
+
+              partition：分区号，int32类型
+
+              error_code：错误码，用来表示错误类型，int16类型
+
+              high_watermark：消费者可以读到的最大偏移量(暂且这么理解，书上对Fetch的响应解释很少)，int64类型
+
+              last_stable_offset：该分区相应的最大偏移量，int64类型
+
+              log_start_offset：该分区相应的最小偏移量，int64类型
+
+              aborted_transactions：事务相关信息，array类型
+
+                producer_id：生产者id
+
+                first_offset：生产者偏移量？事务相关的没介绍
+
+              record_set：该分区的消息集合，records类型
+
+
+时间轮(TimingWheel)：
+
+    时间轮的设计类似于钟表，可以分为多层，例如第一层是每1ms一格，一共20格，第二层是20ms一格，也是20格，第三个
+是400ms一格，一共20格，可以看到当前层的每一格都是上一层的总时间。每一层都是一个圈
+    然后每个格都有一个自己的任务队列，这个队列里存放着真正的任务对象
+
+    如果想加一个450ms的任务，那么第一层一共才20ms，满足不了；第二层一共400ms，也满足不了，第三层可以满足，所
+以放在第三层的下一格，因为当前不一定刚好从第1格开始，可能第三层的第二格都走完了，因此只能往后放。当第一层走完之
+后，会从第二层把任务拉下来，然后根据每个任务的具体时间，分配到第一层里面，因为第二层20ms之内的都是同一格，到第
+一层还要进一步分格，当第二层走完后，又会从第三层拉任务，并且层级的指针+1
+    第三层的任务拉下来时说明已经到了400ms了，但是还有50ms，因此这个任务会被放到第二层的第三格，当走到第二层的第
+三格时，说明已经走了40ms了，每格20ms，还剩下10ms，然后又把该任务放在第一层的第10格，待时间推到那里就会执行该
+任务
+    当然实际情况肯定更加复杂，比如第一层到第10格，第二层到第5格，第三层到第2格，此时插入一个450ms的任务，那么不
+能简单的往第三层后面，因为当前这个轮可能已经跑了一半了，后面插入的任务应该把当前这轮已经经过的时间给加上再计算
+格子
+
+    时间轮存放任务之后，还需要一个组件去触发轮子的每一个时间格子，kafka中用了DelayQueue来推进时间轮。
+    DelayQueue里存放的是TimerTaskList，这个集合是每个时间格子的任务队列集合，DelayQueue只需对任务队列推进即可
+，如果加了一个新任务，新任务是从TimingWheel里插入的，时间复杂度为O(1)，通过时间轮与延迟队列的方式，实现了任务
+推进与快速添加与删除任务的操作，达到了少量的空间换时间
+
+    DelayQueue与TimingWheel的任务队列之间的配合
+
+
+
+
+
+
+
+
+
+
+
 
 
 
