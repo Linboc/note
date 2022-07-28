@@ -520,6 +520,68 @@ follower副本的操作就是延时操作，延时操作可以被超时触发或
 转的，收割机线程除了推进时间轮外，还会清理监听池中已完成的延时操作
 
 
+控制器：
+
+    kafka集群中会将其中一个broker选举为控制器，它负责管理整个集群中所有分区和副本的状态。当某个分区的leader副本
+出现故障，由控制器负责为该分区选举新的leader副本；当检测到某个分区的ISR集合发生变化时，由控制器负责通知所有
+broker更新其元数据信息；当用kafka-topics.sh脚本为某个topic增加分区数量时，同样还是由控制器负责分区的重分配
+
+    kafka的控制器选举依赖于zookeeper，通过在zookeeper中创建/controller临时节点来进行控制器竞选，临时节点内容如
+下：
+    {"version":1,"brokerid":0,"timestamp":"1529210278988"}
+        version：固定为1
+        brokerid：成为控制器broker的id编号
+        timestamp：竞选成为控制器时的时间戳
+    每个broker启动时都会去尝试读取/controller节点的brokerid值，如果读取到brokerid不为-1，代表已经有broker竞选为控
+制器，当前broker会放弃竞选，如果/controller节点为空或者数据异常，就会去尝试创建/controller节点
+
+    zookeeper中海油一个与控制器有关的/controller_epoch节点，这个节点是持久节点，内容是一个整形的controller_epoch
+值，用来记录控制器发生变更的次数，既当前控制器是第几代控制器，可称为：控制器纪元，这个节点初始值为1，每次选出一
+个新的控制器改字段就+1。每个和控制器交互的请求都会携带controller_epoch字段，如果请求的纪元小于内存中的纪元，则
+认为这个是向已过期的控制器所发送的请求，这个请求会被认定为是无效请求。如果纪元大于内存中的纪元，那说明已经有新
+的控制器当选了
+    由此可见kafka通过controller_epoch来保证控制器的唯一性和相关操作的一致性
+
+    控制器的额外职责：
+        1、监听分区的变化，也就是在zookeeper的相关节点注册监听器，然后进行对应动作，比如分区重分配、ISR集合变更
+        2、监听主题的变化，也就是监听zookeeper中的/brokers/topic和/admin/delete_topics节点，用来处理主题增减和删
+    除主题
+        3、监听broker变化，也就是监听zookeeper中的brokers/ids节点，用来处理broker增减的变化
+        4、从zookeeper中读取所有主题、分区、broker相关的信息，并进行管理，监听所有主题的/brokers/topics/<topic>
+    节点，用来处理broker增减的变化
+        5、启动并管理分区状态机和副本状态机
+        6、更新集群的元数据信息
+        7、如果参数auto.leader.rebalance.enable为true，则开启一个名为：auto-leader-rebalance-task的定时任务来维护
+    分区的优先副本均衡
+
+    控制器在选举成功后灰度区zookeeper中个个节点的数据来初始化ControllerContext，并且管理这些上下文，比如某个主题
+增加了分区，控制器负责创建这些分区并更新上下文信息，然后将这些变更的信息同步到其它broker节点中。
+    由于有很多事件都会读取或更新上下文的信息，比如任务触发的事件、监听器触发的事件，如果单纯使用锁来实现，整体性
+能会大打折扣，针对这一现象，kafka的控制器使用单线程基于事件队列的模型，将每个事件进行封装，然后按照先后顺序存储
+到LinkedBlockQueue中，然后使用一个ControllerEventThread线程按先进先出原则处理事件，也就是将事件串行化
+
+    早期的kafka中，所有broker都会在zookeeper上注册大量监听器，这有造成zookeeper过载的隐患。现在新版的设计中，
+只有controller才会在zookeeper上注册相应的监听器，其它broker极少需要再监听zookeeper中的数据变化，这样省了去很多
+不必要的麻烦，不过每个broker还是会对/controller节点添加ControllerChangeHnadler监听器来监听控制器的变化
+    当/controller节点的数据发生变化时，每个broker都会更新自身内存中的activeControllerId，如果某个broker原来是控制
+器，在变更后activeControllerId的值与自身brokerid不一致，那么它就需要退位，关闭对应的资源、比如状态机与监听器
+    当/controller节点被删除时，每个broker都会进行选举(争抢/controller临时节点?)，如果broker在节点删除前是控制器，它
+还需要进行退位操作，如果有特殊需要，可以手动删除/controller节点来触发新一轮选举，当然手动关闭控制器或者向
+/controller节点写入新的节点id对应的内容也可以触发新一轮选举
+
+
+优雅关闭：
+    
+
+
+
+
+
+
+
+
+
+
 
 
 
