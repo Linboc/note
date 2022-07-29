@@ -571,20 +571,42 @@ broker更新其元数据信息；当用kafka-topics.sh脚本为某个topic增加
 
 
 优雅关闭：
-    
+    通过kafka-server-stop.sh来关闭，这种关闭会等待关闭信号，从而让kafka程序有机会去执行关闭钩子
 
 
 
+broker.id：
+
+    kafka集群中，每个broker都有唯一的id，broker在启动时会在zookeeper中的/broker/ids路径下创建一个以当前brokerId
+为名称的虚节点，broker的健康转改检查就依赖于此虚节点
+    当broker下线时，该节点会自动删除，其它broker节点通过判断/broker/ids路径下是否有此broker的brokerId来确认该
+broker的健康状态
+
+    broker.id可以在config/server.properties里配置，也可以通过meta.properties文档来配置，kafka的brokerId只有大于等
+于0才会正常启动
+
+    meta.properties(broker的元数据文件，在kafka启动时生成)：
+        version：固定值，0
+        clusterId：集群id
+        broker.id：既brokerId，注意事项如下：
+            1、如果config/server.properties与meta.properties中的broker.id不一致，则抛出InconsistentBrokerIdException
+            2、如果config/server.properties未配置broker.id，就以meta.properties中的broker.id为准
+            3、如果config/server.properties与meta.properties中都没有broker.id，则可以通过broker.id.generation.enable和
+        reserved.broker.max.id来配合生成brokerId，这个参数默认开启，默认是true和1000，也就是如果自动生成，那么
+        brokerId从1001开始，那个max.id的意思是自动生成的id必须大于这个值
+            4、这个id自动生成也是通过zookeeper的/brokers/seqid节点来生成的，会通过它的dataVersion字段，每次设置值
+        它都会+1，相当于一个发号器
+            5、我们大多数情况下broker.id还是习惯在config/server.properties中进行配置
 
 
+bootstrap.servers：
+    代表连接到kafka集群的broker地址列表
 
+metadata.broker.list：
+    用来获取元数据的broker列表，元数据就是例如所有broker的topic分区主从信息、控制器信息等待
 
-
-
-
-
-
-
+zookeeper.connect：
+    zookeeper的连接地址
 
 
 
