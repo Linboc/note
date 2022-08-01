@@ -609,6 +609,73 @@ zookeeper.connect：
     zookeeper的连接地址
 
 
+消费者协调器和组协调器：
+
+    旧版本的zookeeper通过大量的zookeeperwatcher来监听kafka集群的状态，比如再均衡时就各自进行分区抢占，消费者
+之间并不知道彼此操作的结果，这会导致两个问题：
+        1、羊群效应，羊群效应是指zookeeper中一个被监听的节点变化，导致大量的Watcher通知要发送到客户端，导致通知
+    期间zookeeper其它操作会有延迟，科有可能发生类似死锁的情况
+        2、脑裂问题，zookeeper集群之间相互无法通信，可能导致各个消费者获取的状态不一致。但是zookeeper不是不会有
+    脑裂问题吗？总是从leader节点获取不就好了
+        属性变更只要能保证同步到大多数节点就行了，那如果刚好从少数节点里读取呢，少数节点如果无法连接到leader，是不
+    是直接不提供服务了？
+
+
+    新版本的消费者客户端对此进行了重新设计，将全部消费组分成多个子集，每个消费组的子集都在服务端对应着一个
+GroupCoordinator对其进行管理，GroupCoordinator是kafka服务端用户管理消费组的组件。同时消费者客户端也有一个
+ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它们之间最重要的就是负责消费者的再均衡操作，
+包括分区分配也是在再均衡期间完成的，一般而言触发再均衡的场景有如下几种：
+        1、有新的消费者加入消费组
+        2、有消费者下线，并不一定是真的下线，例如遇到长时间GC、网络延迟导致长时间未向GroupCoordinator发送心跳，
+    服务端就会认为该消费者已下线
+        3、有消费者主动退出消费组，例如发送LeaveGroupRequest，或者调用了unsubscrible方法取消订阅某些主题
+        4、消费组所对应的GroypCoordinator节点发生变更
+        5、消费组订阅的任一主题或主题的分区数量发生变更
+
+    消费者、消费组、组协调器的工作阶段：
+        第一阶段(find_coordinator)：
+            消费者需要确定它所属的消费组对应的GroupCoordinator所在的broker，并与该broker创建相互通信的网络连接，
+        如果消费者已经保存了GroupCoordinator节点的信息，并且连接能正常通信，那么就可以进入第二阶段，否则就需要向
+        集群中的负载最小节点发送FindCoordinatorRequest请求来找到对应的GroupCoordinator，这个请求会将groupId传
+        过去，如果找到了就返回对应的node_id、host、port等信息。
+            关于负责消费者再均衡的broker，是取决于消费者组落在__consumer_offsets主题的哪个分区上，通过取模计算：
+        groupId.hashcode % topicPartitionCount，然后取那个分区的leader作为再均衡的broker，这个broker还负责消费者
+        位移
+
+        第二阶段(join_group)：
+            成功找到消费组对应的GroupCoordinator后就进入加入消费组的阶段，此阶段的消费者会向GroupCoordinator发送
+        JoinGroupRequest请求，并处理响应
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
