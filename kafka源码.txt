@@ -645,11 +645,34 @@ ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它
         第二阶段(join_group)：
             成功找到消费组对应的GroupCoordinator后就进入加入消费组的阶段，此阶段的消费者会向GroupCoordinator发送
         JoinGroupRequest请求，并处理响应
+            JoinGroupRequest结构：
+                group_id：消费组id
+                session_timeout：对应消费端的session.timeout.ms，如果GroupCoordinator超过指定时间没收到心跳则认为此
+              消费组已下线
+                rebalance_timeout：对应消费端参数max.poll.interval.ms，表示消费组再均衡时，GroupCoordinator等待消费者
+              重新加入的最常等待时间
+                member_id：表示GroupCoordinator分配给消费者的id标识，消费者第一次发送JoinGroupRequest时为null
+                protocol_type：表示消费组实现的协议，对消费者而言自字段为：consumer
+                group_protocols：分区分配策略数组，取决于消费端参数的partition.assignment.strategy，如果配置了多种策略
+              ，这个属性就包含多个值，每个元素内容如下：
+                  protocol_name：对应PartitionAssignor接口的name()方法，既协议名称
+                  protocol_metadata：分为version、topics、user_data三个字段，其中version固定为0，topics对应
+                PartitionAssignor接口的subscription()方法返回值类型的Subscription中的topics，user_data对应Subscription
+                中的userData，可为空
 
+            如果原有的消费者重新加入消费组，那么发送JoinGroupRequest之前还要做一些准备工作：
+              1、如果开启自动提交偏移量，那么请求之前要先提交消费位移，这个过程是阻塞执行的
+              2、如果消费者有添加再均衡监听器ConsumerRebalanceListener，那么会调用onPartitionsRevoked()方法中的自定
+            义逻辑，可以清除一些状态，或者提交消费位移等
+              3、由于重新加入消费组，那么之前与GroupCoordinator的心跳也不需要了，因此要禁止心跳检测
 
+            服务端收到JoinGroupRequest后，会生成一个memberId，这个id其实就是client.id + "-" + UUID
 
+            GroupCoordinator还要为消费组选举出一个leader，如果消费者没有leader，那么第一个加入消费组的消费者就是消
+        费组的leader，如果leader消费者退出了消费组，就会重新选举一个leader，选举就是将所有消费者的放入Map中，key
+        是memberId，value是消费者信息，然后拿map.keys()的第一个元素，也就是拿map里的第一个消费者很随机也很随意
 
-
+            
 
 
 
