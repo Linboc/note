@@ -670,13 +670,24 @@ ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它
 
             GroupCoordinator还要为消费组选举出一个leader，如果消费者没有leader，那么第一个加入消费组的消费者就是消
         费组的leader，如果leader消费者退出了消费组，就会重新选举一个leader，选举就是将所有消费者的放入Map中，key
-        是memberId，value是消费者信息，然后拿map.keys()的第一个元素，也就是拿map里的第一个消费者很随机也很随意
+        是memberId，value是消费者信息，然后拿map.keys()的第一个元素，也就是拿map里的第一个消费者，很随机也很随意。
+        leader的职责是在那到所有消费者的信息后，执行具体的分区分配逻辑
 
+            分配策略的选举，每个消费者都可以设置自己的分区分配策略，每个消费组都要选举出一个令彼此都信服的策略来进行整
+        体上的分区分配。这个分区分配的选举并非由leader消费者决定，而是根据各个消费者发送过来的分配策略来决定，具体选举
+        过程如下：
+                1、收集各个消费者支持的所有分配策略，组成候选集candidates
+                2、每个消费者从候选集candidates中找出第一个自身支持的策略，为这个策略投一票
+                3、计算候选集中各个策略的选票数，选票最多的策略为当前消费组的分配策略
+            如果选出的分配策略消费者不支持，就会抛出IllegalArgumentException：Member does not support protocol，消费者
+        支持哪个策略，取决于partition.assignment.strategy参数的配置，在这里配置了就算支持，否则就不支持。分配策略选好
+        后，服务端就将JoinGroupResponse响应给各个消费者
+            JoinGroupResponse响应给普通消费者的信息，除了基础信息外，就只有leader消费者的member_id、最终选择的策略、
+        消费组的年代等信息，只有给leader消费者响应的信息才包含各个消费者的订阅信息，好让leader可以进行分区分配。这意味
+        着服务端不参与具体的分区分配，这样即使分区分配策略发生变更，也不需要重启服务端，只要重启客户端即可
+
+        第三阶段(sync_group)：
             
-
-
-
-
 
 
 
