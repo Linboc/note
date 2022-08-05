@@ -659,6 +659,8 @@ ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它
                   protocol_metadata：分为version、topics、user_data三个字段，其中version固定为0，topics对应
                 PartitionAssignor接口的subscription()方法返回值类型的Subscription中的topics，user_data对应Subscription
                 中的userData，可为空
+        JoinGroupResonpse：
+            generation_id：标识当前消费组的年代信息
 
             如果原有的消费者重新加入消费组，那么发送JoinGroupRequest之前还要做一些准备工作：
               1、如果开启自动提交偏移量，那么请求之前要先提交消费位移，这个过程是阻塞执行的
