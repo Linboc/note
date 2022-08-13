@@ -689,10 +689,21 @@ ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它
         着服务端不参与具体的分区分配，这样即使分区分配策略发生变更，也不需要重启服务端，只要重启客户端即可
 
         第三阶段(sync_group)：
+            leader消费者将第二阶段选举出来的分区分配策略来进行具体的分区分配，然后将分配的结果同步给GroupCoordinator，
+        GroupCoordinator再将分配到的分区同步给每个消费者，这个阶段的请求是SyncGroupRequest
+
+            这个阶段的具体过程如下：
+                1、消费者发送SyncGroupRequest请求，普通消费者发送的请求里主要属性是member_id和group_id，而leader消费
+            者额外还有一个group_assignment数组，里面包含了每个消费者能够消费哪个topic的哪些分区
+                2、GroupCoordinator收到leader消费者的分配方案后，会给每个SyncGroupRequest请求发送SyncGroupResponse
+            响应，主要是根据group_id与member_id来区分这个请求是哪个消费者，然后从分配方案取出这个消费者对应的分配分区
+            并返回
+                3、消费者收到自己的分配方案后，会调用PartitionAssignor中的onAssignment()方法，然后调用
+            ConsumerRebalanceListener中的onPartitionAssigned()方法，之后开启心跳任务，消费者定期向GroupCoordinator发
+            送HeartbeatRequest请求来维持心跳。但是源码里是先开启心跳线程之后才开始Join Group
+
+        第三阶段(heartbeat)：
             
-
-
-
 
 
 
