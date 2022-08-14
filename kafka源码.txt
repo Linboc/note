@@ -702,29 +702,72 @@ ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它
             ConsumerRebalanceListener中的onPartitionAssigned()方法，之后开启心跳任务，消费者定期向GroupCoordinator发
             送HeartbeatRequest请求来维持心跳。但是源码里是先开启心跳线程之后才开始Join Group
 
-        第三阶段(heartbeat)：
-            
+        第四阶段(heartbeat)：
+            进入这个阶段之后，消费组中的所有消费者就会处于正常工作状态，但是在正式消费之前，消费者还需要确定拉取消息的
+        起始位置，如果之前已经将最后的消费位移提交到了GroupCoordinator,且GroupCoordinator也将其保存到__consumer_offsets
+        主题中，消费者就可以通过OffsetFetchRequest请求获取上次提交的位移并从此位移开始消费
+            消费者通过向GroupCoordinator发送心跳来维持它们与消费组的从属关系以及对分区的所有权。心跳线程是一个独立的线
+        程，如果消费者停止发送心跳的时间足够长，则整个会话就被判定为过期，GroupCoordinator就会触发一次再均衡。消费者的
+        心跳间隔时间由参数heartbeat.interval.ms指定，默认值为3000，这个参数必须必session.timeout.ms小，一般不会超过1/3
+            还有一个max.poll.interval.ms参数用来指定消费者poll()方法两次调用之间的最大延迟，如果超过该参数指定的时间消
+        费者还没调用poll()，也会触发消费组的再均衡
+            除了以上两种维持心跳的被动退出外，还可以使用LeaveGroupRequest请求来主动退出消费组，比如客户端的unsubscrible
+        ()方法可以取消对某些主题的订阅
+
+
+__consumer_offsets：
+
+    一般情况下，当集群第一次有消费者消费消息时，会自动创建__consumer_offsets主题，，它的副本因子受
+offsets.topic.replication.factor参数的约束，这个参数默认值为3，而分区数可通过offsets.topic.num.partitions参数设置，默认
+为50，客户端提交消费位移使用OffsetCommitRequest请求来实现，该请求的大概内容有：
+
+    消费组id、消费者请求纪元id、消费位移保留时长(retention_time)、消费者id、topic数组、每个topic包含一个分区数组，每个
+分区包含具体的分区号、偏移量、元数据
+
+    其中retention_time保持为-1，代表按照broker端的offsets.retention.minutes来决定，这个配置默认为7天，超过这个时间后，
+就会通过墓碑消息或者日志压缩策略进行删除。这个时间在2.0.0版本之前为1天，如果用户自己保存了偏移量，过了这个有效期导致分
+区被清除，就只能根据auto.offset.reset(最新的或当前日志里最早的)参数来重新决定开始消费的位置
+    
+    元数据则是在通过Map<TopicPartition, OffsetAndMetadata> offsets提交时，OffsetAndMetadata对象里的metadata属性，如果
+不指定则为空字符串，且metadata的大小不能超过broker端的offset.metadata.max.bytes配置，默认为4096
+
+    __consumer_offsets主题的内容如下：
+      key：
+        version：版本号，当前为1，int16类型
+        group：消费组名称，string类型，(为了保持与GroupCoordinator在同一broker，计算消费组分区时仅用group进行计算)
+        topic：主题名称，string类型
+        partition：分区号，int32类型
+      value：
+        version：版本号，当前为1，int16类型
+        offset：偏移量，int64类型
+        metadata：用户提交的元数据，string类型
+        commit_timestamp：偏移量提交的时间戳
+        expire_timestamp：偏移量过期的时间戳，相当于commit_timestamp + retention_time
+
+    消费位移过期后，会有一个delete-expired-group-metdata的定时任务来负责清理，这个定时任务的执行周期由参数
+offsets.retention.check.interval.ms控制，默认为60000，当主题被删除后，对应的消费位移信息也会被一并删除
 
 
 
+消息传输保障：
+
+    一般而言消息中间件的传输保障有3个级别：
+        1、at most once：最多一次，消息只会发送一次；可能会丢失，但绝不会重复
+        2、at least once：最少一次，消息会发送多次；直到发送成功，消息绝不丢失，但可能会重复
+        3、exactly once：恰好一次，每条消息肯定会被传输一次，且仅传输一次
+
+    生产者的消息传输保障：
+        kafka的消息保障机制依赖于多副本机制，由于kafka无法确定网络故障期间发生了什么，所以生产者通过多次重试来确保消息
+    成功写入kafka，这个重试可能会导致消息重复写入，因此这里kafka提供的消息保障为at least once
+
+    消费者的消息传输保障：
+        对消费者而言，如果先提交偏移量再处理业务，如果出现业务处理失败的情况则会造成消息丢失,因此这种做法是at most once
+    ；如果先处理业务再提交偏移量，如果出现偏移量提交失败，则会造成消息重复消费，因此这种做法是atleast once
+
+    kafka从0.11.0.0版本引入了幂等和事务，以此来实现exactly once semantics(精确一次处理语义)
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    幂等：
 
 
 
