@@ -636,8 +636,9 @@ ConsumerCoordinator组件负责与服务端的GroupCoordinator进行交互，它
         第一阶段(find_coordinator)：
             消费者需要确定它所属的消费组对应的GroupCoordinator所在的broker，并与该broker创建相互通信的网络连接，
         如果消费者已经保存了GroupCoordinator节点的信息，并且连接能正常通信，那么就可以进入第二阶段，否则就需要向
-        集群中的负载最小节点发送FindCoordinatorRequest请求来找到对应的GroupCoordinator，这个请求会将groupId传
-        过去，如果找到了就返回对应的node_id、host、port等信息。
+        集群中的负载最小节点发送FindCoordinatorRequest请求来找到对应的GroupCoordinator，这个请求会将groupId、
+        coordinator_type、coordinator_key(transactionalId)传过去，如果找到了就返回对应的node_id、host、port等信
+        息，coordinator_type是用来标识协调器类型的，0代表GroupCoordinator，1代表TransactionCoordinator。
             关于负责消费者再均衡的broker，是取决于消费者组落在__consumer_offsets主题的哪个分区上，通过取模计算：
         groupId.hashcode % topicPartitionCount，然后取那个分区的leader作为再均衡的broker，这个broker还负责消费者
         位移
@@ -839,6 +840,72 @@ offsets.retention.check.interval.ms控制，默认为60000，当主题被删除�
         控制消息有两种类型：COMMIT和ABORT，分别表示事务的提交和中止。Kafka通过这个控制消息来判断对应的事务是
     被提交还是被中止。再结合参数isolation.level配置的隔离级别来决定是否将相应的消息返回给消费者客户端
         需要注意的是，控制消息对消费者客户端是不可见的
+
+
+    事务协调器(TransactionCoordinator)：
+        kafka引入了事务协调器来处理事务，这一点可以类比一下消费组协调器(GroupCoordinator)。每一个生产者都会被指派一个
+    特定的TransacationCoordinator，所有的事务逻辑，例如分配PID、事务开始、提交、中止等操作都是由TransactionCoordinator
+    来负责的。
+        TransactionCoordinator会将事务状态持久化到内部主题__transaction_state中
+
+    事务执行流程：
+
+        1、查找TransactionCoordinator：
+            查找对应TransactionCoordinator所在的broker节点。与找GroupCoordinator节点一样，也是通过
+        FindCoordinatorRequest请求来进行的，与之不同的是coordinator_type属性为1。
+            kafka收到FindCoordinatorRequest请求后,会根据coordinator_key(transactionalId)查找对应的
+        TransactionCoordinator节点。如果找到会返回对应的node_id、host、port等信息。查找方式是根据transactionalId的哈希
+        值计算主题
+            __transaction_state中的分区号，该主题的分区数与__consumer_offsets一样，默认也是50，可通过
+        transaction.state.log.num.partitions来配置。找到分区号后，再找到此分区leader所在的broker节点，该broker就是这个
+        transactionalId对应的
+            这一步骤基本与查找GroupCoordinator的逻辑如出一辙
+
+        2、获取PID
+            但凡开启幂等性，都需要TransactionCoordinator分配一个PID。生产者获取PID是通过InitProducerIdRequest请求来实现
+        的，这个请求的请求体部分仅有两个参数：transactional_id与transaction_timeout_ms，既事务id与事务超时时间，其中事
+        务超时时间由transacation.timeout.ms配置，默认值为60000
+            如果生产者未开启事务而只开启幂等性，那么InitProducerRequest请求可以发送给任意的broker。当
+        TransactionCoordinator第一次收到包含该transactionalId的InitProducerIdRequest时，它会把transactionalId和对应的
+        PID以消息的形式保存到__transaction_state主题中，这类消息也称为事务日志消息。这样可以保证transaction_id与PID的关
+        系被持久化，从而保证即使TransactionCoordinator宕机该关联关系也不会丢失.InitProducerRequest还会将producer_epoch
+        加1，并对之前生产者未完成的事务进行Commit或Abort
+            __transaction_state的消息格式如下：
+                key：
+                    version：版本号，int16
+                    transactional_id：事务id，string
+                value：
+                    version：版本号，int16
+                    producer_id：生产者id，int64
+                    producer_epoch：生产者纪元，表示生产者id是第几次被获取，int16
+                    transaction_timeout：事务超时时间，int16
+                    transaction_status：事务状态，有Empty(0)、Ongoing(1)、PrepareCommit(2)、PrepareAbort(3)、
+                CompleteCommit(4)、CompleteAbort(5)、Dead(6)
+                    transaction_partitions：事务关联的分区集合，nullable_array
+                      topic：主题名称
+                      partitions_ids：分区号的数组，array[int32]
+                    transaction_entry_timestamp：事务(初始化或者结束，书上没讲，也查不到)的时间戳，int64
+                    transaction_start_timestamp：事务开始的时间戳，int64
+            InitResponse响应的响应体主要也就是个producer_id与producer_epoch，producer_epoch的作用是，如果传过去的epoch
+        小于TransactionCoordinator的epoch，就会被拒绝开启新事务
+
+        3、开启事务
+            通过producer的beginTransaction()方法可以开启一个事务，调用该方法后，生产者只会在本地标记已开启一个新的事务
+        ，只有发送开启事务后的第一条消息后，TransactionCoordinator才会任务该事务已开启
+
+        4、consumer-transform-produce：消费-转换-生产
+            
+
+
+
+
+
+
+
+
+
+
+
 
 
 
