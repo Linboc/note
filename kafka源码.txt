@@ -798,7 +798,57 @@ offsets.retention.check.interval.ms控制，默认为60000，当主题被删除�
 
 
     事务：
-        
+        事务可以保证对多个分区写的原子性，要么全部成功，要么全部失败
+
+        事务的开启需要客户端提供一个唯一的transactional.id，同时要求必须开启幂等。当然开启事务时会默认开启幂等，如果
+    客户端手动关闭幂等又开启事务会导致生产者报ConfigException
+
+        transactionalId与PID一一对应，不同的是transactionalId由用户指定，而PID由kafka内部分配，通过initTransactions()
+    方法。为了保证同一个transactionalId只能同时被一个生产者使用，每个生产者通过transactionalId获取PID时，还会获取
+    一个单调递增的producer epoch(看上面的v2结构)，如果两个生产者共用一个transactionalId，那么前面开启的生产者会报
+    ProducerFencedException
+
+    不过出于以下原因，事务并不能保证所有已提交事务中的所有消息都能被消费到：
+        1、采用日志压缩策略的主题，事务中的某些消息可能会被清理
+        2、事务中的消息分布在多个日志分段，而老的分段过期被删除
+        3、消费者通过seek()方法直接跳过事务消息
+        4、消费者没有分配到事务消息的所有分区，从而只能读取到部分事务消息
+
+    KafkaProducer中与事务相关的方法：
+        void initTransactions()：
+            初始化事务，比如分配PID，执行这个方法的前提是配置了transactionalId，否则就会报错
+        void beginTransaction()
+            开启事务
+        void sendOffsetsToTransaction(Map<TopicPartition, OffsetAndMetadata> offsets, String consumerGroupId)
+            为消费者提供在事务内的位移操作，这个方法适合消费-转换-生产模式。它会将偏移量列表发送给指定的消费组协调器
+        ，并将这些偏移量视为当前事务的一部分，仅有事务提交成功，该偏移量才会被视为生效，该偏移量应该是最后一个偏移
+        量+1。它适用于将消费和生产的消息一起批量处理的场景，也就是必须消费后且生产成功才会提交偏移量的场景
+        void commitTransaction()
+            提交事务
+        void abortTransaction()
+            终止事务，可以理解为回滚
+
+        在消费端有一个isolation.level，可以指定事务的隔离级别，它的默认值是read_uncommited，意思是消费者可以消费到
+    未提交的事务，当然已提交的事务也是可见的。这个参数还可以设置为read_committed，表示消费端应用不可以看到尚未
+    提交的事务。
+        如果隔离级别设置为read_committed，那么未提交的消息会在kafka内部缓存，直到生产者执行了commitTransaction()
+    方法后才会将这些缓存的消息推送给消费者
+
+    控制消息(ControlBatch)：
+        日志文件中除了普通的消息，还有一种专门用来标志一个事务结束的消息，它就是控制消息。
+        控制消息有两种类型：COMMIT和ABORT，分别表示事务的提交和中止。Kafka通过这个控制消息来判断对应的事务是
+    被提交还是被中止。再结合参数isolation.level配置的隔离级别来决定是否将相应的消息返回给消费者客户端
+        需要注意的是，控制消息对消费者客户端是不可见的
+
+
+
+
+
+
+
+
+
+
 
 
 
