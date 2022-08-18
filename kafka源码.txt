@@ -894,9 +894,19 @@ offsets.retention.check.interval.ms控制，默认为60000，当主题被删除�
         ，只有发送开启事务后的第一条消息后，TransactionCoordinator才会任务该事务已开启
 
         4、consumer-transform-produce：消费-转换-生产
-            
-
-
+            1、发送AddPartitionsToTxnRequest请求，当生产者给一个新的分区发送数据前，它会先向TransactionCoordinator
+        发送一个AddPartitionsToTxnRequest请求，这个请求会让TransactionCoordinator将transactionId与TopicPartition的
+        对应关系存储在__transaction_state主题中。如果该分区是对应事务中的第一个分区，那么TransactionCoordinator还会
+        启动对该事务的计时
+            2、发送ProduceRequest请求，生产者正常地给broker发送消息，这一点基本与普通消息相同，不同的是
+        ProducerBatch里会包含PID、producer_epoch、sequence number等事务与幂等相关的信息
+            3、调用producer.sendOffsetsToTransaction()方法，这个方法会发送AddOffsetsToTxnRequest请求，这个请求会被
+        TransactionCoordinator通过groupId来推导出在__consumer_offsets中的分区，然后将这个分区的信息保存在
+        __transaction_state中
+            3.1、producer.sendOffsetsToTransaction()方法还会发送TxnOffsetCommitRequest请求，在发送完上一个请求后
+        生产者会将TxnOffsetCommitRequest请求发送给GroupCoordinator，从而将本次事务的消费位移存储到
+        __consumer_offsets中
+            4、调用producer的commitTransaction()或abortTransaction()来结束当前的事务，
 
 
 
