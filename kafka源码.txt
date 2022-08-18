@@ -123,10 +123,23 @@
 
 
 
-
+AR(Assigned Replicas)：
+    分区中所有的副本统称为AR
 
 ISR(In-Sync Replicas)：
     同步副本
+
+OSR(Out Of Sync Replicas)：
+    非同步副本
+
+LEO(Log End Offset)：
+    标识每个分区中最后一条消息的下一个位置，每个副本都有自己的LEO
+
+HW(Hign Watermark)：
+    ISR中最小的LEO即为HW，俗称高水位，消费者只能拉到HW之前的消息
+
+LW(Low Watermark)：
+    低水位，代表AR集合中最小的logStartOffset
 
 优先副本：
     指进行leader选举时，该副本会优先被选举为leader
@@ -906,7 +919,96 @@ offsets.retention.check.interval.ms控制，默认为60000，当主题被删除�
             3.1、producer.sendOffsetsToTransaction()方法还会发送TxnOffsetCommitRequest请求，在发送完上一个请求后
         生产者会将TxnOffsetCommitRequest请求发送给GroupCoordinator，从而将本次事务的消费位移存储到
         __consumer_offsets中
-            4、调用producer的commitTransaction()或abortTransaction()来结束当前的事务，
+            4、调用producer的commitTransaction()或abortTransaction()来结束当前的事务。首先发送EndTxnRequest请求，
+        它内部会有一个tansaction_result参数，0为ABORT，1为CIMMIT。
+            TransactionCoordinator收到EndTxnRequest请求后，会将prepare_commit或prepare_abort消息写入
+        __transaction_state，然后通过WriteTxnMarkersRequest请求将commit或abort写入用户所使用的普通主题和
+        __consumer_offsets，再然后将complete_commit或complate_abort写入__transaction_state主题
+            其中WriteTxnMarkersRequest请求是由TransactionCoordinator发向事务中各个分区的leader节点的，节点收到这个
+        请求后，会在相应的分区中写入控制消息，用来标识事务的终结。RecordBatch中的attributes字段的第五位用来表示是否处
+        于事务中，第六位用来表示是否控制消息。控制消息中的key里除了版本号就只有一个type，0表示中断，1表示提交；value
+        里除了版本号就只有一个coordinator_epoch，用来表示TransactionCoordinator的纪元，每个事务管理器切换都会更新其值
+            只要最终的complete_commit或complete_abort写入了主题__transaction_state，就表明当前事务已经结束了，此时可以
+        删除__transaction_state事务中的所有消息。由于__transaction_stte的日志清除策略为压缩，所以这里的删除只要将消息
+        设置为墓碑消息即可
+        
+        如果事务的隔离级别被设置为read_committed，那么在执行commit之前，kafka内部都会缓存这些消息，等到生产者
+    commit后才将这些消息一次性推送给消费端应用。如果执行的是abort，则会将这些消息丢弃
+
+
+
+kafka的可靠性探究：
+
+    副本：
+        副本是分布式系统中场景的概念之一，指的是分布式系统对数据和服务提供的一种冗余方式。副本有两类：数据副本与服务
+    副本。数据副本是指在不同的节点上持久化同一份数据，当某一个节点上的数据丢失时，可以从副本上读取该数据。服务副本是
+    指多个节点提供相同的服务，每个节点都能接收外部的请求并进行相应的处理
+
+    多副本的消息发送流程：    
+        从生产者发出一条消息，首先会被写入分区的leader副本，不过还要等所有ISR都同步完成后才能被认为已提交，之后才会更
+    新分区的HW，进而消费者可以消费到这条消息。具体ISR、HW的含义看上面
+
+    失效副本：
+        正常情况下，分区的所有副本都处于ISR集合中，但是难免会有异常情况，导致某些副本被剥离出ISR集合。在ISR集合之外，
+    处于同步失效或功能失效(比如副本挂了)的副本统称为失效副本，失效副本对应的分区也就被称为同步失效分区，既
+    under-replicated分区
+        是否同步失效副本可以通过broker端参数replica.lag.time.max.ms来判断，当ISR集合中的一个follwer副本滞后leader副本
+    的时间超过此时间则判定为同步失败，需要将此follower副本剔除出ISR集合，该值默认为10000
+
+
+
+ISR的伸缩：
+
+    ISR的缩减：
+        kafka在启动时会开启两个与ISR相关的定时任务：
+            isr-expiration：
+                isr-expiration任务会周期性地检测每个分区是否需要缩减其ISR集合，这个周期和replica.lag.time.max.ms参数
+            有关，周期大小是它的一半，默认值为5000
+                如果某个分区的ISR集合发生变更，则会将变更后的数据记录到ZooKeeper的/brokers/topics/<topic>/patition/
+            <partition>/state节点中,节点的数据如下：
+                {"controller_epoch":26,"leader":0,"version":1,"leader_epoch":2,"isr":[0,1]}
+                controller_epoch：当前控制器的epoch
+                leader：当前分区的leader副本所在broker的id编号
+                version：版本号，当前固定为1
+                leader_epoch：当前分区的leader纪元
+                isr：变更后的ISR列表
+            ISR集合变更时还会将变更后的记录缓存到isrChangeSet中
+
+            isr-change-propagation：
+                isr-change-propagation任务会周期性(固定2500ms)地检查isrChangeSet，如果发现isrChangeSet中有ISR集合的变
+            更记录，那么它会在zookeeper的isr_change_notification路径下创建一个isr_change_开头的持久顺序节点，例如：
+            /isr_change_notification/isr_change_0000000000，并将isrChangeSet中的信息保存到这个节点中。
+                kafka控制器在/isr_change_notification添加了一个Watcher，当这个节点中有子节点发生变化就会触发Watcher
+            ，以通知控制器更新相关元数据，并向它管理的broker节点发送更新元数据的请求，最后删除/isr_change_notification
+            下已处理过的节点。
+                由于频繁触发Watcher会影响kafka控制器、zookeeper、还有其他被通知的节点的性能。为了避免这种情况，kafka
+            对/isr_change_notification路径下节点的变更还添加了两个条件：上次ISR变化已经超过5S、上次写入zookeeper距离
+            线程已经超过60S。只有满足以上条件之一才可以将ISR集合的变化写入目标节点
+
+
+    ISR的扩充：
+        随着follower副本不断与leader副本进行消息同步，follower副本的LEO也会逐渐后移，并最终追赶上leader副本，此时该
+    follower副本就有资格进入ISR集合。追赶上leader副本的判定标准是此副本的LEO是否不小于leader副本的HW，注意这里并不是
+    与leader副本的LEO相比，而是HW。
+        ISR扩充后同样会更新ZooKeeper中的/brokers/topics/<topic>/partition/<partition>/state节点和isrChangeSet集合，
+    之后的步骤与ISR缩减时一样。检测follower副本是否有资格加入ISR的线程难道也是isr-expiration吗？
+
+        当ISR集合发生扩充与缩减，或者ISR集合中任一副本的LEO发生变化时，都可能会影响整个分区的HW。发生扩充时代表有新的
+    follower追上了leader，那么它一般都是ISR里LEO最小的，因此它的增长一般就代表HW的增长。如果发生缩减时，把某个ISR集合
+    中的节点删除，那么由于leader的HW是ISR里LEO最小的，如果把ISR里最小的LEO剔除，那么剩下的可能都是较高的，因此也可能会
+    影响到HW
+
+
+
+本地副本(local replica)与远程副本(remote replica)：
+    本地副本是指对应的log分配在当前的broker节点上，远程副本是指对应的log分配在其它broker节点上。
+
+    在kafka中，同一个分区的信息会存在多个broker节点上，并被其上的副本管理器所管理，这样每个broker节点就有了多个副本，
+但只有本地副本才有对应的日志。
+
+
+
+
 
 
 
