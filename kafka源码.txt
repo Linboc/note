@@ -1006,19 +1006,40 @@ ISR的伸缩：
     在kafka中，同一个分区的信息会存在多个broker节点上，并被其上的副本管理器所管理，这样每个broker节点就有了多个副本，
 但只有本地副本才有对应的日志。
 
+    LEO与HW的变化：
+        随着生产者一直往leader副本写入消息，因此leader副本的LEO会一直增加，并在某一时刻增加至5，此时所有副本的HW
+    都还为0。
+        随后follower副本向leader副本拉取消息在拉取时会附带自身的LEO信息，这个信息放在FetchRequest中的fetch_offset
+    属性中，还有自身的HW信息，放在high_watermark。leader副本返回的FetchResponse会带有自身的HW信息，对应
+    FetchResponse中的high_watermark
+        此时follower副本拉到了消息，并更新各自的LEO与HW，LEO就是拉取消息中的最大偏移量，HW是当前LEO和leader
+    副本传过来的HW取较小值，此时LEO为3，HW为0(因为leader的HW还是0)
+        follower继续发送FetchRequest请求，leader收到请求后，选取follower中最小的LEO作为新的HW，假设为3，然后返
+    回leader的LEO与HW，follower收到响应后会先更新LEO，假设为7，随后在leader的HW与自己的LEO取较小值，也就是3
+    
+    变化总结：
+        在一个分区中，leader副本会记录所有副本的LEO，而follower自会记录自身的LEO。对于HW而言，各个节点都只记录
+    它自身的HW。
+        leader的HW是在收到FetchRequest之后更新的，follower的HW是在收到FetchResposne之后更新的，它们各自的LEO
+    都是在收消息的时候更新的
 
+    kafka根目录下的一系列checkpoint文件：
+        recovery-point-offset-checkpoint(恢复点文件)：
+            存放所有分区的LEO，kafka会有一个定时任务负责将所有分区的LEO刷写到恢复点文件中，刷新周期由broker端参数
+        log.flush.offset.checkpoint.interval.ms来配置，默认为60000
 
+        replication-offset_checkpoint(复制点文件)：
+            存放所有分区的HW，kafka会有一个定时任务负责将所有分区的HW刷写到复制点文件中，刷新周期由broker端参数
+        replica.high.watermark.checkpoint.interval.ms来配置，默认为5000
 
+        log-start-offset-checkpoint(起始点文件)：
+            存放所有分区的日志起始偏移量，LEO与HW变动的过程中，起始偏移量可能会跟着变动，因为数据拉下来了，可能
+        就要创建新的日志分段，一旦日志总量达到指定大小，旧的日志将被清除，导致起始偏移量跳到下一个最小的日志分段
+        。kafka也有一个定时任务负责将所有分区的logStartOffser写入起始点文件中，这个任务的刷新周期由broker端参数
+        log.flush.start.offset.checkpoint.interval.ms来配置，默认值为60000
 
-
-
-
-
-
-
-
-
-
+        cleaner-offset-checkpoint(清除点文件)：
+            存放所有分区的清理检查点，用来记录每个分区已清理的偏移量，通过检查点文件将log分为两个部分：干净与污浊
 
 
 
