@@ -1023,6 +1023,22 @@ ISR的伸缩：
         leader的HW是在收到FetchRequest之后更新的，follower的HW是在收到FetchResposne之后更新的，它们各自的LEO
     都是在收消息的时候更新的
 
+    Leader Epoch：
+        为了解决broker重启后的数据不一致问题而引入。leader epoch代表leader的纪元信息，每当分区的leader变更一次，
+    leader epoch就会加1，每个副本还会记录当前leader epoch写入的第一条消息的偏移量，记录在每个分区目录下的
+    leader-epoch-checkpoint文件中，每次发生leader epoch变更时都会将epoch对应的偏移量追加到这个文件
+    中。
+        follower副本恢复后会做两件事：截断自身的日志和向leader发送FetchRequest请求，截断依靠的是向leader获取epoch
+    对应的偏移量
+        当节点重启后，先发送OffsetsForLeaderEpochRequest请求给leader，其中包含节点当前的leader epoch值，leader
+    收到请求后会返回当前每个分区的的LEO与leader epoch，如果节点的leader epoch与leader的leader epoch不同，那么
+    leader就会查找leader epoch+1对应的偏移量返回给节点，也就是找到节点挂掉时所在那个leader的结束偏移量。
+    OffsetsForLeaderEpochRequest可以看做用来找follower副本当前的leader epoch对应的LEO
+        假设一种情况A是leader，a写入两个消息，而B是follower，它只同步了一条消息，此时a重启了，B成为了leader，那么
+    A的第二条消息就会导致数据不一致。而引入了leader epoch后，A的epoch是0，B是1，A在发送
+    OffsetsForLeaderEpochRequest请求后B会返回epoch的偏移量是第一条消息的偏移量+1，此时A就会截断日志并删除第
+    二条消息
+
     kafka根目录下的一系列checkpoint文件：
         recovery-point-offset-checkpoint(恢复点文件)：
             存放所有分区的LEO，kafka会有一个定时任务负责将所有分区的LEO刷写到恢复点文件中，刷新周期由broker端参数
@@ -1041,8 +1057,24 @@ ISR的伸缩：
         cleaner-offset-checkpoint(清除点文件)：
             存放所有分区的清理检查点，用来记录每个分区已清理的偏移量，通过检查点文件将log分为两个部分：干净与污浊
 
+命令行工具：
+    kafka.configs.sh：用于配置管理
+    kafka-console-consumer.sh：用于消费消息
+    kafka-console-producer.sh：用于生产消息
+    kafka-consumer-pref-test：用于测试消费性能
+    kafka-topics.sh：用于管理主题
+    kafka-dump-log.sh：用于查看日志内容
+    kafka-server-stop.sh：用于关闭kafka
+    kafka-preferred-replica-election.sh：用于优先副本选举
+    kafka-server-start.sh：用于启动kafka
+    kafka-producer-pref-test.sh：用于测试生产性能
+    kafka-reassign-partitions.sh：用于分区重分配
+    kafka-consumer-groups.sh：查看或变更消费组信息
+    kafka-delete-records.sh：用来删除指定位置前的消息
 
+日志的同步机制：
 
+    
 
 
 
