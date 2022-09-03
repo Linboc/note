@@ -1,153 +1,560 @@
 ﻿
+客户端：
 
-kafka broker代码里配置所在：KafkaConfig，配置默认值所在：Defaults
 
-1、initZkClient()，初始化zookeeper客户端，并尝试创建kafka的基础信息节点：
-    /consumers
-    /brokers/ids
-    /brokers/topics
-    /config/changes
-    /admin/delete_topics
-    /brokers/seqid
-    /isr_change_notification
-    /latest_producer_id_block
-    /log_dir_event_notification
-    /config/topics
-    /config/clients
-    /config/users
-    /config/brokers
+生产者：
 
-    2、getOrGenerateClusterId()，获取或生成集群id，首先在zk的/cluster/id节点里找，如果找不到就生成一个uuid并放进去
-然后返回
+    生产流程：
+        1、生产者调send方法进行消息发送：KafkaProducer.send
+        2、一进来直接走生产者拦截器的onSend方法
+        3、拉取集群的信息，也就是构建一个Cluster对象，这个对象包含了生产者感兴趣的topic对应的分区与节点信息，包括集
+    群控制器是哪个节点、当前集群里有哪些节点、每个节点里有哪些分区、每个topic有哪些分区、每个分区的leader是哪个节
+    点等等，都保存在一大堆Map里面，主要有两种对象：Node：节点信息，PartitionInfo：分区信息，每个对象代表一个分
+    区，包含了leader节点是哪个、副本在哪些节点、同步节点是哪些、非同步节点是哪些等信息
+        4、通过key与value序列化器对key与value进行序列化，将它们转成byte数组
+        5、如果消息未指定分区，则用分区器进行分区，默认是DefaultPartitioner分区器。它通过key进行分区。如果key为null
+    ，则通过一个topic独有的计数器进行自增与可用分区进行取模来分区。如果key不为null，则将key计算哈希，并与总分区数
+    进行取模来分区
+        6、将record.headers()设置为只读，这意味着消息头的内容后续无法被修改
+        7、估算出这条消息的大小，然后判断是否超出单条消息的最大限制或者生产者缓冲区大小
+        8、将消息加入RecordAccumulator累加器
+            8.1：为指定topic分区获取一个ProducerBatch泛型的队列，如果已有则拿旧的，否则创建新的
+            8.2：尝试将消息加入队列的最后一个批次里面，如果它还有空间，也就是原大小(可能是压缩过的)+当前消息的大小小
+        于batch.size。或者批次里连一个消息都没有，那么就不管大小，至少让批次放一个消息
+            8.3：如果该队列里没有批次，则从BufferPool类型的free里分配一段ByteBuffer缓存出来，分配的内存在batch.size与
+        当前消息大小之间取大的值。缓存池里的缓存是可以被复用的，它将在批次发送之后回收(待确定)
+            8.4：创建一个新的ProducerBatch批次，并未它分配缓存内存，然后加入分区队列里，并尝试将消息加入这个批次，
+        由于这是一个全新批次，因此这次总会成功。
+            8.5：加入成功后会将future与用户的callback绑定在Thunk对象并保存在batch的thunks里，这个似乎是为了触发
+        callback时保证消息回调的顺序与生产的顺序相同
+            8.6：所有ProducerBatch的append都是同步代码块下进行，因此不会因为并发导致批次大小溢出
+        9、sender线程，sender线程是在KafkaProducer的构造器里启动的
+        10、sender线程的内容大概为：
+            1、如果处于running状态下，则一直尝试消费RecordAccumulator累加器并发送消息
+            2、如果不处于running状态，且不是强制关闭，且累加器里还有消息，则将累加器里剩余的消息发送完成
+            3、如果是强制关闭，则中断累加器里所有的消息，就是批次不允许再追加、删除队列里所有批次、完成批次的future
+        、回收分配的内存
+            4、关闭客户端
+        11、sendProducerData方法从累加器里获取批次并发送
+            11.1：拿到累加器里所有分区的leader节点，如果没有leader且批次队列里有数据，则将topic加入
+        unknownLeaderTopics，也就是无leader的topic集合
+            11.2：判断队列里的第一个分区是否就绪，例如是否达到批次等待最大时间、批次是否已满、缓存池是否有线程在等待
+        分配、累加器是否已被关闭等待，如果满足这些条件任意一个，且不是重试批次且小于重试间隔，就会将leader加入就绪
+        节点中返回去，此外还有一个下次重试时间，它会取所有批次重试间隔里最短的返回去，用来跟单次请求间隔取最小值来
+        进行nio的select(timeout)操作，而它默认是Integer.max，因此可发送的情况下用的是请求超时的参数
+            11.3：因此上面两步操作返回的值包括：无leader的topic列表、批次可以发送的leader列表、下次select时间
+            11.4：如果未知leader的topic列表不为空，则将对应的topic加入metadata中，并尝试去更新集群的元数据
+            11.5：如果ready的leader节点列表不为空，则判断每个节点是否就绪，例如客户端中节点同时发送的最大请求是否达
+        到上限、客户端的各种组件状态是否正常，例如selector与channel等等，如果客户端判断该节点未就绪则将该节点从就
+        绪集合中移除，并根据节点的重连接时间配置来决定下次select的时间，依然是跟上面的下次select时间取最小值
+            11.6：调用accumulator.drain方法，去拿到可用leader里所有可发送的批次
+            11.7：isMuted方法是用来判断该分区是否有正在发送的消息，如果有说明配置要求保证消息顺序，因此只能等上次消
+        息发送完成后才能发送，而这次跳过这个分区
+            11.8：如果不是重试且未满足重试间隔、且未到达最大请求字节数，就从队列里poll出第一个批次，将这个批次关闭，
+        然后加入批次就绪集合中返回。每次sender线程轮询都只会拿每个批次队列里的第一个批次，哪怕后面也有就绪的也要等
+        下次
+            11.9：如果要保证消息的顺序性，也就是guaranteeMessageOrder为true，也就是
+        max.in.flight.requests.per.connection等于1，就会将分区加入累加器的muted集合中，在muted集合中已有的分区就不
+        会发送消息，只能等上次发送完后从muted中清除对应的分区才能发下次
+            11.10：查找累加器中的过期批次，比如批次创建时间大于请求最大等待时间，就会将批次删除，传入超时异常回调批
+        次里的future、回收缓存、记录指标等等，通过这种方式进行的超时是不会重试的，因为它直接进行回调了
+            11.11：更新生产者请求的各项指标
+            11.12：如果有就绪的leader节点，就将下次select的时间设置为0
+            11.13：调用sendProduceRequests正式发送批次消息
+            11.14：遍历batches发送消息，这是个map，key为nodeId，value为批次队列，因此每次只给一个发送节点
+            11.15：包装成一个RequestCompletionHandler callback对象，这个对象里有一个外部构建的map，key是TopicPartition
+        ，value是此次该分区发送的批次，每次每个分区只会发送一个批次，回调里也包含了TopicPartition，因此可以根据响应
+        从map里拿到批次，然后进行回调
+            11.16：创建一个clientRequest对象，这个client是跟节点绑定的业务request，然后KafkaClient.send，这个client是
+        共用的client
+            11.17：将请求构建成一个InFlightRequest inFlightRequest对象，然后保存到inFlightRequests中，这里记录的是当
+        前所有正在发送的请求
+            11.18：以上只是将request注册到selectKey里，它们通过一个KafkaChannel对象来关联
+            11.19：client.poll，进行select
+            11.20：client.poll后，里面有个metadataUpdater.mybeUpdate，这是发送更新元数据请求的，还有个selector.poll
+        ，这是处理就绪的SelectionKey
+            11.20：select到key之后，就会调用pollSelectionKeys方法处理key，这个方法里面有个attemptRead(key)操作，这是
+        用来将读到的数据转成NetworkReceive的，NetworkReceive就是响应数据的包装，然后保存到stagedReceives里
+            11.21：selector.poll的最下一行会调用addToCompletedReceives，将所有receive都加入completedReceives里
+            11.22：然后再client.poll里，调用handleCompletedReceives方法，将receive用AbstractResponse.parseResponse
+        转成AbstractResponse对象，这个对象会根据api的key转成不同的响应类型，如果这些响应是元数据或者api版本响应，
+        则去更新元数据与api版本的信息，否则就都转成ClientResponse类型加入List<ClientResponse> responses对象中
+            11.23：在client.poll里，调用completeResponses方法去处理所有的responses，也就是调用它们的callback
+            11.24：在handleCompletedReceives中，response和callback的关联保存在inFlightRequests集合里，这个集合保存
+        了所有正在请求的对象，每个响应 都从对应的节点请求集合里拿一个最早发起的请求对象，那么怎么保证最早发起的请求
+        一定是最早响应的。因为对于相同的node，每个KafkaProducer只会创建一个连接，因此响应都是顺序返回的。
+            
 
-    3、getBrokerMetadataAndOfflineDirs()，从log.dirs目录中加载元数据，由于用户可以设置多个日志目录，还会校验这些
-目录中meta.properties里的brokerId与clusterId是否全部一致，如果出现不一致则抛出InconsistentBrokerMetadataException
+    kafka缓存池的消息存储：
+        每个批次都会分配一段内存，批次的发送结束后回收内存，内存指的是一个ByteByffer对象，消息写入批次时，会按照
+    key、value、headers的顺序写入，先写入key的长度，再写key的内容，value也一样，headers则先写入header的数量，
+    然后再写每个header的长度与内容
 
-    4、校验meta.properties里的clusterId是否与zk里/cluster/id的一致，如果不一致抛出InconsistentClusterIdException
+    metadata的更新：
+        在client.poll里，有个metadataUpdater.maybeUpdate(now)方法，里面会调用maybeUpdate，里面会构建一个
+    metadataRequest请求，然后注册到select上，这里会选择一个调用最少的节点进行元数据拉取
 
-    5、getOrGenerateBrokerId()，会校验配置里的brokerId与meta.properties里的brokerId是否一致，不一致则抛出
-InconsistentBrokerIdException，然后如果两个配置的brokerId都没配置(小于0)，则通过zk的/brokers/seqid节点生成一个
-brokerId，brokerId = /brokers/sqeid的版本号 + reserved.broker.max.id
+    ApiVersions：
+        这里的Api指的是操作的类型，比如生产消息、心跳、元数据拉取等待，都在ApiKeys里，由于Kafka有多个不同的版本，
+    因此通过从节点拉取api版本列表的确定broker支持哪些api的哪个版本
 
-    6、从zk中更新配置，会读两个配置，分别是/config/broker/<default>与/config/broker/0，对应着默认配置与当前
-brokerId的配置，zk中的配置会有更高的优先级，并且用户可以通过kafka-configs.sh脚本向zk的/config/changes节点中写入
-数据，然后触发配置变更，以此实现动态配置
+    错误重试：
+        重试是在处理响应的callback时处理的，会将批次进行重新发送，直接加入累加器的队列中，且会加在头部。可以在
+    sender的sendProduceRequest方法中看到，里面会创建一个RequestCompletionHandler callback用来构建客户端，这里
+    面就包含了重试逻辑，比如重试次数判断，是否是重试异常等等
 
-    7、创建KafkaScheduler，内部就是一个java的任务调度器，线程数是background.threads，默认为10
+    好像过期的批次，进行回调后依然会进行发送？
 
-    8、创建quotaManagers，配额管理器
+        kafka发送消息时，NetworkClient的InFlightRequests正在发送队列满了咋办，此时会判断是否内部消息，比如元数据或API版
+    本请求，如果是的话就硬发，如果不是，比如消息生产请求，就会抛出IllegalStateException异常
+        由于sender线程在从RecordAccumulator里拿批次前就会判断该节点请求是否可用，如果可用才会拿，而sender是单线程的，能
+    保证不会超，所以正常情况下是不会出现poll出了批次，请求又满了的情况，如果真的出现了，这次发送的所有批次应该都会因为
+    报错导致丢失
 
-    9、创建logManager，日志管理器，这个日志是kafka存消息的日志
 
-    10、创建metadataCache，它有着每个分区的元数据缓存，例如它的leader信息
+消费者：
 
-    11、创建tokenCache与credentialProvider，它们提供鉴权相关的功能
+        假设消费者消费到的偏移量是7，那么此时提交的偏移量就是8，也就是提交的偏移量总是会比消费到的+1，在日志里的
+    偏移量也一样
 
-    12、创建socketServer，这个组件是kafka用来创建服务器与处理请求的。其内部包含了Acceptor与processor，其中
-Acceptor只有一个，而processor取决于num.network.threads。主线程会等待Acceptor启动完成后才会继续，这个行为通过
-一个在Acceptor内部的CountDownLatch对象来进行：主线程拿锁等待，Acceptor线程释放锁。这一步暂时还不会启动
-Processor，因为要等服务器完全初始化后才能启动处理器
-    kafka的请求处理器分为两种：controlPlane和dataPlane，分别是控制面板与数据面板，其中控制面板controlPlane是管理
-集群请求的，需要配置control.plane.listener.name属性才会初始化；数据面板dataPlane是管理生产与消费者请求的，这个一
-定会启用
-    控制面板的服务器配置放在listeners配置中，多个配置多逗号隔开，例如端口，好像也可以写一个url
+        由于消费者是线程不安全的，因此大部分操作内部都会先调用acquire()，结束时调用release()，这是一个加锁操作，通过
+    CAS获取当前线程id进行加锁，如果CAS失败，就代表多个线程在同时操作consumer，就会抛出异常，提示节点未准备好发送请求
+
+
+
+
+AR(Assigned Replicas)：
+    分区中所有的副本统称为AR
+
+ISR(In-Sync Replicas)：
+    同步副本
+
+OSR(Out Of Sync Replicas)：
+    非同步副本
+
+LEO(Log End Offset)：
+    标识每个分区中最后一条消息的下一个位置，每个副本都有自己的LEO
+
+HW(Hign Watermark)：
+    ISR中最小的LEO即为HW，俗称高水位，消费者只能拉到HW之前的消息
+
+LW(Low Watermark)：
+    低水位，代表AR集合中最小的logStartOffset
+
+优先副本：
+    指进行leader选举时，该副本会优先被选举为leader
+
+分区重分配：
+    如果某个broker挂了，它的分区又有多个副本，此时最多就会将leader转移到其他副本上。但是这个分区的副本已经处于不
+可用的状态了，失效的副本不会自动转移到其它可用的节点上，这会影响到系统整体可靠性和可用性。因此就需要进行分区重
+分配来将分区副本迁移到可用节点上
+
+
+
+
+日志存储：
+
+    日志文件布局：
+        主题 -> 对应多个分区 -> 对应多个副本 -> 对应一个日志目录(一个分区副本) -> 对应多个日志分段(LogSegment) ->↓ 
+    对应一个日志文件(.log)、偏移量索引文件(.index)、时间戳索引文件(.timeindex)、以及其它文件
+
+    日志目录所在与格式：
+        一般会在kafka安装目录所在盘的/tmp/kafka-logs，命名方式为topic-partition
+
+
+        kafka向Log中追加消息时是顺序写入的，每个日志目录，也就是分区副本中，只有最后一个LogSegment才能被执行写入操作，
+    其余同分区中的所有LogSegment都不能写入数据。最后一个LogSegment称为activeSegment，既活跃的日志分段。随着消息的不断写
+    入，当activeSegment满足一定条件时，就需要创建新的activeSegment，之前activeSegment不再是活跃分段，之后追加的消息都将
+    写入新的activeSegment
+
+        每个LogSegment中的日志文件都以.log作为文件后缀，每个.log文件都有对应的两个索引文件：.index与.timeindex，分别是
+    偏移量索引与时间戳索引文件。每个LogSegment都有一个基准偏移量baseOffset用来表示当前LogSegment中第一条消息的偏移量。
+    偏移量是一个64位的整型，日志文件和两个索引文件都是根据baseOffset命名的，名称固定为20位数字，比如每个分区的第一个日
+    志文件名为：00000000000000000000.log，这代表该文件的偏移量是从0开始的。这个数字代表的是消息偏移量，而非字节数
+
+        _consumer_offsets偏移量主题初始是不存在的，当第一次有消费者消费消息时会自动创建这个主题。每个kafka-logs根目录都
+    会包含4个xxx-checkpoint检查点文件与一个meta.properties元数据文件，这些文件会在kafka服务第一次启动时创建
+
+
+    日志格式：
+        kafka消息从0.8.x之后到现在的2.0.0经历了3个版本：v0、v1、v2，0.8之前的不用再管
+
+        v0版本：
+            消息分为两部分：
+                LOG_OVERHEAD，即消息头，它包含了：
+                    offset(8B)：消息偏移量
+                    message size(4B)：消息大小
+
+                RECORD，即消息本身，它包含了：
+                    crc32：校验值，校验后面的所有其余信息，4B
+                    magic：消息版本号，1B
+                    attributes：低三位表示消息压缩类型比如NONE、GZIP、LZ4等，其余位保留，1B
+                    key length：key的长度，-1为没有key，4b
+                    key：key内容
+                    value length：value的长度，-1为没有value，4B
+                    value：value内容，也可能会为空，比如墓碑消息
+            每个完整的消息都由LOG_OVERHEAD与RECORD两部分组成，由于它们之间总是一对，因此通常也罢它们看作是一条消息的整
+        体，每个log文件都由多个这种格式的消息组成
+            每个消息最小长度为：4+1+1+4+4=14B，也即v0版本中一条消息长度如果小于14B，就代表它是破损消息而被拒收。kafka保
+        存时会在另外加上12B的LOG_OVERHEAD，假设发送一条key为key，value为value的消息，那log文件的大小就为34B=12+4+1+1+4+
+        3+4+5，其中3和5分别是key与value的大小
+
+        v1版本：
+            v1版本相比v0版本，也就在每条消息的magic后面多了一个8B的时间戳，然后attributes的第4位用来存储时间戳的类型。
+        0表示CreateTime，1表示LogAppendTime。这个类型由broker端的log.message.timestamp.type来配置，默认值为CreateTime，
+        既生产者创建消息的时间戳，如果用户没有显式指定，那么生产者发送消息时会自动创建这个时间戳
+            因此v1版本的消息会比v0版本的大8个字节
+
+        v2版本：
+            消息分为两部分：
+                Record Batch Header，既批次头，它包含了：
+                    first offset：当前消息批次的起始偏移量，8B
+                    length：从partition leader epoch字段到整个批次末尾的长度，4B
+                    partition leader epoch：分区leader纪元，可以看做分区leader的版本号或更新次数，4B
+                    magic：消息格式版本号，1B
+                    crc32：校验值，4B
+                    attributes：消息属性，低三位代表压缩格式，第四位代表时间戳类型，第五位标识此批次是否处于事务中，第
+                六位表示是否控制消息，2B
+                    last offset delta：消息批次中最后一个记录的偏移量与first offset的差值，4B
+                    first timestamp：消息批次中第一条记录的时间戳，8B
+                    max timestamp：消息批次中最大的时间戳，一般情况下是指最后一个消息的时间戳，8B
+                    producer id：生产者id，用来支持幂等和事务，8B
+                    producer epoch：生产者纪元，用来支持幂等和事务，2B
+                    first sequence：用来支持幂等和事务，4B
+                    records count：消息批次中的消息个数，4B
+
+                Records：既批次列表，每个批次包含了：
+                    length：消息总长度，varint
+                    attributes：弃用，但是还存在着，1B
+                    timestamp delta：基于批次头时间戳的增量，varlong
+                    offset delta：基于批次头偏移量的增量，varint
+                    key length：key长度，varint
+                    key：key内容
+                    value length：value长度，varint
+                    value：value内容
+                    headers count：header数量，varint
+                    headers：header内容
+                        header key length：header key的长度
+                        header key：header key内容
+                        header value length：header value的长度
+                        header value：header value的内容
+                以上很多地方都采用了增量存储，因为增量配合着变长字段可以进一步节省占用的字节数
+
+    变长字段：
+        Varints是kafka从0.11.0版本引入的变长整型，它的作用是：例如value length是-1，原本需要用4个字节来保存，用了
+    Varints之后就只需要1个字节来保存，数字越小越节省空间，不过Varints并非会一直节省空间，一个int32一般是4个字节，但是
+    用了Varints后最长会占用5个字节，一个int64一般是8个字节，用了Varints后最长会占用10个字节
+        不过kafka的使用场景一般length都会比较小，因此总是能节省到空间
+
+    消息压缩：
+        常见的压缩算法是数据量越大压缩效果越好，但是一条消息通常不会太大，这就导致了压缩效果不太好。而kafka实现压缩的方
+    式是将多条消息一起进行压缩，这样可以保证较好的亚索效果。在一半情况下，生产者发送的压缩数据在broker端的存储时也是保
+    持压缩状态的，消费者从服务端获取的也是压缩的消息，消费者处理消息时才会解压消息，这样就保持了生产端到消费端的压缩
+
+        kafka日志使用哪种压缩方式是通过compression.type参数来决定的，默认值为producer，表示保留生产者使用的压缩方式，这
+    个参数还可以设置为：GZIP、SNAPPY、LZ4这几种压缩算法，如果配置为uncompressed则表示不压缩
+
+        消息集合被压缩后作为内层消息(inner message)存在，整个内层消息作为外层消息(wrapper message)的value，也就是说压缩
+    后，整个压缩结果都作为一个新消息的value，这个消息的key是空的
+        生产者在压缩消息时，会为内层每个消息创建一个LOG_OVERHEAD，其中Offset是从0开始的，这代表消息在内层消息里的位置
+        而外层消息的偏移量会根据内层消息的数量来决定，例如：上条消息的偏移量为1024，而此次压缩了6条消息，那么外层消息的
+    偏移量就是1030，再下条消息就是1031。所以外层消息保存的是内层消息里最后一条消息的绝对偏移量
+
+        压缩消息是指compress message，kafka里还有另外一个compact message，是指日志清理时的压缩，不要搞混
+
+    消息压缩时的timestamp与attributes字段处理：
+        外层消息的时间戳处理：timestramp是CreateTime，那么取的是内层消息中最大的时间戳，如果是LogAppendTime，那么取的是
+    Kafka服务器的时间戳。
+        内层的时间戳处理：外层消息是CreateTime，取得是生产者创建消息时的时间戳；外层是LogAppendTime，内层的时间戳将会忽
+    略
+        auutibutes的处理：外层消息会根据配置设置，内层消息的时间戳类型位总是CreateTime，因为其它类型不会处理
+
+
+日志索引：
+
+    每个日志文件都对应两个索引文件，分别是：
+        偏移量索引文件：
+            用来建立消息偏移量到物理地址之间的映射关系，方便快速定位消息所在的物理文件位置。里面的偏移量保存的都是增量
+        数据，基础偏移量用文件名保存，比如，要找偏移量277的消息，那么就先找到小于277的最大日志分段文件，比如250，然后计
+        算相对偏移量：277-250=27，之后在250.log日志分段对应的偏移量索引文件中，根据二分查找法来找到偏移量小于27的最大偏
+        移量，最后顺着该偏移量对应的物理地址在日志分段中往后找，直到找到对应偏移量的消息
+            偏移量索引的存储结构是：前面4B存放偏移量增量，后面4B存放物理地址，由于默认每4K的消息才存放8B的索引，因此1G
+        日志只需要2M的索引文件就能完成索引
+            kafka强制要求索引文件大小必须是索引项(每一个索引的数据)的整倍数，因此偏移量索引的索引文件大小必须是8B的整倍
+        数，如果配置为67B，kafka会将其转为64B，因为64B是小于67B的最大8B的倍数
+
+        时间戳索引文件：
+            时间戳索引文件则根据指定的时间戳来查找对应的偏移量信息
+            时间戳索引的存储结构是：前面8B存放当前日志分段的最大时间戳，后面4B存储这个时间戳对应的相对偏移量
+            由于时间戳索引和偏移量索引是同时插入的，因此时间戳索引会比偏移量索引文件大1/3，时间戳索引的大小也有强制要求
+        ，时间戳索引也是通过二分查找法先找到对应的时间戳，然后拿到时间戳对应的相对偏移量，再去偏移量索引里面找物理地址
+        ，最后根据物理地址找到消息
+
+
+    稀疏索引：
+        稀疏索引就是，并不会为每条消息构建一个索引，而是每当写入一定的数据量之后，偏移量与时间戳索引文件分别增加一
+    个偏移量索引项和时间戳索引项，这取决于log.index.interval.bytes，默认为4096，既4K，增大该值可以减小索引的密度，
+    反之亦然
+        稀疏索引通过MappedByteBuffer将索引文件映射到内存中，MappedByteBuffer会通过内存映射的方式读写文件内容，
+    这种方式直接调用系统底层，没有JVM和系统之间的复制操作，所以效率很高。
         
-    13、创建replicaManager，副本管理器，然后调用它的startup方法，里面会启动几个调度任务：isr-expiration、
-isr-change-propagationshutdown-idle-replica-alter-log-dirs-thread。还会启动一个LogDirFailureHandler线程，这个是
-处理失败副本的处理器
-
-    14、创建/brokers/ids/{brokerId}的zk临时节点，并设置节点的data，data里包含当前broker的一些信息，例如端口、
-主机名、当前broker的节点路径、jmxPort等
-
-    15、将brokerId、clusterId、version等信息写入meta.properties文件
-
-    16、启动tokenManage，token管理器，token管理器是否会真正干活取决于delegation.token.master.key是否有配置，
-它对应着zk里的/delegation_token节点
-
-    17、启动kafkaController集群控制器，然后调用它的startup方法，这个方法会在zk客户端里注册一个状态变更处理器，
-用于监听broker与zk之间的会话是否过期，然后往eventManager事件管理器里添加一个StartUp启动事件，然后启动事件
-管理器，事件管理器里对StartUp事件的处理是，往zk注册一个节点变更监听器，监听节点为：/controller，当监听到该节点
-发生不同的变更时，就往事件管理器里添加不同的事件，例如：Reelect(重选事件)、ControllerChange(控制器变更事件)
-    然后就会尝试去获取/controller节点的数据，加入发现/controller节点的数据是空的，就会尝试自己去注册，也就是尝试创
-建/controller临时节点，节点数据里brokerId是当前节点的brokerId，然后设置/controller_epoch的数据，epoch的设置会
-附带版本号，相当于有个乐观锁的操作，当临时节点与epoch都设置成功，则返回当前设置成功的epoch与节点version
-    如果/controller节点创建失败或者/controller_epoch数据设置失败，则抛出ControllerMovedException异常，代表其它
-broker成为了控制器，然后捕获ControllerMovedException异常后就会为/controller注册监听器，并从zk拿到controllerId
-放到kafkaController.activeControllerId中。选举成功则直接拿当前的brokerId放到kafkaController.activeControllerId，此
-外还会设置controllerContext.epoch、controllerContext.epochZkVersion
-
-    18、创建adminManager，看起来像是一个内部使用的对一些操作的封装，例如创建主题、创建分区
-
-    19、创建groupCoordinator，组协调器，并调用它的startup方法，这个startup方法会启动一个调度任务：
-delete-expired-group-metadata，用来清除过期的消费组
-
-    20、创建transactionCoordinator，事务协调器，并调用它的startup方法，这个startup方法会启动一个调度任务：
-transaction-abort，用来中断超时的事务
-
-    21、如果配置指定了授权信息，则对授权进行初始化
-
-    22、创建fetchManager，拉取管理器
-
-    23、创建KafkaApis放在dataPlaneRequestProcessor变量里，这个类用来处理不同的api，里面有个handle方法，用了
-switch跳到不同的方法处理不同的API请求
-
-    24、创建KafkaRequestHandlerPool放在dataPlaneRequestHandlerPool变量里，这个对象在内部会启用多个线程，这些
-线程会从RequestChannel里的请求队列中拿出请求，然后用KafkaApis处理请求，线程数量取决于num.io.threads参数，默认
-为8
-
-    25、增加一系列的动态配置监听器与动态配置处理器，然后启动一个dynamicConfigManager动态配置管理器，并调用它
-的startup方法，这个方法就是在zk的/config/changes节点注册一个监听器，然后启用一个线程，一直从配置变更队列里获取
-事件并触发各种监听器
-
-    26、启动控制面与数据面的processor线程，到了这里已经开始正式处理请求了
-
-    27、然后设置kafka的各种状态，到这里基本已经启动完成了，最后注册mbean，输出个started日志，至此启动完毕
+    kafka中的索引文件以稀疏索引的方式来构造消息的索引，以提高查询速度。偏移量索引文件中的偏移量时单调递增的，当
+查询指定偏移量时，使用二分查找法来快速定位偏移量的位置，如果指定的偏移量不在索引文件中，则会返回小于指定偏移量
+的最大偏移量；时间戳索引的查询方式与存储规则也跟偏移量基本一致
+    稀疏索引是在磁盘空间、内存空间、查找时间多个方面之间的一个折中方案
 
 
+    零拷贝：
+        正常如果要将数据从磁盘读出来到通过网络发送出去，那么要经过4步：
+            1、将数据从磁盘读到内核读缓存中
+            2、从内核态切换到用户态，并将数据复制到用户模式下
+            3、从用户态切换到内核态，并将数据复制到内核模式下(将数据写入socket)
+            4、将内核态的数据写复制到网卡设备中传输
 
-请求：
-    1、先是Acceptor线程，先进行select，最多等待500ms，然后遍历select到的key，确认key可握手后，先进行握手
-    2、有个connectionQuotas连接配额用来进行连接数限制，还可以配置每个监听器的最大连接数，不过默认是int.max，还
-能通过max.connections参数来限制整个broker的总连接数，默认也是int.max，假设这两个连接数超过了就会一直阻塞，直到
-有旧的请求结束对其进行唤醒。
-    还有地址级别的请求限制，如果有通过max.connections.per.ip.overrides配置每个地址的最大连接数，则取地址配置的连接
-数进行限制，如果该地址没有特意去配置，最大连接数就取max.connections.per.ip，当这个地址的连接数超过最大连接数时
-，就会抛出TooManyConnectionsException异常，上层捕获到这个异常后会关闭scoket
-    3、connectionQuotas的连接数限制通过后，就会返回selectionKey里的socketChannel，并设置它的一些属性
-    4、将processor的数量放入retriesLeft变量，用来当做重试次数；然后用currentProcessorIndex对processor的数量进行
-取模，这个变量每次都会+1，用来轮询所有的processor，然后就在超过重试次数之前一直轮processor，去调assignNewConnection
-方法，如果返回false就代表请求处理完成，如果返回true就换下一个processor
-    5、拿processor去执行assignNewConnection方法，这个方法里面就是将socketChannel放入processor的newConnections
-，如果放成功就返回true，否则就看是不是轮询到最后一个processor了，如果不是最后一个直接返回false，如果是最后一个
-则改用put方法，一直等到newConnections有空位。其实总的来说就是尽量放进一个有空间的processor，如果实在没有就在
-最后一个processor硬等
-    6、然后到Processor线程，首先执行selector.register，这个selector并不是nio的，而是kafka的。它的注册先校验这个连接
-id是否已经存在它的连接池中了，如果是则抛出异常，id一般是不会重复的，因为每个processor都有一个index，每次新连接
-都会+1，并且最大值是int.max，达到最大值会重置到0。第二部是将socketChannel注册到nioSelector中，并监听READ事件
-，然后将连接id绑定到selectionKey中的attach，在将该连接放入连接池与空闲连接管理器中
-    7、开始poll方法，这个poll也是进行selectedKey，不同的是这里的Selector里面只注册了读事件，前面那个Selector里只
-注册了握手事件
+        如果使用零拷贝，相当于省去了切换到用户态复制的操作，只剩下：
+            1、将数据从磁盘复制到内核读缓存
+            2、将读缓存的数据复制到网卡设备中进行传输
 
 
+Kafka协议：
+
+    协议数据类型：
+        boolean：用0和1代表false和true
+        int8：有符号整型，占8位
+        int16：有符号整型，占16位
+        int32：有符号整型，占32位
+        int64：有符号整型，占64位
+        unit32：无符号整型，占32位
+        varint：变长整型，变长类型参考前面的介绍
+        varlong：变长长整型
+        string：string类型，开头是int16，代表字符串的长度，后面跟着长度个数的UTF-8编码的字符
+        nullable_string：可以为空的字符串，与string一样，如果开头的int16是-1，代表此值为null
+        bytes：一个字符序列，开头是int32，代表字符序列的长度，后面跟着长度个数的字节
+        nullable_bytes：一个可以为空的字符写，为空时int32为-1，其余情况与bytes类型相同
+        records：表示kafka中的一个消息序列，可以看做一个nullable_bytes
+        array：数组，元素类型可以是任意其它类型，开头是int32，代表元素个数，int32为-1时表示空数组
+
+    kafka请求协议分为两部分：
+
+        RequestHeader(请求头)：
+            api_key：API类型表示，比如PRODUCE、FETCH，16位int
+            api_version：API版本号，16位int
+            correlation_id：由客户端指定的一个数字来标识这次请求的id，服务端响应时会返回相同的id，客户端就能将请求和响
+        应对应起来了，32位int
+            client_id：客户端id，string
+
+        RequestBody(请求体)：
+            请求体的结构由不同的API类型决定
 
 
+    kafka响应协议分为两部分：
+
+        ResponseHeader(响应头)：
+            correlation_id：请求的id，响应会原样返回，32位int
+
+        ResponseBody(响应体)：
+            响应体的结构由不同的API类型决定
 
 
+    消息生产协议(produce)：
+      请求：
+        ReauestHeader：请求头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        RequestBody：请求体
+
+          transactional_id：事务id，不使用事务时为null，nullable_string类型
+
+          acks：对应生产者的acks参数，int16类型
+
+          timeout：请求超时时间，对应生产者request.timeout.ms，默认为30000，int32类型
+
+          topic_data：生产者发送的消息集合，每个主题都是一个元素，array类型
+
+            topic：主题名称，string类型
+
+              data：主题对应的消息，每个分区都是一个元素，array类型
+
+                partition：分区号，int32类型
+
+                record_set：records类型，分区的消息
+                        
+      响应：
+        ResponseHeader：响应头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        ResponseBody：响应体
+
+          throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
+
+          responses：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+
+            topic：主题名称，string类型
+
+            partition_responses：主题内所有分区的响应集合，array类型
+
+              partition：分区编号，int32类型
+
+              error_code：错误码，用来表示错误类型，int16类型
+
+              base_offset：消息集合的起始偏移量，该参数+发送消息的数量=发送消息最大的偏移量，int64类型
+
+              log_append_time：消息写入broker端的时间，int64类型
+
+              log_start_offset：所在分区的起始偏移量，int64类型
 
 
+    消息拉取协议(Fetch)：
+      请求：
+        ReauestHeader：请求头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        RequestBody：请求体
+
+          replica_id：副本的brokerId，用于follower副本向leader发起FetchRequest请求，普通消费者传-1，int32类型
+
+          max_wait_time：最大拉取等待时间，与消费者的fetch.max.wait.ms参数对应，默认为500，int32类型
+
+          min_bytes：最小拉取字节数，与消费者的fetch.min.bytes对应，默认值为1，int32类型
+
+          max_bytes：最大拉取字节数，与消费者的fetch.max.bytes对应，默认值为52428800(50MB)，int32类型
+
+          isolation_level：事务隔离级别，与消费者的isolation_level对应
+
+          session_id：fetch session的id，int32类型
+
+          epoch：fetch session的epoch纪元，int32类型
+
+          topics：所要拉取的主题集合，array类型
+
+            topic：主题名称，string类型
+
+            partitions：分区集合，array类型
+
+              partition：分区编号，int32类型
+
+              fetch_offset：从分区的哪个位置开始读取消息，int64类型
+
+              log_start_offset：专门用于follower副本发起FetchRequest请求，用来指明分区的起始偏移量，普通消费者为-1
+            ，int64类型
+
+              max_bytes：该分区最多能拉取的字节数，对应消费者的max.partition.fetch.bytes参数，默认1MB，int32类型
+
+          forgotten_topics_data：从fetch session中指定要去除的拉取信息，array类型
+
+            topic：主题名称，string类型
+
+            patitions：分区编号集合，array类型
+
+      关于fetch session：
+        由于fetch请求是非常频繁的，且大多数时候是不会变的，除了起始偏移量，那么如果能将这些信息保存起来，就可以节省这
+      部分带宽，且拉取的分区越多节省的就越多
+        session_id创建或变更时会发送全量式的FetchRequest，全量式拉取就是请求体中包含所有要拉取的分区信息，当session_id
+      稳定时则发送增量式的FetchRequest，里面的topics为空，因此topics里的内容已经被缓存在了客户端与broker，如果需要从当
+      前session中取消某些分区的拉取订阅，则使用forgotten_topics_data字段来实现
+        epoch应该就是同一个session_id，每次拉取都会+1，用来保证客户端与broker端的一致性
+        fetch session机制在大规模分区拉取或同步时很有用，不过这对客户端来说是无感知的，因为一般而言客户端不会订阅太多
+      分区
+
+      响应：
+        ResponseHeader：响应头，这部分格式是统一的，可参考上面描述，不在赘述
+
+        ResponseBody：响应体
+
+          throttle_time_ms：如果超过了配额(quota)限制，则延迟该请求的处理时间，如果没有配置，那么该字段为0，int32类型
+
+          error_code：错误码，用来表示错误类型，int16类型
+
+          session_id：对应请求的session_id
+
+          responses：响应的数据集合，跟topic_data一样，以topic划分元素，array类型
+
+            topic：topic名称，string类型
+
+            partition_responses：分区响应数组，array类型
+
+              partition：分区号，int32类型
+
+              error_code：错误码，用来表示错误类型，int16类型
+
+              high_watermark：消费者可以读到的最大偏移量(暂且这么理解，书上对Fetch的响应解释很少)，int64类型
+
+              last_stable_offset：该分区相应的最大偏移量，int64类型
+
+              log_start_offset：该分区相应的最小偏移量，int64类型
+
+              aborted_transactions：事务相关信息，array类型
+
+                producer_id：生产者id
+
+                first_offset：生产者偏移量？事务相关的没介绍
+
+              record_set：该分区的消息集合，records类型
 
 
+时间轮(TimingWheel)：
+
+    时间轮的设计类似于钟表，可以分为多层，例如第一层是每1ms一格，一共20格，第二层是20ms一格，也是20格，第三个
+是400ms一格，一共20格，可以看到当前层的每一格都是上一层的总时间。每一层都是一个圈
+    然后每个格都有一个自己的任务队列，这个队列里存放着真正的任务对象
+
+    如果想加一个450ms的任务，那么第一层一共才20ms，满足不了；第二层一共400ms，也满足不了，第三层可以满足，所
+以放在第三层的下一格，因为当前不一定刚好从第1格开始，可能第三层的第二格都走完了，因此只能往后放。当第一层走完之
+后，会从第二层把任务拉下来，然后根据每个任务的具体时间，分配到第一层里面，因为第二层20ms之内的都是同一格，到第
+一层还要进一步分格，当第二层走完后，又会从第三层拉任务，并且层级的指针+1
+    第三层的任务拉下来时说明已经到了400ms了，但是还有50ms，因此这个任务会被放到第二层的第三格，当走到第二层的第
+三格时，说明已经走了40ms了，每格20ms，还剩下10ms，然后又把该任务放在第一层的第10格，待时间推到那里就会执行该
+任务
+    当然实际情况肯定更加复杂，比如第一层到第10格，第二层到第5格，第三层到第2格，此时插入一个450ms的任务，那么不
+能简单的往第三层后面，因为当前这个轮可能已经跑了一半了，后面插入的任务应该把当前这轮已经经过的时间给加上再计算
+格子
+
+    时间轮存放任务之后，还需要一个组件去触发轮子的每一个时间格子，kafka中用了DelayQueue来推进时间轮。
+    DelayQueue里存放的是TimerTaskList，这个集合是每个时间格子的任务队列集合，DelayQueue只需对任务队列推进即可
+，如果加了一个新任务，新任务是从TimingWheel里插入的，时间复杂度为O(1)，通过时间轮与延迟队列的方式，实现了任务
+推进与快速添加与删除任务的操作，达到了少量的空间换时间
+
+DelayQueue与TimingWheel的任务队列之间的配合：
+    每个格子都有一个任务队列，每次插入新的任务，都会计算该任务的过期时间，如果新任务的过期时间与该队列上次的过期时间不
+一样，那么就会用新的过期时间来将任务队列重新加入延迟队列，也就是说如果有两个任务在一个格子中，那么会出现这个集合被加入
+延迟队列中两次，并且每次的过期时间都不同，也会被触发两次
+    然后阻塞队列里只有最底层的时间轮，如果有上层的时间轮到期了，就会将它们降级，因此哪怕有重复的任务队列插入阻塞队列也
+没关系，因为它们都是以刻度作为超时时间的，同一个任务队列里的刻度相同，所以重新set过期时间也没关系，因为不会改动，除非是
+初始状态下的任务队列
 
 
+延时操作：
+
+    在发送消息时，如果acks为-1，那么消息在leader副本的本地日志文件中写入之后，还要等待所有follower副本都收到消息才能告
+知客户端发送成功。在一定的时间内，如果follower没有及时拉取消息，在达到超时时间后就会返回超时异常。这个等待消息写入
+follower副本的操作就是延时操作，延时操作可以被超时触发或者外部触发
+
+    再例如在拉取消息时，会先读取一次日志文件，如果收集不够足够多的消息，就会创建一个延迟拉取操作(DelayedFetch)来等待消息拉取到一定的数量才返回，或者达到超时时间强制返回
+
+    延时操作创建后会被加入延时操作管理器\炼狱(DelayedOperationPurgatory)，延时操作可能会超时，所以每个延时操作管理器都
+会分配一个定时器(SystemTimer)，定时器的底层实现是时间轮(TimingWheel)，时间轮是靠收割机线程(ExpiredOperationReaper)来轮
+转的，收割机线程除了推进时间轮外，还会清理监听池中已完成的延时操作
 
 
+控制器：
 
+    kafka集群中会将其中一个broker选举为控制器，它负责管理整个集群中所有分区和副本的状态。当某个分区的leader副本
+出现故障，由控制器负责为该分区选举新的leader副本；当检测到某个分区的ISR集合发生变化时，由控制器负责通知所有
+broker更新其元数据信息；当用kafka-topics.sh脚本为某个topic增加分区数量时，同样还是由控制器负责分区的重分配
 
+    kafka的控制器选举依赖于zookeeper，通过在zookeeper中创建/controller临时节点来进行控制器竞选，临时节点内容如
+下：
+    {"version":1,"brokerid":0,"timestamp":"1529210278988"}
+        version：固定为1
+        brokerid：成为控制器broker的id编号
+        timestamp：竞选成为控制器时的时间戳
+    每个broker启动时都会去尝试读取/controller节点的brokerid值，如果读取到brokerid不为-1，代表已经有broker竞选为控
+制器，当前broker会放弃竞选，如果/controller节点为空或者数据异常，就会去尝试创建/controller节点
 
+    zookeeper中海油一个与控制器有关的/controller_epoch节点，这个节点是持久节点，内容是一个整形的controller_epoch
+值，用来记录控制器发生变更的次数，既当前控制器是第几代控制器，可称为：控制器纪元，这个节点初始值为1，每次选出一
+个新的控制器改字段就+1。每个和控制器交互的请求都会携带controller_epoch字段，如果请求的纪元小于内存中的纪元，则
+认为这个是向已过期的控制器所发送的请求，这个请求会被认定为是无效请求。如果纪元大于内存中的纪元，那说明已经有新
+的控制器当选了
+    由此可见kafka通过controller_epoch来保证控制器的唯一性和相关操作的一致性
 
-
-
-<<<<<<< HEAD
     控制器的额外职责：
         1、监听分区的变化，也就是在zookeeper的相关节点注册监听器，然后进行对应动作，比如分区重分配、ISR集合变更
         2、监听主题的变化，也就是监听zookeeper中的/brokers/topic和/admin/delete_topics节点，用来处理主题增减和删
@@ -665,16 +1072,7 @@ ISR的伸缩：
     kafka-consumer-groups.sh：查看或变更消费组信息
     kafka-delete-records.sh：用来删除指定位置前的消息
 
-
-Lag：
-    消息中间件中堆积的消息与消费的消息之间的差值即为消息堆积量，也称为消息滞后(Lag)量
-
-    对于一个分区而言，它的Lag等于HW - ConsumerOffset(当前的消费位移)。而引入事务后，如果消费者客户端的isolation.level
-为read_uncommitted，那么它的Lag等于LSO - ConsumerOffset。
-
-    LSO：
-        LSO是LastStableOffset的缩写，对于未完成的事务，它的LSO等于事务中未提交的第一条消息，对于已完成的事务，它的值等
-    同于HW，因此如果开启事务，且事务隔离级别为已提交读，那么它的LAG就等于事务第一条未提交的消息 - ConsumerOffset
+日志的同步机制：
 
     
 
