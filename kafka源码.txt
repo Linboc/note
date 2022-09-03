@@ -1072,7 +1072,16 @@ ISR的伸缩：
     kafka-consumer-groups.sh：查看或变更消费组信息
     kafka-delete-records.sh：用来删除指定位置前的消息
 
-日志的同步机制：
+
+Lag：
+    消息中间件中堆积的消息与消费的消息之间的差值即为消息堆积量，也称为消息滞后(Lag)量
+
+    对于一个分区而言，它的Lag等于HW - ConsumerOffset(当前的消费位移)。而引入事务后，如果消费者客户端的isolation.level
+为read_uncommitted，那么它的Lag等于LSO - ConsumerOffset。
+
+    LSO：
+        LSO是LastStableOffset的缩写，对于未完成的事务，它的LSO等于事务中未提交的第一条消息，对于已完成的事务，它的值等
+    同于HW，因此如果开启事务，且事务隔离级别为已提交读，那么它的LAG就等于事务第一条未提交的消息 - ConsumerOffset
 
     
 
