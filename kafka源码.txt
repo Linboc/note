@@ -1,4 +1,7 @@
-﻿
+﻿大概目标：请求处理、消息生产、消息消费、事务协调器、组协调器、幂等、副本同步细节(ISR、LW、LEO)、日志处理细节、延迟消息
+的时间轮应用
+
+
 
 kafka broker代码里配置所在：KafkaConfig，配置默认值所在：Defaults
 
@@ -93,7 +96,8 @@ switch跳到不同的方法处理不同的API请求
 
     24、创建KafkaRequestHandlerPool放在dataPlaneRequestHandlerPool变量里，这个对象在内部会启用多个线程，这些
 线程会从RequestChannel里的请求队列中拿出请求，然后用KafkaApis处理请求，线程数量取决于num.io.threads参数，默认
-为8
+为8。这个线程池是processor线程将连接处理成Request对象后，放进一个requestQueue队列中，由这个线程将Request拿出来
+进行后续处理
 
     25、增加一系列的动态配置监听器与动态配置处理器，然后启动一个dynamicConfigManager动态配置管理器，并调用它
 的startup方法，这个方法就是在zk的/config/changes节点注册一个监听器，然后启用一个线程，一直从配置变更队列里获取
@@ -105,7 +109,7 @@ switch跳到不同的方法处理不同的API请求
 
 
 
-请求：
+请求基础流程：
     1、先是Acceptor线程，先进行select，最多等待500ms，然后遍历select到的key，确认key可握手后，先进行握手
     2、有个connectionQuotas连接配额用来进行连接数限制，还可以配置每个监听器的最大连接数，不过默认是int.max，还
 能通过max.connections参数来限制整个broker的总连接数，默认也是int.max，假设这两个连接数超过了就会一直阻塞，直到
@@ -121,26 +125,86 @@ switch跳到不同的方法处理不同的API请求
 ，如果放成功就返回true，否则就看是不是轮询到最后一个processor了，如果不是最后一个直接返回false，如果是最后一个
 则改用put方法，一直等到newConnections有空位。其实总的来说就是尽量放进一个有空间的processor，如果实在没有就在
 最后一个processor硬等
+
     6、然后到Processor线程，首先执行selector.register，这个selector并不是nio的，而是kafka的。它的注册先校验这个连接
 id是否已经存在它的连接池中了，如果是则抛出异常，id一般是不会重复的，因为每个processor都有一个index，每次新连接
 都会+1，并且最大值是int.max，达到最大值会重置到0。第二部是将socketChannel注册到nioSelector中，并监听READ事件
 ，然后将连接id绑定到selectionKey中的attach，在将该连接放入连接池与空闲连接管理器中
+
+    7.0、这里漏了个processNewResponses()方法，它会从responseQueue队列里拿响应出来发送响应数据，懒得改数字了，干脆
+写个7.0
+
     7、开始poll方法，这个poll也是进行selectedKey，不同的是这里的Selector里面只注册了读事件，前面那个Selector里只
 注册了握手事件
+    8、poll方法里，如果连接已经可读，就会用nioSelector.selectdKeys方法select到一批可读的key放到readyKeys变量中，然后
+用pollSelectionKeys()方法处理这批readyKeys可读key
+    9、pollSelectionKeys()方法会遍历所有的key，首先在空闲管理器里更新这个连接id的活跃时间，然后期间一堆额外工作，正常
+来讲会进入attemptRead方法中，就是处理可读的连接，这里面会执行一个channel.read()方法，就是将数据从流里读出来，然后一直
+往里执行会走到一个receive.readFrom()方法，这个方法里会先读4b的数据，然后将这4b当做请求内容的大小去重新分配缓冲区，如果
+分配成功就全读出来，如果分配失败就会将缓冲区置为Null，并且记录需要分配的内存，然后在上层的kafkaChannel.read中就会执行
+mute()方法，这个方法会将kafkaChannel的状态改为MUTED，这意味着内存池没有足够的内存用来处理该请求，也就是将请求静默，然后
+删除它的READ事件，然后将processor里的selector.outOfMemory设置为true。如果内存足够，则将kafkaChannel放入完成接收集合：completedReceives。这里的疑惑是kafka前面4b究竟是不是整个请求的长度？书上不是这么讲的
+
+    10、然后是processCompletedReceives()方法，处理已经完全读完流的连接，这里只说正常情况下的流程，非正常的流程很简单，
+就是抛异常，这里直接略过。
+    10.1、执行RequestHeader.parse解析请求头，这里的解析过程与书上讲的协议格式一样，16位的apiKey、16为的apiVersion、然后
+32位请求id，再读16位的cliendId长度，根据长度读数据。然后读取一个变长int的字段数量，再根据字段数量读取每个字段，放到集合
+里，起名叫未知标记字段_unknownTaggedFields，不知道这是什么东西，这个有什么用？找不到注释网上也查不到作用
+    10.2、然后用header与连接的信息创建一个RequestContext对象，再用RequestContext对象创建一个RequestChannel.Request对象
+。再调用requestChannel.sendRequest()方法将req对象放入requestQueue队列中；再将这个连接静默，且将其加入
+explicitlyMutedChannels集合中；最后执行一个handleChannelMuteEvent()方法将这个kafkaChannel的muteState静默状态改为
+ChannelMuteState.MUTED_AND_RESPONSE_PENDING既静默且等待响应
+    10.3、上面的requestQueue会被KafkaRequestHandler线程，这个线程就是每次拿一个req出来处理
+    10.4、req分两种：ShutdownRequest与Request，一般而言都是Request，Request会直接跳转到KafkaApis.handle()方法
+
+    11、再然后是processCompletedSends()方法，处理响应发送完成的一些操作，例如从正在响应列表中删除该链接、调用请求完成
+回调、将连接改为非静默
+
+    12、再然后调用processDisconnected()方法，将已关闭的连接的连接配额进行回收、
+
+    13、最后是调用closeExcessConnections()方法，关闭多余的连接，这里的多余连接是因为最大连接数是支持动态配置的，因此
+如果有大量请求的情况下突然改了配置，就会导致连接过多。当出现这种情况则会挑选一个连接，挑选逻辑是：先看正在关闭连接里
+有没有连接，如果有就拿第一个；如果没有就看过期管理器里有没有连接，如果有就拿最快过期的；如果还没有就从连接集合里拿第
+一个，这往往是最早的请求。拿到的连接如果不为空就对这个连接进行close
+    为什么过期管理器IdleExpiryManager里第一个总是最快过期的，因为它里面是个LinkedHashMap，而后面put的数据每次都是刷新
+过期时间的，因所以前面的就是最久没刷新过的，因此前面的总是最旧的
 
 
 
+消息生产请求(ProduceRequest)：
 
+    1、从上面的请求基础流程的10.4开始，进入KafkaApis.handle()方法，里面会匹配到ApiKeys.PRODUCE，随后进入
+handleProduceRequest()方法
+    2、handleProduceRequest()方法会有一个让人难以理解的操作：request.body[ProduceRequest]，这个body点进去，其实返回的
+是bodyAndSize对象的request属性，bodyAndSize对象其实早在Request对象构建时就解析好了，在构造器里干的活，往里面跟会发现
+有一句AbstractRequest.parseRequest(apiKey, apiVersion, struct)，这里其实就是根据apiKey将初始的请求转成各种详细的类型，
+然后到了request.body[ProduceRequest]只是做了个类型转换而已
+    3、然后看这批消息里是否存在事务，如果存在则将事务id取出，并进行校验，如果校验不通过则抛出异常，异常已经在Errors类
+定义好了，直接拿就好；否则就看是否幂等消息，如果是也进行校验，校验不通过也抛出一个Errors类的异常
+    4、然后构建几个集合：unauthorizedTopicResponses(未授权的topic)、nonExistingTopicResponses(不存在的topic)、
+invalidRequestResponses(消息无效，例如版本不匹配)、authorizedRequestInfo(授权通过)，这些集合都是map，用TopicPartition
+当key
+    5、然后就是构建响应回调方法sendResponseCallback()与统计回调方法processingStatsCallback()，这是两个闭包方法，后面
+才会调，因此这里暂且略过
+    6、如果授权通过集合authorizedRequestInfo是空的，则调用sendResponseCallback响应一个空Map，否则就调用副本管理器
+replicaManager.appendRecords()方法添加消息
+    7、最后将请求里的消息清空，以便让GC回收，因为执行完replicaManager.appendRecords()方法后，要么消息已经加入了日志文
+件，要么消息已经放入了炼狱缓冲区，因此继续持有这个消息引用反而可能导致消息处理完后不能被GC回收
+    8、消息响应流程，待看
 
-
-
-
-
-
-
-
-
-
+副本管理器的消息追加：
+    1、执行replicaManager.appendRecords()方法将进行消息追加，接消息生产请求的第6点，因为副本管理器算是一个较为独立的
+模块，因此分开记录
+    2、先看acks是否有效，既等于-1、1、0中任意一个值，如果有效就继续，否则响应InvalidRequiredAcksException异常
+    3、执行appendToLocalLog()方法，这个方有4个参数：
+        internalTopicsAllowed：代表是否允许操作内部主题，例如偏移量与事务状态，这个参数只有AdminClient才会为true
+        origin：操作来源，类型为AppendOrigin，有三个子类，分别代表副本、协调器、客户端，生产者请求的话就是Client客户端
+        entriesPerPartition：此次生产的消息
+        requireAcks：acks，0、1、-1
+    4、然后遍历每个分区的消息，首先判断是否内部主题，如果是内部主题且internalTopicsAllowed为false，则抛出
+InvalidTopicException异常，如果不是则继续执行日志追加
+    5、通过getPartitionOrException()方法拿到当前分区的leader的分区对象，类型为Partition，这个拿leader的操作要细看一下
+分区的信息好像在ReplicaManager.allPartitions跟metadataCache里都有，不知道两者的区别是什么
 
 
 
