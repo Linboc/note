@@ -201,12 +201,20 @@ replicaManager.appendRecords()方法添加消息
         origin：操作来源，类型为AppendOrigin，有三个子类，分别代表副本、协调器、客户端，生产者请求的话就是Client客户端
         entriesPerPartition：此次生产的消息
         requireAcks：acks，0、1、-1
-    4、然后遍历每个分区的消息，首先判断是否内部主题，如果是内部主题且internalTopicsAllowed为false，则抛出
-InvalidTopicException异常，如果不是则继续执行日志追加
-    5、通过getPartitionOrException()方法拿到当前分区的leader的分区对象，类型为Partition，这个拿leader的操作要细看一下
-分区的信息好像在ReplicaManager.allPartitions跟metadataCache里都有，不知道两者的区别是什么
-
-
+    4、如果acks有效就调用appendToLocalLog()方法，然后遍历每个分区的消息，首先判断是否内部主题，如果是内部主题且
+internalTopicsAllowed为false，则抛出InvalidTopicException异常，如果不是则继续执行日志追加
+    5、通过getPartitionOrException()方法拿到当前分区的leader的分区对象，类型为Partition，副本管理器里的allPartitions
+属性持有这个对象，如果allPartitions中没有这个分区，但是metadataCache又有，且要求返回leader的partition时既
+expectLeader为true，就会返回NOT_LEADER_FOR_PARTITION分区没有leader错误
+    6、调用partition.appendRecordsToLeader将消息追加到leader，这里面会根据Partition.eaderReplicaIdOpt是否等于当
+前brokerId来判断当前broker是否该分区的leader，如果不是则抛出NotLeaderForPartitionException异常，表示当前broker
+不是该分区的leader，如果当前broker是leader，则继续执行，这块逻辑调用之前会获取leaderIsrUpdateLock读写锁的读锁
+    7、先获取配置的最小同步副本数量min.insync.replicas，默认为1，然后获取当前的同步副本数量，在
+partition.inSyncReplicaIds属性里，这里保存了同步副本的brokerId集合，如果同步副本的数量少于配置要求的最小同步副本
+，则抛出NotEnoughReplicasException异常，提示当前的同步副本无法满足最少同步副本的要求
+    8、到了这一步就已经确定当前broker就是这个分区的leader了，然后调用partition.log对象的appendAsLeader方法，
+这个方法里包了一层maybeHandleIOException()方法，当出现IO异常的时候就会将日志目录加入离线日志目录offlineLogDirs
+与offlineLogDirQueue中
 
 
 
