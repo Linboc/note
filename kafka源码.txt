@@ -78,6 +78,15 @@ isr-change-propagationshutdown-idle-replica-alter-log-dirs-thread。还会启动
 broker成为了控制器，然后捕获ControllerMovedException异常后就会为/controller注册监听器，并从zk拿到controllerId
 放到kafkaController.activeControllerId中。选举成功则直接拿当前的brokerId放到kafkaController.activeControllerId，此
 外还会设置controllerContext.epoch、controllerContext.epochZkVersion
+    为什么有了/controller节点还有设置/controller_epoch，因为/controller节点变更的时候可能有些监听器因为网络原因没
+有触发到，导致不同的broker记录的控制器是不同的，因此加了一个/controller_epoch，每次其余broker与控制器交互都会
+带上这个epoch，如果它们的epoch比控制器的小，则代表他们正在向一个旧的控制器发送请求，该请求就会被认为是无效请
+求，它们就需要更新控制器信息
+    /controller_epoch的作用：
+    例如broker_A是控制器，但是它挂了，然后zk的监听器只触发了broker_B，没触发到broker_C，然后broker_B成为了新的
+控制器，但是此时broker_C依然会向broker_A发送控制器请求，此时就可以利空/controller_epoch来校验，由于broker_A重
+启后会获取最新的控制器信息，因此他会发现broker_C给他发送的controller_epoch是旧的，他就会告知broker_C去更新控制
+器信息
 
     18、创建adminManager，看起来像是一个内部使用的对一些操作的封装，例如创建主题、创建分区
 
@@ -215,9 +224,17 @@ partition.inSyncReplicaIds属性里，这里保存了同步副本的brokerId集�
     8、到了这一步就已经确定当前broker就是这个分区的leader了，然后调用partition.log对象的appendAsLeader方法，
 这个方法里包了一层maybeHandleIOException()方法，当出现IO异常的时候就会将日志目录加入离线日志目录offlineLogDirs
 与offlineLogDirQueue中
-
-
-
+    9、继续往里面会调用analyzeAndValidateRecords()方法，这个方法会对消息进行验证。例如验证批次的基准偏移量baseOffset
+是否从0开始、消息的偏移量是否单调递增的、单个批次的大小是否大于max.message.bytes、客户端的CRC32校验是否和服务
+端一致、消息压缩算法是否支持，以上这些校验只是例举了部分，然后将以上信息封装成一个LogAppendInfo对象返回
+    10、然后调用trimInvalidBytes()方法对消息进行修剪，什么时候会出现无效字节需要修剪
+    11、然后已经确认所有消息都是有效的，加锁，准备追加到日志里面，然后通过isMemoryMappedBufferClosed判断内存
+映射缓冲区是否已关闭
+    12、然后通过Log.nextOffsetMetadata为LogAppendInfo对象分配下一个偏移量，分配后通过LogValidator.validateMessagesAndAssignOffsets
+对这个偏移量与时间戳校验，例如为批次设置最大偏移量、最大时间戳等等
+    13、然后根据LogValidator.validateMessagesAndAssignOffsets方法返回的对象的messageSizeMaybeChanged判断消
+息大小是否有变更，如果为true则重新校验消息大小
+    14、
 
 
 
