@@ -234,10 +234,19 @@ partition.inSyncReplicaIds属性里，这里保存了同步副本的brokerId集�
 对这个偏移量与时间戳校验，例如为批次设置最大偏移量、最大时间戳等等
     13、然后根据LogValidator.validateMessagesAndAssignOffsets方法返回的对象的messageSizeMaybeChanged判断消
 息大小是否有变更，如果为true则重新校验消息大小
-    14、
-
-
-
+    14、看看是否需要更新leaderEpoch，当请求的leaderEpoch与broker现有的leaderEpoch不一致时，就会将broker里
+leaderEpoch大于请求的leaderEpoch且startOffset大于请求的startOffset的epoch实体删掉，当出现删除epoch实体时，就
+说明出现了消息乱序，当epochs出现变更时就会将epochs集合的数据写入该分区的leader-epoch-checkpoint检查点文件中
+    但是为什么LE会以客户端传过来的为准？
+    15、校验单个消息的大小是否超过segment.bytes，既日志片段大小，然后判断当前这个活动片段的大小跟有效期是否已经
+超出配置，如果超出就返回一个新的分段，否则返回activeSegment
+    16、用批次的偏移量、分段的开始偏移量、分段下次写入的相对位置来构建一个LogOffsetMetadata对象
+    17、然后通过analyzeAndValidateProducerState方法验证幂等与事务的状态与收集元数据，如果producerStateManager
+里已经存在这个批次相同偏移量的消息，就返回之前这个相同批次的一些元数据，这个存放批次的集合中，每个生产者最多能
+放5个，因为producerStateManager.ProducerStateEntry.batchMetadata队列中，如果元素超过5个就对最旧的数据进行出
+栈，这对应了生产者客户端max.in.flight.requests.per.connection参数不能大于5，因为超出后，由于要根据消息变更生产者
+状态或者事务状态，可能会导致重复变更状态，因为要靠batchMetadata来判断是否重复批次
+    这个方法还包含了序列号，还需再细看
 
 
 
