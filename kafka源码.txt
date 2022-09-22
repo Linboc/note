@@ -1,5 +1,5 @@
-﻿大概目标：请求处理、消息生产、消息消费、事务协调器、组协调器、幂等、副本同步细节(ISR、LW、LEO)、日志处理细节、延迟消息
-的时间轮应用
+﻿大概目标：请求处理(已完成)、消息生产(已完成)、消息消费、事务协调器、组协调器、幂等(已完成)
+、副本同步细节(ISR、LW、LEO)、日志处理细节(追加部分已完成)、延迟消息的时间轮应用(已完成)
 
 
 
@@ -241,12 +241,161 @@ leaderEpoch大于请求的leaderEpoch且startOffset大于请求的startOffset的
     15、校验单个消息的大小是否超过segment.bytes，既日志片段大小，然后判断当前这个活动片段的大小跟有效期是否已经
 超出配置，如果超出就返回一个新的分段，否则返回activeSegment
     16、用批次的偏移量、分段的开始偏移量、分段下次写入的相对位置来构建一个LogOffsetMetadata对象
-    17、然后通过analyzeAndValidateProducerState方法验证幂等与事务的状态与收集元数据，如果producerStateManager
-里已经存在这个批次相同偏移量的消息，就返回之前这个相同批次的一些元数据，这个存放批次的集合中，每个生产者最多能
-放5个，因为producerStateManager.ProducerStateEntry.batchMetadata队列中，如果元素超过5个就对最旧的数据进行出
-栈，这对应了生产者客户端max.in.flight.requests.per.connection参数不能大于5，因为超出后，由于要根据消息变更生产者
-状态或者事务状态，可能会导致重复变更状态，因为要靠batchMetadata来判断是否重复批次
-    这个方法还包含了序列号，还需再细看
+    17、然后通过analyzeAndValidateProducerState方法验证幂等与事务的状态与收集元数据，如果存在重复批次，也就是这
+个批次中消息的起始序列号与结束序列号与batchMetadata中任意一个缓存的批次序号一致，并且这是客户端发起的生产请求
+，则代表客户端在重试的过程中出现了消息重复，那么就会将缓存的那个批次的信息放进appendInfo中，然后直接返回
+appendInfo，下面就不执行了。
+    这里需要了解的是，scals里的foreach是直接返回当前方法的，而不是退出froeach
+    producerStateManager.ProducerStateEntry.batchMetadata的大小限制了是5，如果超过5个就会将最旧的元素取出，
+这也解释了生产者客户端max.in.flight.requests.per.connection参数为什么不能大于5。因为如果超出5个请求同时发送，就会
+造成客户端发了一个请求失败，然后进行重试，第二次发过来时服务器已经把这个批次请求的缓存给清了，找不到相同序列号
+的缓存就会认为这个请求是一个新的请求，造成幂等环境下也会出现重复生产
+    上面这些逻辑是在有productId时才会进行，因为没有productId代表没开启幂等或事务，无需保证消息的不重复
+    那为什么不用一个自增的序号来保证？如果同时发送3个请求，第一个请求因为数据错误被拒绝了，那后面两个请求如果要
+严格按照序号进行校验，那肯定是失败的，因为前面中断了，前面失败的请求客户端可能会重试，如果影响到后面的请求是不
+合理的，并且就算根据错误类型来判断客户端是否会重试来进行拦截，客户端也可能因为重试次数的原因对可重试异常也不进
+行重试。因此维护一个短期内的序号列表更加合理，前面的请求失败也不影响后面的，而且能保证消息不重复生产
+    那么如果第一个请求失败了，但是重试间隔又设置了很长，然后后面的请求一直进来，一直请求成功岂不是会将第一次请求
+的缓存给顶出来，导致第一个请求再次进来找不到缓存而造成重复生产？因此想要一定保证幂等，就将最大请求数量设置为1
+    18、调用segment.append()将日志加入片段文件中，这里的加入只是将消息写入FileChannel中，FileChannel在调用force
+方法时会进行刷盘，则LogManage在startup()方法中会启动一系列的定时任务，其中一个任务名叫kafka-log-flusher，这个
+任务每隔30S会对所有日志进行一次刷盘。然后根据index.interval.bytes属性判断是否需要更新offsetIndex和timeIndex两个
+索引文件的索引信息
+    19、更新LEO和HW，这两个点只是在内存中更新，会有定时任务将其保存到磁盘中
+    20、更新生产者状态，也就是将此次消息的信息加入producerStateManager里produceId对应的队列中
+    21、如果此次生产的消息批次是控制批次，且是中断消息，则将控制消息插入日志索引文件中
+    22、更新producerStateManager里的最后一个偏移量为当前批次的最大偏移量+1
+    23、调用maybeIncrementFirstUnstableOffset()方法记录LSO，既firstStableOffset，它代表未完成事务第一条消息的偏移
+量，如果开启消息的话LAG就等于HW - LSO，否则LAG就等于HW - 分区消费组的偏移量
+    24、然后判断缓冲区里消息的数量是否超出flush.messages的配置，如果超出则调用flush()方法进行刷盘
+    25、至此消息已添加完毕，回到第4点，既执行appendToLocalLog()之后，将每个分区返回的信息转为PartitionResponse
+对象，然后调用recordConversionStatsCallback()方法对响应信息进行统计
+    26、然后看是否需要延迟进行请求响应，因为可能需要等同步到其它副本，判断条件是：acks是否为-1、添加的消息不为空
+、添加结果的异常数量小于添加的数量(因为如果不小于就说明所有消息全是异常，没必要延迟)
+    27、如果无需延迟，则直接调用responseCallback，如果需要延迟，则创建一个DelayedProduce对象，然后调用炼狱：
+delayedProducePurgatory.tryCompleteElseWatch()，这个方法会看看是否能不用延迟等待而立即完成这个请求，如果不能
+则将请求放入炼狱缓冲区
+    是否可以立即完成则是判断当前的isr是否能满足配置的min.insync.replicas，并且HW达到了这个消息的偏移量，如果能满
+足则认为这个延迟操作可以完成，否则就加入缓冲区延迟等待。延迟等待有个watchKeys，这个watchKeys就是此次生产消息
+的所有topic与分区
+    每个副本管理器replicaManager都有4个炼狱对象，分别是delayedProducePurgatory(延迟生产)、delayedFetchPurgatory
+(延迟拉取)、delayedDeleteRecordsPurgatory(延迟删除记录)、delayedElectLeaderPurgatory(延迟选举leader)，他们在不同
+的变量中，且DelayedOperationPurgatory对象的泛型也不相同。这里是生产消息的逻辑，因此延迟消息的类型就是
+DelayedProduce，用的也是delayedProducePurgatory对象
+    28、遍历watchKeys，将每个key传入watchForOperation()方法，这里其实就是会拿到key对应的监听器watcher，然后加
+入监听集合operations，然后再次尝试完成，如果还完成不了则加入timeoutTimer，这个对象是SystemTimer类型，它里面
+有个TimingWheel对象，也就是时间轮，接下来就不管了，等待时间轮到时间超时或者操作被触发然后进行回调
+    29、炼狱监听器与时间轮另外讲，这里先讲responseCallback的逻辑，DelayedProduce操作在完成后会触发onComplete
+()方法，这个方法会调用responseCallback
+    30、然后各种类型转换，最终转成一个RequestChannel.Response对象，并加入processor的responseQueue队列中
+    31、processor的run()方法里会执行processNewResponses()，这里会把的responseQueue队列里的元素拿出来，然后给
+KafkaChannel监听写事件SelectionKey.OP_WRITE，并给正在响应的集合加一个元素inflightResponses，key就是请求id
+    32、继续processor的run()方法，跟可读事件一样，在poll()里面的selector.pollSelectionKeys()方法中会执行attemptWrite
+方法，如果该key可写就开始进行响应。执行write方法，然后调用channel.write()进行写，再把channel关联的send加入
+completedSends集合中
+    33、还是processor的run()方法中，里面会执行processCompletedSends()，这个方法会遍历completedSends，把所有
+发送完成的响应从inflightResponses里删掉。后面就是一些后续处理了，例如响应完成回调(默认没有)，更新统计，取消请求
+静音等等
+    34、kafka发送消息与响应结束后，不会关闭连接，因为kafka的连接是复用的，因此收到请求后进行响应，响应结束就等待
+该连接的下一次可读事件
+
+炼狱缓冲区(DelayedOperationPurgatory)：
+    炼狱缓冲区的类名叫：DelayedOperationPurgatory，它的作用是处理延迟消息，例如延迟生产、延迟拉取、延迟选举、
+延迟删除，不同的延迟操作表现在它的泛型中，延迟操作必须实现DelayedOperation抽象类，例如延迟生产消息就是
+DelayedProduce
+    而延迟消息有两种方式完成，一个是事件触发，例如延迟生产消息一般是在等待isr集合有足够的副本与HW达到要求，当有
+新的副本加入isr集合或者分区HW增加时，就会触发时间让DelayedProduce去尝试完成，如果能完成则调用对应的callback方
+法；另一种完成方式是超时，每个DelayedOperationPurgatory炼狱都有一个SystemTimer类型的timeoutTimer属性，这个
+SystemTimer类里有一个timingWheel属性，这就是时间轮了，每次调用tryCompleteElseWatch方法时，都会先尝试延迟操
+作能否立即完成，如果不能则将延迟操作加入timingWheel中
+
+炼狱运行流程：
+    1、调用operation.tryComplete()去尝试将延迟操作完成，如果能完成则直接返回，如果是生产延迟操作则是判断isr能否满
+足参数配置所需的最少isr，能满足就返回true，宣告完成成功，后续逻辑无需继续
+    2、如果无法完成，这遍历所有需要监听的key，将每个分区加入watcherLists里对应key的watcher中进行监听
+    3、加入监听器后再次进行尝试，这次调用的是operation.maybeTryComplete()方法，这个方法与tryComplete()的区别是
+，maybeTryComplete()会先拿到延迟操作的锁再调用tryComplete()，这个方法如果拿到锁就去尝试完成，拿不到锁就将重试
+设置成true让之前持有锁的线程再次进行尝试完成
+    4、如果到这里还无法完成，则判断timerEnabled是否为true，这个值默认为true。然后将延迟操作加入timeoutTimer中
+    5、至此延迟操作已经加入操作监听器与超时定时器中，两种方式任一种触发都可以让它尝试完成
+
+操作监听器(Watchers)：
+    1、操作监听器是DelayedOperationPurgatory里的一个watcherLists属性，这是一个集合，保存了所有分区的监听器，里
+面具体的监听器是Watchers对象
+    2、所有会使HW增加的操作都会触发监听器，并尝试完成延迟操作，完成的方法在Partition.tryCompleteDelayedRequests
+()方法中，这个方法所有调用的地方都有一个leaderLWIncremented条件，既leader的HW增加，炼狱在Partition创建的时候
+就从传进来的replicaManager对象里面被取出来构建成了delayedOperations对象，因此直接调用delayedOperations.
+checkAndCompleteAll()方法就会触发生产延迟、消费延迟、删除延迟等炼狱的checkAndComplete方法
+    3、这个方法会拿到对应分区对应的watcher，并调用它的tryCompleteWatched()方法
+    4、warchers.tryCompleteWatched()会遍历它里面operations对象的所有元素，并执行它们的maybeTryComplete()方法
+如果执行成功则删除该延迟操作，这个方法在上面已经说过了
+    5、HW增加的地方有：成为leader、成为追随者、isr减少、消息增加等
+
+定时器(SystemTimer)：
+    属性：
+        tickMs：当前轮每个刻度的时间跨度
+        wheelSize：当前轮的总刻度
+        interval：当前轮总时间跨度，tickMs * wheelSize
+        buckets：任务列表集合
+        currentTime：当前时间，这里的时间用的是TimeUnit.NANOSECONDS.toMillis(System.nanoTime())，也就是系统时
+    间到现在为止运行的时间，这个值等于startMs - (startMs % tickMs)，这是为了把刻度后多余的值消掉，例如刻度是200，
+    startMs是3215，那currentTime就会变成3200
+        overflowWheel：父时间轮，如果有时间超过当前所有的刻度，则创建一个父时间轮并将该任务加入父时间轮
+        queue：优先级队列，一个SystemTimer里所有的时间轮都公用一个队列
+
+    1、调用add()方法加入一个TimerTask类型的任务，其中DelayedProduce继承了DelayedOperation，而DelayedOperation
+又继承了TimerTask，因此直接把延迟操作传进去就行了
+    2、将延迟操作与它的超时时间当构造器参数创建一个定时器任务实体TimerTaskEntry对象，超时时间应该是绝对时间
+    3、将定时器任务实体对象加入时间轮timingWheel，如果加入失败则说明该任务已经过期或取消，如果取消失败则将其加
+入一个taskExecutor线程池中，这个线程池只有一个线程，且是无界队列，因为加入这个线程池的任务说明该任务已经没必要
+再等了，DelayedOperation.run()方法会调用forceComplete()进行强行完成，既取消该定时任务与调用callback
+    4、然后看看timingWheel.add()，返回值是boolean，意思是添加进时间轮是否成功。每个任务都有一个过期时间，这个
+方法会判断任务对象是否已取消，如果已取消则返回false；然后判断是否已过期，如果过期时间小于当前时间+tickMs，则
+说明已过期；然后判断过期时间是否小于当前时间+当前轮的总间隔，如果小于则加入当前时间轮；最后就是过期时间超过
+当前轮的大小，如果没有父轮就创建父轮，然后加入父轮
+    这里很容易疑惑的地方就是加入当前轮的逻辑，它会先用过期时间/tickMs，然后拿结果去对wheelSIze进行取模拿到bucket
+，最后将任务加入该bucket，然后设置bucket的过期时间为过期时间/tickMs*tickMs，如果时间有变更则将bucket加入queue
+中。一个时间轮不是有很多过期时间吗，不同的过期时间进行取模总会拿到相同的bucket，然后设置过期时间不是会一直变更
+，然后重复将bucket加入queue吗？
+    因为每次过期时间都等于expiration / tickMs * tickMs，因此如果是在同一个范围内的tickMs，最终过期时间是一样的，不
+会发生变更。那么什么情况下会拿到相同bucket里不同的过期时间呢？
+    如果想要bucket的过期时间有变更，expiration就必须增加超过tickMs，否则就会被先除后乘给过滤掉后面多余的值。然后
+bucket的获取方式是buckets[expiration / tickMs % wheelSIze]，在expiration增加超过tickMs的情况下，如果还想要获取
+相同的bucket，那么expiration起码要增加wheelSIze(20)个tickMs才能达到取模的下一个相同值。当expiration已经增加
+wheelSIze(20)个tickMs时，那么这个时间轮肯定已经被执行过完整的一轮了，此时重新设置它的expiration并加入queue是没
+有任何问题的，因为这个bucket肯定已经被queue延迟队列给清理出来了，所以不存在有重复bucket再同一个queue里的情况
+    5、每个炼狱内部都有一个ExpiredOperationReaper(过期操作收割机)，这个线程在炼狱实例化时就会启动，它会调用炼狱
+的advanceClock方法，然后进入timeoutTimer.advanceClock，最终会调用delayQueue的poll，poll等待时间是固定的200ms
+，如果能poll一个bucket出来，则调用timingWheel.advanceClock(bucket.getExpiration())，再bucket.flush(reinsert)。
+    6、其中timeoutTimer.advanceClock()方法，如果过期时间大于当前时间的第一个刻度，就会将当前时间置为：
+timeMs - (timeMs % tickMs)，也就是过期时间减去tickMs除不尽的部分，然后一直往父轮更新，这样能保证下一次有延迟
+操作进来，前面的轮依然能生效
+    7、而bucket.flush(reinsert)方法，会将bucket里的任务清掉，并尝试重进加入时间轮，这个任务往往都是过期的，因此时
+间轮里不会加进去，最后还是会加入taskExecutor线程池中，执行取消任务，然后将bucket的过期时间置为-1，这样下来这个
+currentTime更新了，bucket里的任务与过期时间也重置了，下次还有任务进来这个bucket就能够被复用了
+    8、哪怕currentTime与expiration会随着时间一直增加，进来这个时间轮的expiration一定会保持在20个tickMs内，否则就
+去上个时间轮了，只要保证在20个tickMs范围内，那么expiration / tickMs操作就只会出现20种值，这正好对应20个bucket，
+只要currentTime不变这20个tickMs的范围就不会有变化，那么每次加入的过期时间只要进了这个时间轮，在expiration / tickMs * tickMs
+的算法下都能保证bucket的expiration不会重复，假设currentTiem发生了变化，那么一定会伴随着bucket的重置，这种情况
+下expiration是否会重复根本无所谓
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

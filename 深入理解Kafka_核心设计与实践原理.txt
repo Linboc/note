@@ -1044,7 +1044,7 @@ ISR的伸缩：
             存放所有分区的LEO，kafka会有一个定时任务负责将所有分区的LEO刷写到恢复点文件中，刷新周期由broker端参数
         log.flush.offset.checkpoint.interval.ms来配置，默认为60000
 
-        replication-offset_checkpoint(复制点文件)：
+        replication-offset-checkpoint(复制点文件)：
             存放所有分区的HW，kafka会有一个定时任务负责将所有分区的HW刷写到复制点文件中，刷新周期由broker端参数
         replica.high.watermark.checkpoint.interval.ms来配置，默认为5000
 
@@ -1075,7 +1075,7 @@ ISR的伸缩：
 日志的同步机制：
 
     
-
+关于LAG部分的笔记是没写还是丢了？
 
 
 

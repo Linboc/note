@@ -118,7 +118,7 @@ trace：
       --skipJDKMethod：默认情况下会忽略jdk的函数，如果需要跟踪jdk函数就设置为false
       -E：开启正则表达式
       com.boc.arthas.ArthasTest：类名的表达式
-      v：方法名的表达式
+      v：方法名的表达式，v就是方法名
       'params[0]>100'：条件表达式
       '#cost>100'：执行时间超过100ms才输出trace结果
       -n：命令执行次数，如果为3，则会在3次trace到结果后退出
