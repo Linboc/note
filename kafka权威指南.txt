@@ -530,6 +530,9 @@ poll()时就能获得seek()指定的消息，如果seek()的位置错误，poll�
 分区的偏移量。
     我们就可以在再均衡的onPartitionsRevoked方法里提交当前消费者负责的所有主题与分区在数据库里最新的偏移量；也可
 以在onPartitionsAssigned方法里重分配时将消费的主题与分区的偏移量用seek()跳转到数据库里记录的偏移量
+    需要注意的是，如果seek()的偏移量不存在，例如偏移量0已经被清除了，但是还是seek到0，那么kafka.fetch就会返回一个
+OffsetOutOfRangeException异常，这将导致consumer按照auto.offset.reset所配置策略自动重置偏移量，默认从最后的
+偏移量开始。因此如果出现seek无效的情况，就需要检查seek的偏移量是否不存在
 
 优雅退出：
     consumer.wakeup()是消费者唯一一个可以从其它线程里安全调用的方法，这个方法将会在poll时抛出WakeupException

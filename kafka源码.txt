@@ -382,6 +382,32 @@ currentTime更新了，bucket里的任务与过期时间也重置了，下次还
 
 
 
+消费者的消息拉取：
+    1、消费者拉取消息要不断调用kafkaConsumer.poll方法
+    2、kafkaConusmer是不支持并发的，它在很多操作的入口都会调用acquireAndEnsureOpen()方法，这个方法其实就是
+将线程id放到kafkaConsuemr.currentThread属性里面，，如果currentThread已有值并且与当前线程id与不匹配则抛出
+ConcurrentModificationException异常，在方法执行结束时调用release()方法释放currentThread属性
+    3、校验拉取超时时间是否为负数、是否没有订阅任何主题分区，有则报错
+    4、判断是否要退出consumer，主要是根据ConsumerNetworkClient.wakeup属性来判断是否要出异常，用户可以通过
+kafkaConsumer.wakeup()方法来将它设置为true，等到下一次poll()就会引发WakeupException异常从而达到优雅退出
+    5、根据includeMetadataInTimeout是否为true来用不同的方式去调用updateAssignmentMetadataIfNeeded()方法，
+如果为true，那么调用这个方法的过程中也会算在超时时间内，否则就不算在内。includeMetadataInTimeout()方法的作用
+有有以下几点：1、加入组协调器，2、分区重分配，3、初始化消费者的偏移量，4、异步提交偏移量。这几点会按需进行，
+如果includeMetadataInTimeout为true，那么在超时时间内无法完成这几点，该方法会返回false，然后consumer.poll()方法
+就会返回一个空消息集合，如果为false，则一直重试直到返回true
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
