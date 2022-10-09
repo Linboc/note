@@ -1,6 +1,6 @@
 ﻿大概目标：请求处理(已完成)、消息生产(已完成)、消息消费、事务协调器、组协调器、幂等(已完成)
 、副本同步细节(ISR、LW、LEO)、日志处理细节(追加部分已完成)、延迟消息的时间轮应用(已完成)
-
+、组协调器与poll的心跳
 
 
 kafka broker代码里配置所在：KafkaConfig，配置默认值所在：Defaults
@@ -395,12 +395,23 @@ kafkaConsumer.wakeup()方法来将它设置为true，等到下一次poll()就会
 有有以下几点：1、加入组协调器，2、分区重分配，3、初始化消费者的偏移量，4、异步提交偏移量。这几点会按需进行，
 如果includeMetadataInTimeout为true，那么在超时时间内无法完成这几点，该方法会返回false，然后consumer.poll()方法
 就会返回一个空消息集合，如果为false，则一直重试直到返回true
-
-
-
-
-
-
+    6、然后就到了pollForFetches()方法，这个方法会开始拉取消息
+    7、在pollForFetches()方法中，会先调用fetcher.fetchedRecords()尝试从已有的响应里拉消息，所有拉取响应都放在
+completedFetches属性中，消费者会先看completedFetches里是否已有响应可用，如果有，则从已有的数据里拿够
+max.poll.records配置的数量，如果数据量超出max.poll.records，则只返回max.poll.records要的部分，否则有多少返回多少
+    为什么要分成completedFetches与nextInLineRecords两个属性去存放消息呢？因为考虑到某个拉取完成响应里上次只被取
+走一半，那么这个迭代器应该保留下来，下次再拉取就从上次的位置拉取
+    8、如果上一步的fetcher.fetchedRecords()里拿不到任何消息，就执行fetcher.sendFetches()，这个方法会尝试发送拉取
+请求，里面会使用prepareFetchRequests()方法来构建请求，这个方法里，如果该分区已经在客户端有未被消费的数据，则不
+会构建该分区的请求；或者有正在发送的请求也不会再次构建该分区的请求，构建完后就使用client.send发送请求
+    在consumerNetwordClient中，有一个unsent，代表未发送的请求，这个未发送请求在fetcher.fetchedRecords()会进行
+插入，在真正调用kafkaClient.send时进行删除
+    9、调用consumerNetwordClient.poll开始真正发送请求，首先调用firePendingCompletedRequests()处理已经完成的响
+应，然后调用handlePendingDisconnects()将已断开连接的节点对应的未发送请求全部处理为失败，然后调用trySend()尝试
+发送请求
+    10、trySend()里，会去遍历unsent里的所有请求，并使用KafkaClient进行发送，在里面就是将channel绑定send，然后
+注册写事件，等待poll到写事件等逻辑
+    11、执行client.poll()
 
 
 
