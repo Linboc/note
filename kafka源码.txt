@@ -412,6 +412,35 @@ max.poll.records配置的数量，如果数据量超出max.poll.records，则只
     10、trySend()里，会去遍历unsent里的所有请求，并使用KafkaClient进行发送，在里面就是将channel绑定send，然后
 注册写事件，等待poll到写事件等逻辑
     11、执行client.poll()
+    11.1、poll()里第一步是执行firePendingCompletedRequests()，这个方法里会遍历pendingCompletion里所有的元素
+，并调用它的fireCompletion()方法，这个方法会将响应插入completedFetches中，而pendingCompletion的数据是
+kafkaClient.poll()方法中，调用completeResponses时放进去的。因此第一步就是将响应的数据从pendingCompletion中转移到
+completeResponses
+    为什么一进来就要调这个方法呢，poll结束时不是调过吗，因为client.poll可能会在其它地方被单独调用，这种情况下
+pendingCompletion中的数据就未转移到completeResponses中，因此先进来调一次。并且这个方法还会唤醒selector，不调用
+这个方法可能会导致client.poll拿不到数据
+    11.2、poll()里的第二步是执行handlePendingDisconnects()，这个方法会将pendingDisconnects集合中所有的节点相关的
+请求全都触发失败回调，包括已发送与未发送的，然后设置该节点的相关状态，并关闭连接
+    11.3、然后再调用trySend()，这个方法的解释可以看第10点
+    11.4、根据pendingCompletion与completedFetches里是否有数据可以获取来判断是否要进行有超时时间的poll，假设这两个
+集合中都是空的，则会发生阻塞，阻塞时间是在最大拉取时间、服务端的连接限制时间、组协调器的下一次心跳时间、
+retry.backoff.ms(连接重试间隔)时间之间取最小值。如果两者任一个不为空，则调用一次非阻塞poll
+    11.5、然后调用checkDisconnects()方法，遍历unsent中所有的节点，判断是否存在连接断开的节点，如果存在则取出这个
+节点的请求，并触发它的回调
+    11.6、判断wakeup的状态，如果为true，且wakeupDisabled为false(默认是false)，则抛出WakeupException异常，就是判断
+是否已被客户端退出的
+    11.7、调用maybeThrowInterruptException()，判断线程是否被中断，如果被中断则抛出InterruptException
+    11.8、再次调用trySend()，因为此时可能缓冲区空间已被清除或者轮询中的连接已完成
+    11.9、调用failExpiredRequests()，遍历unsent里所有的请求，将已超时的请求剔除，并触发一个附带超时异常的fail回调
+    11.10、清除unsent集合，以防止这个集合无限增长
+    11.11、再调用一次firePendingCompletedRequests()方法，此方法在11.1中介绍过
+    11.12、最后调用metadata.maybeThrowAnyException()，用来处理元数据更新期间遇到的不可重试异常，如果有这种情况，
+则抛出
+
+
+
+
+
 
 
 
