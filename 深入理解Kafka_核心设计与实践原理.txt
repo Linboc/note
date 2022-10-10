@@ -120,8 +120,65 @@
         由于消费者是线程不安全的，因此大部分操作内部都会先调用acquire()，结束时调用release()，这是一个加锁操作，通过
     CAS获取当前线程id进行加锁，如果CAS失败，就代表多个线程在同时操作consumer，就会抛出异常，提示节点未准备好发送请求
 
-
-
+    消费流程：
+        1、消费者拉取消息要不断调用kafkaConsumer.poll方法
+        2、kafkaConusmer是不支持并发的，它在很多操作的入口都会调用acquireAndEnsureOpen()方法，这个方法其实就是
+    将线程id放到kafkaConsuemr.currentThread属性里面，，如果currentThread已有值并且与当前线程id与不匹配则抛出
+    ConcurrentModificationException异常，在方法执行结束时调用release()方法释放currentThread属性
+        3、校验拉取超时时间是否为负数、是否没有订阅任何主题分区，有则报错
+        4、判断是否要退出consumer，主要是根据ConsumerNetworkClient.wakeup属性来判断是否要出异常，用户可以通过
+    kafkaConsumer.wakeup()方法来将它设置为true，等到下一次poll()就会引发WakeupException异常从而达到优雅退出
+        5、根据includeMetadataInTimeout是否为true来用不同的方式去调用updateAssignmentMetadataIfNeeded()方法，
+    如果为true，那么调用这个方法的过程中也会算在超时时间内，否则就不算在内。includeMetadataInTimeout()方法的作用
+    有有以下几点：1、加入组协调器，2、分区重分配，3、初始化消费者的偏移量，4、异步提交偏移量。这几点会按需进行，
+    如果includeMetadataInTimeout为true，那么在超时时间内无法完成这几点，该方法会返回false，然后consumer.poll()方法
+    就会返回一个空消息集合，如果为false，则一直重试直到返回true
+        6、然后就到了pollForFetches()方法，这个方法会开始拉取消息
+        7、在pollForFetches()方法中，会先调用fetcher.fetchedRecords()尝试从已有的响应里拉消息，所有拉取响应都放在
+    completedFetches属性中，消费者会先看completedFetches里是否已有响应可用，如果有，则从已有的数据里拿够
+    max.poll.records配置的数量，如果数据量超出max.poll.records，则只返回max.poll.records要的部分，否则有多少返回多少
+        为什么要分成completedFetches与nextInLineRecords两个属性去存放消息呢？因为考虑到某个拉取完成响应里上次只被取
+    走一半，那么这个迭代器应该保留下来，下次再拉取就从上次的位置拉取
+        8、如果上一步的fetcher.fetchedRecords()里拿不到任何消息，就执行fetcher.sendFetches()，这个方法会尝试发送拉取
+    请求，里面会使用prepareFetchRequests()方法来构建请求，这个方法里，如果该分区已经在客户端有未被消费的数据，则不
+    会构建该分区的请求；或者有正在发送的请求也不会再次构建该分区的请求，构建完后就使用client.send发送请求
+        在consumerNetwordClient中，有一个unsent，代表未发送的请求，这个未发送请求在fetcher.fetchedRecords()会进行
+    插入，在真正调用kafkaClient.send时进行删除
+        9、中间丢失的序号请忽略，懒得改了
+        11、执行client.poll()
+        11.1、poll()里第一步是执行firePendingCompletedRequests()，这个方法里会遍历pendingCompletion里所有的元素
+    ，并调用它的fireCompletion()方法，这个方法会将响应插入completedFetches中，而pendingCompletion的数据是
+    kafkaClient.poll()方法中，调用completeResponses时放进去的。因此第一步就是将响应的数据从pendingCompletion中转移到
+    completeResponses
+        为什么一进来就要调这个方法呢，poll结束时不是调过吗，因为client.poll可能会在其它地方被单独调用，这种情况下
+    pendingCompletion中的数据就未转移到completeResponses中，因此先进来调一次。并且这个方法还会唤醒selector，不调用
+    这个方法可能会导致client.poll拿不到数据
+        11.2、poll()里的第二步是执行handlePendingDisconnects()，这个方法会将pendingDisconnects集合中所有的节点相关的
+    请求全都触发失败回调，包括已发送与未发送的，然后设置该节点的相关状态，并关闭连接
+        11.3、然后再调用trySend()，trySend()里，会去遍历unsent里的所有请求，并使用KafkaClient进行发送，在里面就是将
+    channel绑定send，然后注册写事件，等待poll到写事件等逻辑
+        11.4、根据pendingCompletion与completedFetches里是否有数据可以获取来判断是否要进行有超时时间的poll，假设这两个
+    集合中都是空的，则会发生阻塞，阻塞时间是在最大拉取时间、服务端的连接限制时间、组协调器的下一次心跳时间、
+    retry.backoff.ms(连接重试间隔)时间之间取最小值。如果两者任一个不为空，则调用一次非阻塞poll
+        11.5、然后调用checkDisconnects()方法，遍历unsent中所有的节点，判断是否存在连接断开的节点，如果存在则取出这个
+    节点的请求，并触发它的回调
+        11.6、判断wakeup的状态，如果为true，且wakeupDisabled为false(默认是false)，则抛出WakeupException异常，就是判断
+    是否已被客户端退出的
+        11.7、调用maybeThrowInterruptException()，判断线程是否被中断，如果被中断则抛出InterruptException
+        11.8、再次调用trySend()，因为此时可能缓冲区空间已被清除或者轮询中的连接已完成
+        11.9、调用failExpiredRequests()，遍历unsent里所有的请求，将已超时的请求剔除，并触发一个附带超时异常的fail回调
+        11.10、清除unsent集合，以防止这个集合无限增长
+        11.11、再调用一次firePendingCompletedRequests()方法，此方法在11.1中介绍过
+        11.12、最后调用metadata.maybeThrowAnyException()，用来处理元数据更新期间遇到的不可重试异常，如果有这种情况，
+    则抛出
+        12、看组协调器是否需要挂起或者重新加入，如果需要则返回一个空集合
+        13、再次调用fetcher.fetchedRecords()尝试从已完成的集合里拿到消息返回，因为经过poll之后，消息可能已经有了
+        14、续第6点，消息拉取到之后，如果消息不为空，就调用fetcher.sendFetches()将依然可拉取的分区再进行一次拉取
+    ，如果再次拉取后存在发送中的请求，则调用一次非阻塞的poll，也就是client.pollNoWakeup()
+        15、然后调用interceptors.onConsume，也就是调用消费拦截器，且将拦截器返回的结果返回给消费者
+        16、如果消息拉取不到，且已用时间未达到超时时间，就继续上面的循环，直到拉取到消息或者到达超时时间，超时
+    后依然拉不到消息则返回空集合
+        17、最后调用release释放线程锁
 
 AR(Assigned Replicas)：
     分区中所有的副本统称为AR
