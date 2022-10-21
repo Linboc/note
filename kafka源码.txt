@@ -550,10 +550,23 @@ retry.backoff.ms(连接重试间隔)时间之间取最小值。如果两者任�
 服务端的消息拉取请求处理流程(FetcherRequest)：
 
     1、从前面的【服务端请求基础流程】的10.4开始，进入KafkaApis.handle()方法，里面会匹配到ApiKeys.PRODUCE，随
-后进入handleProduceRequest()方法
-    
-
-
+后进入handleFetchRequest()方法
+    2、进来会基于请求里的数据创建fetchRequest、fetchContext、clientMetadata等信息
+    3、然后准备两个集合：erroneous与interesting，分别代表错误的分区集合与感兴趣的分区集合，接下来处理方式分为副
+本的拉取请求与消费者的拉取请求
+        3.1：其中如果fetch请求是foollower发起的，则校验该broker是否有权限访问。如果有权限，则遍历每个请求的分区是
+    否在metadataCache中来决定是放在错误还是感兴趣的集合，这里错误就是UnknownTopicOrPartitionException异常；
+    如果没权限，则将请求的所有分区都放入错误集合中，这里的错误就是TOPIC_AUTHORIZATION_FAILED异常
+        3.2：如果fetch请求是消费者发起的，则验证消费者是否有权限访问请求的每一个分区，然后将验证不通过的分区放入
+    错误集合，且异常是TOPIC_AUTHORIZATION_FAILED，验证通过后再看每一个分区是否存在于metadataCache中，如果
+    不存在则继续放入错误集合中，且异常是UnknownTopicOrPartitionException，剩余的所有分区都放入感兴趣集合
+        3.3：消费者与副本拉取请求在这里的区别就是，副本的权限是针对所有分区的，而消费者的权限可以精确到每一个分区
+    4、然后是配额管理器QuotaManagers quotas，如果是副本的拉取请求，就是无限配置，如果是消费者的拉取请求，就是
+根据quotas.fetch.getMaxValueInQuotaWindow获取该消费者的最大配额信息
+    5、然后在fetchRequest里的maxBytes与服务端的fetch.max.bytes配置之间取一个最小值来当fetchMaxBytes，然后再从
+fetchRequest.minBytes与fetchMaxBytes中取最小值来当fetchMinBytes
+    6、如果感兴趣的集合interesting是空的，就直接进行callback，否则就调用replicaManager.fetchMessages
+    7、
 
 
 
