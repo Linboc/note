@@ -565,17 +565,23 @@ retry.backoff.ms(连接重试间隔)时间之间取最小值。如果两者任�
 根据quotas.fetch.getMaxValueInQuotaWindow获取该消费者的最大配额信息
     5、然后在fetchRequest里的maxBytes与服务端的fetch.max.bytes配置之间取一个最小值来当fetchMaxBytes，然后再从
 fetchRequest.minBytes与fetchMaxBytes中取最小值来当fetchMinBytes
-    6、如果感兴趣的集合interesting是空的，就直接进行callback，否则就调用replicaManager.fetchMessages
-    7、
+    6、如果感兴趣的集合interesting是空的，就直接进行callback，否则就调用replicaManager.fetchMessages进行消息拉取
+    7、replicaManager.fetchMessages里，首先根据replicaId副本id来判断是否消费者，因为正常的副本id都是大于0的，然
+后拉取的偏移量有三种：1、不是消费者则从请求里的偏移量结束位置开始拉取；2、是消费者且开启READ_COMMITTED则从
+LSO开始读取；未开启READ_COMMITTED则从HW开始读取。这里的逻辑看起来更像是约束读取消息的最大偏移量，待后续
+完善，这里的笔记应该是错的
+    8、调用局部方法readFromLog()去读取消息，里面会去调用readFromLocalLog()
 
 
 
 
 
 
-
-
-
+关于幂等失效的思考：
+leader将消息同步给一个副本后，发生了重新选举，客户端进行重试会不会导致在开启幂等的情况下出现消息重复？因为重新
+选举的副本是没有幂等缓存信息的，因此如果刚好这条消息被同步给了该副本，且变更了HW，但是返回给客户端比较慢导致
+被认为失败，然后进行重新选举，客户端再重试不就将消息写入两遍了么。亦或者客户端发现leader切换直接放弃当前所有的
+请求？但是也不合理，这部分请求大多数情况下是可以不放弃的
 
 
 
