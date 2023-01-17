@@ -571,8 +571,13 @@ fetchRequest.minBytes与fetchMaxBytes中取最小值来当fetchMinBytes
 LSO开始读取；未开启READ_COMMITTED则从HW开始读取。这里的逻辑看起来更像是约束读取消息的最大偏移量，待后续
 完善，这里的笔记应该是错的
     8、调用局部方法readFromLog()去读取消息，里面会去调用readFromLocalLog()
-
-
+    9、然后有个findPreferredReadReplica()操作，这个操作主要是基于replica.selector.class配置来决定要不要选择出一个
+优先读取的broker，kafka有个默认实现RackAwareReplicaSelector，这个选择器是优先选择与客户端相同rack(机架)的
+broker，如果当前机架中存在leader，就返回leader，否则就返回当前机架中LEO最大的brokerid，这一切的前提是客户端传
+过来的rackId不为空，而且当前broker是这个分区的leader，这就是preferredReadReplica(优先读取副本)的逻辑。
+    10、如果优先读取副本存在，这说明当前分区是leader，且找到了客户端相同机架的broker，kafka就不会再去读消息，而
+是马上给客户端返回这个preferredReadReplica信息，客户端下次拉取消息就会从preferredReadReplica里的broker去拉
+    11、而如果优先读取副本不存在，则直接调用partition.readRecords()去读取消息
 
 
 

@@ -320,4 +320,21 @@ BeanDefinition里定义的类型就是Executor。如果去根据BeanType进行匹配，由于是用Bean
 
     idea总是把cpu跑到100%，因为开启自动热部署，所以每次从文本里切换焦点就会自动build，因此把自动部署关了就好了
 
+    提供类kafka炼狱功能的工具类：buffer-trigger
+
+    关于idea经常把cpu占用到100%的解决思路：通过arthas找到idea的进程，然后用thread命令找到cpu占用高的线程，再用
+thread 线程号输出该线程的栈信息，通过分析栈信息里的相关类就大致能看出是哪个插件导致的
+
+
+
+
+
+
+
+
+
+
+
+
+
 
