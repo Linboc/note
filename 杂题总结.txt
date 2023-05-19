@@ -325,9 +325,13 @@ BeanDefinition里定义的类型就是Executor。如果去根据BeanType进行匹配，由于是用Bean
     关于idea经常把cpu占用到100%的解决思路：通过arthas找到idea的进程，然后用thread命令找到cpu占用高的线程，再用
 thread 线程号输出该线程的栈信息，通过分析栈信息里的相关类就大致能看出是哪个插件导致的
 
+    JPA改自动自动生成的sql缓存的地方在：org.springframework.data.jpa.repository.query.AbstractStringBasedJpaQuery#doCreateQuery
 
+    项目启动提示org.springframework.beans.factory.NoSuchBeanDefinitionException: No qualifying bean of type xxxxRepository，
+代码看起来没任何问题，这可能是JPA在生成同名Repository的时候，只有一个会生效，哪怕他们的包名不同。这时候后被加载的Repository
+是会被忽略的，如果此时注入后被加载的Repository，就会被提示找不到Bean
 
-
+    idea的maven项目代码大量爆红，可以试着把<relativePath/>去掉
 
 
 
