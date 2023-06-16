@@ -246,7 +246,7 @@ JPA²éÑ¯È´Ö´ÐÐÁËÐÞ¸ÄÓï¾ä£º
 	8¡¢´ËÊ±¾Í¿ªÊ¼±¨´í£¬@AsyncÄÇ¸öBeanÓÐÁ½¸ö°æ±¾
     ½â¾ö·½·¨£º@AsyncµÄBean×¢ÈëÊ±Ê¹ÓÃ@Lazy£¬ÕâÑù¾ÍÄÜ±ÜÃâÑ­»·ÒÀÀµÊ±±»ÆäËüBeanÄÃµ½Ô­Ê¼¶ÔÏóÁË£¬µÈ±»»ñÈ¡BeanÊ±ËüÒÑ
 ¾­´úÀíÍê³É´´½¨Íê³ÉÁË
-    ½â¾ö·½·¨2£ºÈÃ@AsyncµÄBean×¢ÈëµÄ±ÈÑ­»·ÒÀÀµËüµÄbeanÂý£¬±¨´íÊÇÒòÎª±»´ÓÈý¼¶»º´æÀïÒÆµ½¶þ¼¶»º´æ£¬Òò´ËÖ»Òª@AsyncµÄBean
+    ½â¾ö·½·¨2£ºÈÃ@AsyncµÄBean×¢ÈëµÄ±ÈÑ­»·ÒÀÀµËüµÄbeanÍí£¬±¨´íÊÇÒòÎª±»´ÓÈý¼¶»º´æÀïÒÆµ½¶þ¼¶»º´æ£¬Òò´ËÖ»Òª@AsyncµÄBean
 ×îºó¼ÓÔØ£¬ÄÇÃ´ËüÔÚ´´½¨¹ý³ÌÖÐ¾Í²»»á±»get£¬ÒòÎªËü»á´ÓÈý¼¶»º´æÖÐÄÃµ½ÒÀÀµµÄbean£¬ËùÒÔÄÇ¸öbean¾Í²»»áÔÙÈ¥³õÊ¼»¯¶øgetËü£¬
 ËùÒÔÒ²ÄÜ½â¾öÎÊÌâ£¬¿ØÖÆ¼ÓÔØË³Ðò¿ÉÒÔÓÃ@DependsOn£¬Õâ¸ö×¢½â»áÔÚÖ¸¶¨µÄbean¼ÓÔØÍêºó²Å¿ªÊ¼¼ÓÔØµ±Ç°bean
     ÄÇbeanÓÐÒ»¸ö³õÊ¼»¯Ö®Ç°ÏÈ´úÀíµÄ²Ù×÷ÎªÊ²Ã´Ã»ÉúÐ§ÄØ£¬ÒòÎª@AsyncÄÇ¸ö´úÀí´¦ÀíÆ÷Ã»ÓÐÊµÏÖÔçÆÚBean´úÀíµÄ´¦Àí½Ó¿Ú£¬¾Í
@@ -333,7 +333,7 @@ thread Ïß³ÌºÅÊä³ö¸ÃÏß³ÌµÄÕ»ÐÅÏ¢£¬Í¨¹ý·ÖÎöÕ»ÐÅÏ¢ÀïµÄÏà¹ØÀà¾Í´óÖÂÄÜ¿´³öÊÇÄÄ¸ö²å¼þµ
 
     ideaµÄmavenÏîÄ¿´úÂë´óÁ¿±¬ºì£¬¿ÉÒÔÊÔ×Å°Ñ<relativePath/>È¥µô
 
-
+    Èç¹û³ÌÐòÆô¶¯»òÔËÐÐµÄºÜÂý£¬¿ÉÒÔ³¢ÊÔ°ÑËùÓÐdebug¶ÏµãÈ¥µôÊÔÊÔ
 
 
 
