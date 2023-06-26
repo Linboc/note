@@ -335,9 +335,15 @@ thread Ïß³ÌºÅÊä³ö¸ÃÏß³ÌµÄÕ»ĞÅÏ¢£¬Í¨¹ı·ÖÎöÕ»ĞÅÏ¢ÀïµÄÏà¹ØÀà¾Í´óÖÂÄÜ¿´³öÊÇÄÄ¸ö²å¼şµ
 
     Èç¹û³ÌĞòÆô¶¯»òÔËĞĞµÄºÜÂı£¬¿ÉÒÔ³¢ÊÔ°ÑËùÓĞdebug¶ÏµãÈ¥µôÊÔÊÔ
 
-
-
-
+    ¼ÇÒ»¸öjpa/hibernateÏà¹ØµÄÒì³££ºNonUniqueObjectException: A different object with the same identifier value was already associated with the session¡£
+    Õâ¸öÒì³£³öÏÖµÄÔ­ÒòÊÇÔö¼ÓÁËÒ»ĞĞfineById¡£
+    1¡¢Íâ²ã·½·¨°ÑÊµÌå²é³öÀ´·Åµ½PersistenceContextÀï
+    2¡¢È»ºóÀïÃæÄ³¸ö·½·¨Ö´ĞĞÁËsession.clear()£¬´ËÊ±Íâ²ãµÄÊµÌå±»Çå³ı£¬ÒÑ¾­²»ÔÚPersistenceContextÀïÁË
+    3¡¢ĞÂ¼ÓµÄ·½·¨Ö´ĞĞÁËfindById£¬½«Ò»¸öĞÂµÄ¶ÔÏó·Å½øPersistenceContext
+    4¡¢¶ÔÍâ²ã·½·¨²é³öÀ´µÄµÚÒ»¸ö±»clearµôµÄÊµÌå½øĞĞsave
+    5¡¢´ËÊ±PersistenceContextÀïµÄÊµÌå¶ÔÏóÓësaveµÄÊµÌå¶ÔÏó²»ÊÇÍ¬Ò»¸ö£¬µ«ÊÇidÈ´ÏàÍ¬£¬Òò´Ë³öÏÖÒì³£
+    ´Ë´ÎµÄ½â¾ö·½Ê½ÊÇ½«»áÖ´ĞĞclearµÄ·½·¨ÒÆµ½ÊÂÎñ×îºó½øĞĞ¡£
+    ´Ë´Î¾ßÌå¸ú×ÙµÄ¶ÔÏóÊÇStatefulPersistenceContext.entitiesByKey£¬ÕâÊÇ¾ßÌå±£´æ³Ö¾Ã»¯ÉÏÏÂÎÄ¶ÔÏóµÄMap
 
 
 
